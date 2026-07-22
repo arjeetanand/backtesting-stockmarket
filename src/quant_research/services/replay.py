@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
+
+from quant_research.repositories.artifacts import SqliteArtifactStore
 
 
 @dataclass
@@ -76,6 +78,7 @@ def create_session(
     mode: str,
     initial_capital: float,
     bars: list[dict],
+    store: SqliteArtifactStore | None = None,
 ) -> dict[str, Any]:
     """Start a simulated replay from supplied, historical OHLCV bars only."""
     if len(bars) < 16:
@@ -108,18 +111,18 @@ def create_session(
     )
 
     _SESSION_STORE[session_id] = session
-    return _serialize_session(session)
+    return _persist_session(session, store)
 
 
-def get_session(session_id: str) -> dict[str, Any] | None:
-    session = _SESSION_STORE.get(session_id)
+def get_session(session_id: str, store: SqliteArtifactStore | None = None) -> dict[str, Any] | None:
+    session = _load_session(session_id, store)
     if not session:
         return None
     return _serialize_session(session)
 
 
-def step_session(session_id: str, steps: int = 1) -> dict[str, Any] | None:
-    session = _SESSION_STORE.get(session_id)
+def step_session(session_id: str, steps: int = 1, store: SqliteArtifactStore | None = None) -> dict[str, Any] | None:
+    session = _load_session(session_id, store)
     if not session or session.status == "FINISHED":
         return None
 
@@ -148,7 +151,7 @@ def step_session(session_id: str, steps: int = 1) -> dict[str, Any] | None:
             )
 
     _recalculate_session_equity(session)
-    return _serialize_session(session)
+    return _persist_session(session, store)
 
 
 def place_order(
@@ -159,8 +162,9 @@ def place_order(
     price: float | None = None,
     stop_loss: float | None = None,
     take_profit: float | None = None,
+    store: SqliteArtifactStore | None = None,
 ) -> dict[str, Any] | None:
-    session = _SESSION_STORE.get(session_id)
+    session = _load_session(session_id, store)
     if not session or session.status == "FINISHED":
         return None
 
@@ -195,11 +199,11 @@ def place_order(
     )
 
     _recalculate_session_equity(session)
-    return _serialize_session(session)
+    return _persist_session(session, store)
 
 
-def close_order(session_id: str, order_id: str) -> dict[str, Any] | None:
-    session = _SESSION_STORE.get(session_id)
+def close_order(session_id: str, order_id: str, store: SqliteArtifactStore | None = None) -> dict[str, Any] | None:
+    session = _load_session(session_id, store)
     if not session:
         return None
 
@@ -226,11 +230,11 @@ def close_order(session_id: str, order_id: str) -> dict[str, Any] | None:
             )
 
     _recalculate_session_equity(session)
-    return _serialize_session(session)
+    return _persist_session(session, store)
 
 
-def finish_session(session_id: str) -> dict[str, Any] | None:
-    session = _SESSION_STORE.get(session_id)
+def finish_session(session_id: str, store: SqliteArtifactStore | None = None) -> dict[str, Any] | None:
+    session = _load_session(session_id, store)
     if not session:
         return None
 
@@ -246,7 +250,7 @@ def finish_session(session_id: str) -> dict[str, Any] | None:
     )
 
     _recalculate_session_equity(session)
-    return _serialize_session(session)
+    return _persist_session(session, store)
 
 
 def _recalculate_session_equity(session: ReplaySession) -> None:
@@ -292,3 +296,22 @@ def _serialize_session(session: ReplaySession) -> dict[str, Any]:
         "orders": session.orders,
         "events": session.events,
     }
+
+
+def _persist_session(session: ReplaySession, store: SqliteArtifactStore | None) -> dict[str, Any]:
+    if store is not None:
+        store.save("replay_session", session.session_id, {"session": asdict(session)})
+    return _serialize_session(session)
+
+
+def _load_session(session_id: str, store: SqliteArtifactStore | None) -> ReplaySession | None:
+    session = _SESSION_STORE.get(session_id)
+    if session is not None or store is None:
+        return session
+    payload = store.get("replay_session", session_id)
+    raw = payload.get("session") if payload else None
+    if not isinstance(raw, dict):
+        return None
+    session = ReplaySession(**raw)
+    _SESSION_STORE[session_id] = session
+    return session

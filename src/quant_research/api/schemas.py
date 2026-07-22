@@ -40,6 +40,19 @@ class MarketAvailabilityResponse(BaseModel):
     latest_close: float | None
 
 
+class DataInventoryItem(BaseModel):
+    symbol: str
+    company_name: str | None = None
+    industry: str | None = None
+    bars: int = 0
+    earliest: datetime | None = None
+    latest: datetime | None = None
+    cached_days: int = 0
+    requested_days: int = 0
+    missing_days: int = 0
+    fully_available: bool = False
+
+
 class NseImportRequest(BaseModel):
     start: date
     end: date
@@ -67,11 +80,22 @@ class NseImportCoverageItem(BaseModel):
     bars: int
     earliest: datetime | None
     latest: datetime | None
+    cached_days: int = 0
+    missing_days: int = 0
+    total_days: int = 0
     fully_available: bool
 
 
 class NseImportPreviewResponse(BaseModel):
     requested_symbols: int
+    complete_symbols: int = 0
+    partial_symbols: int = 0
+    missing_symbols: int = 0
+    cached_bars: int = 0
+    estimated_missing_bars: int = 0
+    cached_trading_days: int = 0
+    missing_trading_days: int = 0
+    total_trading_days: int = 0
     fully_available: bool
     message: str
     coverage: list[NseImportCoverageItem]
@@ -129,6 +153,7 @@ class SmaBacktestRequest(BaseModel):
 
 class CustomBacktestRequest(BaseModel):
     symbol: str = Field(default="NIFTY 50", min_length=1, max_length=50)
+    strategy_id: str = Field(default="rsi_ema", min_length=2, max_length=50)
     start: datetime
     end: datetime
     timeframe: str = Field(default="1day")
@@ -140,6 +165,10 @@ class CustomBacktestRequest(BaseModel):
     initial_capital: float = Field(default=100_000.0, gt=0.0)
     commission_pct: float = Field(default=0.001, ge=0.0, le=0.05)
     slippage_pct: float = Field(default=0.0005, ge=0.0, le=0.05)
+    stop_loss_pct: float = Field(default=0.0, ge=0.0, le=0.99)
+    take_profit_pct: float = Field(default=0.0, ge=0.0, le=10.0)
+    position_size_pct: float = Field(default=100.0, gt=0.0, le=100.0)
+    max_positions: int = Field(default=1, ge=1, le=1)
 
 
 class RobustnessAnalysisRequest(BaseModel):

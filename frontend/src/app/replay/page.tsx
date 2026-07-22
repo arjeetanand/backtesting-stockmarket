@@ -18,6 +18,7 @@ import {
 import TopBar from "@/components/layout/TopBar";
 import {
   createReplaySession,
+  getReplaySession,
   stepReplaySession,
   placeReplayOrder,
   closeReplayOrder,
@@ -32,6 +33,7 @@ const formatINR = (val: number) =>
 
 export default function ReplayPage() {
   const [session, setSession] = useState<ReplaySessionData | null>(null);
+  const [restored, setRestored] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,6 +55,24 @@ export default function ReplayPage() {
   const [availability, setAvailability] = useState<MarketAvailability | null>(null);
   const mode = "manual";
   const initialCapital = 100000;
+
+  useEffect(() => {
+    const savedSessionId = window.localStorage.getItem("backtrack:replay-session");
+    if (!savedSessionId) {
+      setRestored(true);
+      return;
+    }
+    void getReplaySession(savedSessionId)
+      .then(setSession)
+      .catch(() => window.localStorage.removeItem("backtrack:replay-session"))
+      .finally(() => setRestored(true));
+  }, []);
+
+  useEffect(() => {
+    if (!restored) return;
+    if (session) window.localStorage.setItem("backtrack:replay-session", session.session_id);
+    else window.localStorage.removeItem("backtrack:replay-session");
+  }, [restored, session]);
 
   useEffect(() => {
     const cleanSymbol = symbol.trim();
@@ -168,8 +188,8 @@ export default function ReplayPage() {
         <TopBar />
         <div className="backtrack-content bt-replay-setup">
           <div className="bt-panel bt-replay-setup-card" style={{ padding: "32px" }}>
-            <span className="bt-eyebrow">Free Historical Replay</span>
-            <h1>Choose your backtest period.</h1>
+            <span className="bt-eyebrow">REPLAY PAST PRICES</span>
+            <h1>Choose the stock and dates.</h1>
             <p>
               Uses locally imported official NSE historical candles. Orders are
               simulated only — never sent to a broker.
@@ -183,11 +203,11 @@ export default function ReplayPage() {
                 <SymbolCombobox value={symbol} onChange={setSymbol} />
               </div>
               <div>
-                <label className="bt-field-label">Timeframe</label>
-                <input className="bt-field-input" value="1 day (official NSE cache)" disabled aria-label="Timeframe" />
+                <label className="bt-field-label">Candle size</label>
+                <input className="bt-field-input" value="1 day (official NSE cache)" disabled aria-label="Candle size" />
               </div>
               <div>
-                <label className="bt-field-label">Start date</label>
+                <label className="bt-field-label">First date</label>
                 <input
                   type="date"
                   className="bt-field-input bt-field-mono"
@@ -196,7 +216,7 @@ export default function ReplayPage() {
                 />
               </div>
               <div>
-                <label className="bt-field-label">End date</label>
+                <label className="bt-field-label">Last date</label>
                 <input
                   type="date"
                   className="bt-field-input bt-field-mono"
@@ -224,7 +244,7 @@ export default function ReplayPage() {
                 </>
               ) : (
                 <>
-                  <Play size={15} fill="currentColor" /> Start free replay
+                  <Play size={15} fill="currentColor" /> Start replay
                 </>
               )}
             </button>
@@ -249,9 +269,9 @@ export default function ReplayPage() {
         <section className="bt-heading-row">
           <div>
             <div className="bt-kicker">
-              <span className="live-dot" /> 01 / MARKET REPLAY WORKSPACE
+              <span className="live-dot" /> REPLAY A CHART
             </div>
-            <h1>Bar-by-bar historical replay.</h1>
+            <h1>Replay the chart one step at a time.</h1>
             <p>
               Step through free historical candles without lookahead bias. All
               orders are simulated locally.
@@ -259,10 +279,10 @@ export default function ReplayPage() {
           </div>
           <div className="bt-heading-actions">
             <span className="data-source">
-              <Zap size={14} /> Anti-Hindsight Server Cursor
+              <Zap size={14} /> History stays in order
             </span>
             <button className="bt-secondary" onClick={handleInitSession}>
-              <RotateCcw size={13} /> Reset Session
+              <RotateCcw size={13} /> Start over
             </button>
           </div>
         </section>
@@ -399,7 +419,7 @@ export default function ReplayPage() {
               <div className="bt-panel-head" style={{ marginBottom: "14px" }}>
                 <div>
                   <span className="bt-eyebrow">Execution Journal</span>
-                  <h2>Session logs</h2>
+                  <h2>Replay notes</h2>
                 </div>
               </div>
               <div className="bt-journal-scroll">
@@ -430,7 +450,7 @@ export default function ReplayPage() {
               <div className="bt-panel-head" style={{ marginBottom: "14px" }}>
                 <div>
                   <span className="bt-eyebrow">Order Ticket</span>
-                  <h2>Market order</h2>
+                  <h2>Simulated order</h2>
                 </div>
               </div>
 

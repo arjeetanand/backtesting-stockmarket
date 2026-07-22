@@ -3,7 +3,7 @@
 import { useEffect, useId, useState } from "react";
 import { Search } from "lucide-react";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
 type Instrument = { symbol: string; company_name: string; industry: string | null; series: string | null };
 

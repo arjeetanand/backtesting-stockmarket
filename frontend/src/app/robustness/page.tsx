@@ -1,191 +1,90 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Activity, CheckCircle2, RefreshCw, TrendingUp } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
-import { TrendingUp, Award, Activity } from "lucide-react";
+import { SymbolCombobox } from "@/components/data/SymbolCombobox";
+import { getMarketAvailability, type MarketAvailability } from "@/lib/market-data";
+import { analyzeRobustness, type RobustnessReport, type SensitivityCell } from "@/lib/robustness-api";
+
+function scoreClass(score: number) { return score >= 75 ? "ok" : score >= 50 ? "warn" : "critical"; }
+function heatClass(value: number, min: number, max: number) {
+  const ratio = max === min ? 0.5 : (value - min) / (max - min);
+  return ratio >= 0.8 ? "high-strong" : ratio >= 0.6 ? "high-mid" : ratio >= 0.35 ? "mid" : ratio <= 0.12 ? "low-strong" : "low-mid";
+}
+function linePoints(values: number[], min: number, max: number) {
+  return values.map((value, index) => `${values.length <= 1 ? 50 : (index / (values.length - 1)) * 100},${max === min ? 50 : 96 - ((value - min) / (max - min)) * 88}`).join(" ");
+}
+function formatScore(value: number | undefined) { return value === undefined ? "—" : String(value); }
 
 export default function RobustnessPage() {
-  // Mock data matching the design spec
-  const robustnessScore = 78;
-  const paramStability = 82;
-  const oosDegradation = 71;
-  const stressResilience = 81;
+  const [symbol, setSymbol] = useState("RELIANCE");
+  const [availability, setAvailability] = useState<MarketAvailability | null>(null);
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [lookbackInput, setLookbackInput] = useState("10,14,20,30,40,50");
+  const [thresholdInput, setThresholdInput] = useState("20,25,30,35,40");
+  const [report, setReport] = useState<RobustnessReport | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
-  const stressScenarios = [
-    { name: "Transaction Costs (2x)", baseCagr: 14.2, stressedCagr: 9.8, baseDd: -18.5, stressedDd: -22.1, status: "PASS" },
-    { name: "Slippage (+5bps)", baseCagr: 14.2, stressedCagr: 12.1, baseDd: -18.5, stressedDd: -19.8, status: "PASS" },
-    { name: "Execution Delay (+100ms)", baseCagr: 14.2, stressedCagr: 2.4, baseDd: -18.5, stressedDd: -45.2, status: "FAIL" },
-  ];
+  useEffect(() => {
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      try {
+        const next = await getMarketAvailability(symbol);
+        if (!active) return;
+        setAvailability(next);
+        setStart((current) => current || next.earliest?.slice(0, 10) || "");
+        setEnd((current) => current || next.latest?.slice(0, 10) || "");
+      } catch (requestError) { if (active) setError(requestError instanceof Error ? requestError.message : "Could not read local data availability."); }
+    }, 0);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [symbol]);
 
-  // Lookback vs Threshold mock heatmap grid (10 columns, 4 rows)
-  const heatmapData = [
-    [0.1, 0.2, 0.5, 0.6, 0.8, 0.9, 0.7, 0.4, 0.2, 0.1],
-    [0.2, 0.3, 0.6, 0.8, 0.95, 0.9, 0.6, 0.5, 0.3, 0.2],
-    [0.1, 0.2, 0.4, 0.7, 0.85, 0.8, 0.5, 0.3, 0.1, 0.05],
-    [0.05, 0.1, 0.3, 0.5, 0.6, 0.5, 0.3, 0.2, 0.05, 0.01],
-  ];
+  const runAnalysis = async () => {
+    const lookbackRange = lookbackInput.split(",").map((value) => Number(value.trim())).filter((value) => Number.isInteger(value) && value >= 2);
+    const thresholdRange = thresholdInput.split(",").map((value) => Number(value.trim())).filter((value) => Number.isFinite(value) && value >= 5 && value <= 50);
+    if (!symbol.trim()) { setError("Choose an NSE symbol first."); return; }
+    if (!start || !end || start > end) { setError("Choose a valid analysis date range."); return; }
+    if (lookbackRange.length < 2 || thresholdRange.length < 2) { setError("Enter at least two valid lookback and threshold values."); return; }
+    setLoading(true); setError(null); setReport(null);
+    try { setReport(await analyzeRobustness({ symbol: symbol.trim().toUpperCase(), start, end, lookbackRange, thresholdRange })); setLastUpdated(new Date().toLocaleTimeString()); }
+    catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Could not run robustness analysis."); }
+    finally { setLoading(false); }
+  };
 
-  return (
-    <div className="backtrack-page">
-      <TopBar />
-      <div className="backtrack-content bt-stack">
-        <section className="bt-heading-row">
-          <div>
-            <div className="bt-kicker"><span className="live-dot" /> 05 / ROBUSTNESS SUITE</div>
-            <h1>Strategy stability &amp; stress analysis.</h1>
-            <p>Analyze parameter heatmaps, Walk-Forward Out-Of-Sample degradation, and Monte Carlo resampling.</p>
-          </div>
-          <div className="bt-heading-actions">
-            <span className="data-source"><TrendingUp size={14} /> Monte Carlo N=1,000</span>
-          </div>
-        </section>
+  const heatmap = useMemo(() => {
+    if (!report) return { rows: [], lookbacks: [], thresholds: [], min: 0, max: 0 };
+    const lookbacks = [...new Set(report.sensitivity_grid.map((cell) => cell.lookback))];
+    const thresholds = [...new Set(report.sensitivity_grid.map((cell) => cell.threshold))];
+    const values = report.sensitivity_grid.map((cell) => cell.sharpe_ratio);
+    const rows = lookbacks.map((lookback) => thresholds.map((threshold) => report.sensitivity_grid.find((cell) => cell.lookback === lookback && cell.threshold === threshold)).filter((cell): cell is SensitivityCell => Boolean(cell)));
+    return { rows, lookbacks, thresholds, min: Math.min(...values), max: Math.max(...values) };
+  }, [report]);
 
-        {/* Top row: Score card + Heatmap */}
-        <div className="bt-grid-12">
-          {/* Score card */}
-          <div className="bt-col-4 bt-panel bt-score-card">
-            <div>
-              <span className="bt-eyebrow">AGGREGATE ROBUSTNESS</span>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', marginTop: '12px' }}>
-                <span className="bt-score-number">{robustnessScore}</span>
-                <span className="bt-score-denom">/100</span>
-              </div>
-            </div>
-            <div className="bt-score-rows">
-              <div className="bt-score-row">
-                <span>Parameter Stability</span>
-                <span>{paramStability}</span>
-              </div>
-              <div className="bt-score-row">
-                <span>OOS Degradation</span>
-                <span>{oosDegradation}</span>
-              </div>
-              <div className="bt-score-row">
-                <span>Stress Resilience</span>
-                <span>{stressResilience}</span>
-              </div>
-            </div>
-          </div>
+  const mcMax = report ? Math.max(...report.monte_carlo.distribution_bins.map((bin) => bin.count), 1) : 1;
+  const wfValues = report?.walk_forward.flatMap((point) => [point.in_sample_cagr, point.out_of_sample_cagr]) ?? [];
+  const wfMin = wfValues.length ? Math.min(...wfValues) : 0;
+  const wfMax = wfValues.length ? Math.max(...wfValues) : 1;
 
-          {/* Heatmap */}
-          <div className="bt-col-8 bt-panel bt-heatmap-panel">
-            <div className="bt-panel-head" style={{ marginBottom: '16px' }}>
-              <div>
-                <span className="bt-eyebrow">PARAMETER SENSITIVITY</span>
-                <h2>Lookback vs Threshold</h2>
-              </div>
-              <div className="bt-heatmap-legend">
-                <span>Sharpe Ratio</span>
-                <div className="bt-heatmap-gradient" />
-              </div>
-            </div>
-            <div className="bt-heatmap-area">
-              <div className="bt-heatmap-y">
-                <span>0.8</span>
-                <span>0.6</span>
-                <span>0.4</span>
-                <span>0.2</span>
-              </div>
-              <div className="bt-heatmap-grid">
-                {heatmapData.map((row, rIndex) =>
-                  row.map((val, cIndex) => {
-                    let cellClass = 'bt-heatmap-cell neutral';
-                    if (val > 0.9) cellClass = 'bt-heatmap-cell high-strong';
-                    else if (val > 0.7) cellClass = 'bt-heatmap-cell high-mid';
-                    else if (val > 0.4) cellClass = 'bt-heatmap-cell mid';
-                    else if (val < 0.05) cellClass = 'bt-heatmap-cell low-strong';
-                    else if (val < 0.2) cellClass = 'bt-heatmap-cell low-mid';
-                    
-                    return (
-                      <div
-                        key={`${rIndex}-${cIndex}`}
-                        className={cellClass}
-                        title={`Value: ${val}`}
-                      />
-                    );
-                  })
-                )}
-              </div>
-              <div className="bt-heatmap-x">
-                <span>10d</span>
-                <span>20d</span>
-                <span>30d</span>
-                <span>40d</span>
-                <span>50d</span>
-              </div>
-            </div>
-            <p className="bt-heatmap-note">Red indicates sensitivity parameter cliff.</p>
-          </div>
-        </div>
+  return <div className="backtrack-page"><TopBar /><div className="backtrack-content bt-stack">
+    <section className="bt-heading-row"><div><div className="bt-kicker"><span className="live-dot" /> IS THIS RESULT RELIABLE</div><h1>How dependable is this result?</h1><p>Change the settings and market conditions to see whether the idea still works.</p></div><div className="bt-heading-actions"><span className="data-source"><TrendingUp size={14} /> {lastUpdated ? `Updated ${lastUpdated}` : "Awaiting analysis"}</span><button type="button" className="bt-primary" onClick={() => void runAnalysis()} disabled={loading}><RefreshCw size={14} className={loading ? "spin" : ""} /> {loading ? "Analyzing…" : "Check again"}</button></div></section>
 
-        {/* Charts row */}
-        <div className="bt-grid-2">
-          {/* Walk-forward */}
-          <div className="bt-panel bt-wf-panel">
-            <p className="bt-wf-title">Walk-Forward Performance (IS vs OOS)</p>
-            <div className="bt-wf-chart">
-              <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 100" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-                <path d="M 0,90 Q 20,80 40,60 T 60,30 T 100,10" fill="none" stroke="#38bdf8" strokeDasharray="3 3" strokeWidth="2.5"></path>
-                <path d="M 0,90 Q 20,85 40,70 T 60,50 T 100,40" fill="none" stroke="#4f46e5" strokeWidth="3"></path>
-              </svg>
-            </div>
-            <div className="bt-wf-legend">
-              <div className="bt-wf-legend-item"><span className="bt-wf-is-line" />In-Sample</div>
-              <div className="bt-wf-legend-item"><span className="bt-wf-oos-line" />Out-of-Sample</div>
-            </div>
-          </div>
+    <section className="bt-panel bt-robustness-controls"><div className="bt-panel-head"><div><span className="bt-eyebrow">LIVE ANALYSIS INPUT</span><h2>Choose a stock and date range</h2></div><span className="bt-panel-note">{availability?.bars ? `${availability.bars.toLocaleString("en-IN")} days of saved history` : "No availability loaded"}</span></div><div className="bt-grid-12"><div className="bt-col-4"><label className="bt-field-label">NSE Symbol</label><SymbolCombobox value={symbol} onChange={(next) => { setSymbol(next); setReport(null); }} /></div><div className="bt-col-3"><label className="bt-field-label">From</label><input type="date" className="bt-field-input" value={start} min={availability?.earliest?.slice(0, 10)} max={end || availability?.latest?.slice(0, 10)} onChange={(event) => setStart(event.target.value)} /></div><div className="bt-col-3"><label className="bt-field-label">To</label><input type="date" className="bt-field-input" value={end} min={start || availability?.earliest?.slice(0, 10)} max={availability?.latest?.slice(0, 10)} onChange={(event) => setEnd(event.target.value)} /></div><div className="bt-col-2 bt-robustness-run"><button type="button" className="bt-secondary" onClick={() => void runAnalysis()} disabled={loading}><Activity size={14} /> Run</button></div></div><div className="bt-robustness-ranges"><label><span>Indicator periods</span><input className="bt-field-input bt-field-mono" value={lookbackInput} onChange={(event) => setLookbackInput(event.target.value)} /></label><label><span>RSI levels</span><input className="bt-field-input bt-field-mono" value={thresholdInput} onChange={(event) => setThresholdInput(event.target.value)} /></label></div>{error && <p className="bt-alert-error" role="alert">{error}</p>}</section>
 
-          {/* Monte Carlo */}
-          <div className="bt-panel bt-mc-panel">
-            <p className="bt-mc-title">Monte Carlo Return Distribution (n=10,000)</p>
-            <div className="bt-mc-bars">
-              {[5, 12, 25, 45, 68, 85, 95, 75, 50, 30, 15, 8, 3].map((h, idx) => (
-                <div key={idx} className={`bt-mc-bar${idx === 6 ? ' peak' : ''}`} style={{ height: `${h}%` }} />
-              ))}
-            </div>
-            <div className="bt-mc-footer">
-              <span>-15%</span>
-              <span className="bt-mc-mean">Mean: 12.4%</span>
-              <span>+45%</span>
-            </div>
-          </div>
-        </div>
+    {!report && !loading && !error && <div className="bt-data-note"><CheckCircle2 size={17} className="text-indigo-600" /><span>Run the analysis to populate every chart from the selected NSE data. No seeded chart values are shown.</span></div>}
+    {loading && <div className="bt-panel bt-loading-state"><RefreshCw size={18} className="spin" /><span>Checking different settings against the saved NSE history…</span></div>}
 
-        {/* Stress tests table */}
-        <div className="bt-panel" style={{ padding: 0, overflow: 'hidden' }}>
-          <div className="bt-panel-head" style={{ padding: '14px 24px', borderBottom: '1px solid #e2e8f0' }}>
-            <div><span className="bt-eyebrow">STRESS TESTS</span><h2>Perturbations</h2></div>
-          </div>
-          <div className="bt-table-wrap">
-            <table className="bt-table">
-              <thead>
-                <tr>
-                  <th className="left">Scenario Vector</th>
-                  <th className="right">Base CAGR</th>
-                  <th className="right">Stressed CAGR</th>
-                  <th className="right">Base Max DD</th>
-                  <th className="right">Stressed Max DD</th>
-                  <th className="center">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stressScenarios.map((sc, i) => (
-                  <tr key={i}>
-                    <td>{sc.name}</td>
-                    <td className="right">{sc.baseCagr}%</td>
-                    <td className="right" style={sc.stressedCagr < 10 ? { color: '#e11d48', fontWeight: 700 } : {}}>{sc.stressedCagr}%</td>
-                    <td className="right">{sc.baseDd}%</td>
-                    <td className="right" style={sc.stressedDd < -30 ? { color: '#e11d48', fontWeight: 700 } : {}}>{sc.stressedDd}%</td>
-                    <td className="center">
-                      <span className={sc.status === 'PASS' ? 'bt-stress-pass' : 'bt-stress-fail'}>{sc.status}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+    {report && <>
+      <div className="bt-grid-12"><div className="bt-col-4 bt-panel bt-score-card"><div><span className="bt-eyebrow">OVERALL SCORE</span><div className="bt-score-line"><span className={`bt-score-number ${scoreClass(report.aggregate_score)}`}>{formatScore(report.aggregate_score)}</span><span className="bt-score-denom">/100</span></div></div><div className="bt-score-rows">{[["Parameter Stability", report.parameter_stability_score], ["OOS Degradation", report.oos_degradation_score], ["Stress Resilience", report.stress_resilience_score]].map(([label, value]) => <div className="bt-score-row" key={String(label)}><span>{label}</span><strong>{value}</strong></div>)}</div><small className="bt-report-id">Run {report.run_id}</small></div>
+        <div className="bt-col-8 bt-panel bt-heatmap-panel"><div className="bt-panel-head"><div><span className="bt-eyebrow">DO DIFFERENT SETTINGS STILL WORK?</span><h2>Settings comparison</h2></div><span className="bt-panel-note">Result score · live test</span></div><div className="bt-live-heatmap"><div className="bt-live-heatmap-y">{heatmap.lookbacks.map((value) => <span key={value}>{value}</span>)}</div><div className="bt-live-heatmap-grid" style={{ gridTemplateColumns: `repeat(${heatmap.thresholds.length}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${heatmap.rows.length}, minmax(0, 1fr))` }}>{heatmap.rows.flat().map((cell) => <div key={`${cell.lookback}-${cell.threshold}`} className={`bt-heatmap-cell ${heatClass(cell.sharpe_ratio, heatmap.min, heatmap.max)}`} title={`Lookback ${cell.lookback}, threshold ${cell.threshold}: Sharpe ${cell.sharpe_ratio.toFixed(2)}`}><span>{cell.sharpe_ratio.toFixed(2)}</span></div>)}</div><div className="bt-live-heatmap-x">{heatmap.thresholds.map((value) => <span key={value}>{value}</span>)}</div></div><p className="bt-heatmap-note">Rows are indicator periods; columns are RSI levels.</p></div></div>
+
+      <div className="bt-grid-2"><div className="bt-panel bt-wf-panel"><p className="bt-wf-title">Performance on new data</p>{report.walk_forward.length ? <div className="bt-live-line-chart"><svg viewBox="0 0 100 100" preserveAspectRatio="none"><polyline points={linePoints(report.walk_forward.map((point) => point.in_sample_cagr), wfMin, wfMax)} fill="none" stroke="#38bdf8" strokeDasharray="3 3" strokeWidth="2.5" /><polyline points={linePoints(report.walk_forward.map((point) => point.out_of_sample_cagr), wfMin, wfMax)} fill="none" stroke="#4f46e5" strokeWidth="3" /></svg>{report.walk_forward.map((point, index) => <div key={point.period} className="bt-wf-point" style={{ left: `${report.walk_forward.length <= 1 ? 50 : (index / (report.walk_forward.length - 1)) * 100}%` }} title={`Period ${point.period}: IS ${point.in_sample_cagr.toFixed(2)}%, OOS ${point.out_of_sample_cagr.toFixed(2)}%`} />)}</div> : <div className="bt-chart-empty">Not enough bars for walk-forward folds.</div>}<div className="bt-wf-legend"><div className="bt-wf-legend-item"><span className="bt-wf-is-line" />In the setup period</div><div className="bt-wf-legend-item"><span className="bt-wf-oos-line" />On new data</div></div></div>
+        <div className="bt-panel bt-mc-panel"><p className="bt-mc-title">Many possible outcomes (n={report.monte_carlo.num_simulations.toLocaleString("en-IN")})</p><div className="bt-mc-bars">{report.monte_carlo.distribution_bins.map((bin) => <div key={`${bin.bin_start}-${bin.bin_end}`} className={`bt-mc-bar${bin.count === mcMax ? " peak" : ""}`} style={{ height: `${Math.max(2, (bin.count / mcMax) * 100)}%` }} title={`${bin.bin_start.toFixed(1)}% to ${bin.bin_end.toFixed(1)}%: ${bin.count} simulations`} />)}</div><div className="bt-mc-footer"><span>{report.monte_carlo.percentile_5th.toFixed(1)}%</span><span className="bt-mc-mean">Mean: {report.monte_carlo.mean_return.toFixed(1)}%</span><span>{report.monte_carlo.percentile_95th.toFixed(1)}%</span></div></div></div>
+
+      <div className="bt-panel" style={{ padding: 0, overflow: "hidden" }}><div className="bt-panel-head" style={{ padding: "14px 24px", borderBottom: "1px solid #e2e8f0" }}><div><span className="bt-eyebrow">TOUGH MARKET CONDITIONS</span><h2>What if the market changes?</h2></div><span className="bt-panel-note">Derived from {symbol.toUpperCase()} history</span></div><div className="bt-table-wrap"><table className="bt-table"><thead><tr><th className="left">Market condition</th><th className="right">Normal result</th><th className="right">Tougher result</th><th className="right">Normal worst fall</th><th className="right">Tougher worst fall</th><th className="center">Result</th></tr></thead><tbody>{report.stress_tests.map((scenario) => <tr key={scenario.scenario}><td>{scenario.scenario}</td><td className="right">{scenario.base_cagr.toFixed(1)}%</td><td className="right">{scenario.stressed_cagr.toFixed(1)}%</td><td className="right">{scenario.base_max_dd.toFixed(1)}%</td><td className="right">{scenario.stressed_max_dd.toFixed(1)}%</td><td className="center"><span className={scenario.status === "PASS" ? "bt-stress-pass" : "bt-stress-fail"}>{scenario.status}</span></td></tr>)}</tbody></table></div></div>
+    </>}
+  </div></div>;
 }

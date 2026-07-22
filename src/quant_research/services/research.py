@@ -11,7 +11,8 @@ from quant_research.data_providers.base import MarketDataProvider
 from quant_research.domain.backtesting.models import BacktestResult
 from quant_research.domain.data.models import DataQualityReport, OHLCVBar
 from quant_research.domain.data.validator import MarketDataValidator
-from quant_research.repositories.backtests import InMemoryBacktestRepository
+from quant_research.domain.utils.hashing import calculate_value_hash
+from quant_research.repositories.backtests import InMemoryBacktestRepository, SqliteBacktestRepository
 from quant_research.services.sma_backtest import run_sma_crossover_backtest
 
 
@@ -47,7 +48,7 @@ class SmaBacktestCommand:
 class ResearchService:
     """Single entry point for data-backed research operations."""
 
-    def __init__(self, provider: MarketDataProvider | None, repository: InMemoryBacktestRepository) -> None:
+    def __init__(self, provider: MarketDataProvider | None, repository: InMemoryBacktestRepository | SqliteBacktestRepository) -> None:
         self._provider = provider
         self._repository = repository
 
@@ -83,6 +84,25 @@ class ResearchService:
         if command.fast_window >= command.slow_window:
             raise ResearchServiceError("fast_window must be smaller than slow_window.")
         market_data = self.get_market_data(command.symbol, command.timeframe, command.start, command.end)
+        cache_key = calculate_value_hash(
+            {
+                "kind": "sma_crossover",
+                "symbol": market_data.symbol,
+                "timeframe": command.timeframe,
+                "start": command.start.isoformat(),
+                "end": command.end.isoformat(),
+                "fast_window": command.fast_window,
+                "slow_window": command.slow_window,
+                "initial_capital": command.initial_capital,
+                "commission": command.commission,
+                "slippage": command.slippage,
+                "data": [bar.model_dump(mode="json") for bar in market_data.bars],
+            }
+        )
+        if isinstance(self._repository, SqliteBacktestRepository):
+            cached = self._repository.get_cached(cache_key)
+            if cached is not None:
+                return cached
         data = pd.DataFrame([bar.model_dump() for bar in market_data.bars])
         try:
             result = run_sma_crossover_backtest(
@@ -96,6 +116,8 @@ class ResearchService:
             )
         except ValueError as exc:
             raise ResearchServiceError(str(exc)) from exc
+        if isinstance(self._repository, SqliteBacktestRepository):
+            return self._repository.save(result, cache_key=cache_key)
         return self._repository.save(result)
 
     def list_backtests(self) -> list[BacktestResult]:

@@ -8,8 +8,11 @@ import pandas as pd
 
 from quant_research.domain.analytics.calculator import QuantitativeMetrics, compute_metrics
 from quant_research.domain.indicators.calculator import (
+    compute_bollinger_bands,
     compute_ema,
+    compute_macd,
     compute_rsi,
+    compute_sma,
 )
 
 
@@ -36,6 +39,7 @@ class VectorBacktestResult:
     run_id: str
     symbol: str
     timeframe: str
+    strategy_id: str
     initial_capital: float
     final_equity: float
     metrics: QuantitativeMetrics
@@ -48,6 +52,7 @@ def run_rule_backtest(
     df: pd.DataFrame,
     symbol: str = "NIFTY 50",
     timeframe: str = "1day",
+    strategy_id: str = "rsi_ema",
     rsi_period: int = 14,
     rsi_oversold: float = 30.0,
     rsi_overbought: float = 70.0,
@@ -56,6 +61,9 @@ def run_rule_backtest(
     initial_capital: float = 100000.0,
     commission_pct: float = 0.001,  # 0.1% = 10 bps
     slippage_pct: float = 0.0005,  # 0.05% = 5 bps
+    stop_loss_pct: float = 0.0,
+    take_profit_pct: float = 0.0,
+    position_size_pct: float = 100.0,
 ) -> VectorBacktestResult:
     """Run a deterministic vectorized backtest on OHLCV market data.
 
@@ -75,16 +83,44 @@ def run_rule_backtest(
     close = df["close"]
     open_p = df["open"]
 
-    # 1. Compute Indicators on Bar T
+    # 1. Compute strategy indicators and signals on Bar T.
     rsi = compute_rsi(close, rsi_period)
     ema_fast = compute_ema(close, fast_ema)
     ema_slow = compute_ema(close, slow_ema)
 
-    # 2. Compute Entry/Exit Signals on Close T
-    # Long Entry: RSI oversold AND Fast EMA > Slow EMA
-    entry_signal = (rsi < rsi_oversold) & (ema_fast > ema_slow)
-    # Long Exit: RSI overbought OR Fast EMA < Slow EMA
-    exit_signal = (rsi > rsi_overbought) | (ema_fast < ema_slow)
+    if strategy_id == "rsi_ema":
+        entry_signal = (rsi < rsi_oversold) & (ema_fast > ema_slow)
+        exit_signal = (rsi > rsi_overbought) | (ema_fast < ema_slow)
+    elif strategy_id == "sma_crossover":
+        sma_fast = compute_sma(close, fast_ema)
+        sma_slow = compute_sma(close, slow_ema)
+        entry_signal = (sma_fast > sma_slow) & (sma_fast.shift(1) <= sma_slow.shift(1))
+        exit_signal = (sma_fast < sma_slow) & (sma_fast.shift(1) >= sma_slow.shift(1))
+    elif strategy_id == "ema_crossover":
+        entry_signal = (ema_fast > ema_slow) & (ema_fast.shift(1) <= ema_slow.shift(1))
+        exit_signal = (ema_fast < ema_slow) & (ema_fast.shift(1) >= ema_slow.shift(1))
+    elif strategy_id == "rsi_mean_reversion":
+        entry_signal = rsi < rsi_oversold
+        exit_signal = rsi > 50.0
+    elif strategy_id == "bollinger_mean_reversion":
+        middle, _, lower = compute_bollinger_bands(close, fast_ema)
+        entry_signal = close < lower
+        exit_signal = close > middle
+    elif strategy_id == "macd_crossover":
+        macd_line, signal_line, _ = compute_macd(close, fast=12, slow=slow_ema, signal=9)
+        entry_signal = (macd_line > signal_line) & (macd_line.shift(1) <= signal_line.shift(1))
+        exit_signal = (macd_line < signal_line) & (macd_line.shift(1) >= signal_line.shift(1))
+    elif strategy_id == "donchian_breakout":
+        upper = df["high"].shift(1).rolling(slow_ema, min_periods=slow_ema).max()
+        lower = df["low"].shift(1).rolling(slow_ema, min_periods=slow_ema).min()
+        entry_signal = close > upper
+        exit_signal = close < lower
+    elif strategy_id == "momentum":
+        momentum = close.pct_change(fast_ema)
+        entry_signal = momentum > 0.0
+        exit_signal = momentum < 0.0
+    else:
+        raise ValueError(f"Unsupported strategy '{strategy_id}'.")
 
     # 3. Shift signals by 1 bar for execution on Open T+1 (Strict No-Lookahead)
     execute_entry = entry_signal.shift(1).fillna(False)
@@ -111,7 +147,9 @@ def run_rule_backtest(
         curr_close = float(close.iloc[i])
 
         # Check Exit Execution
-        if position > 0 and execute_exit.iloc[i]:
+        stop_hit = stop_loss_pct > 0 and curr_open <= entry_price * (1.0 - stop_loss_pct)
+        target_hit = take_profit_pct > 0 and curr_open >= entry_price * (1.0 + take_profit_pct)
+        if position > 0 and (execute_exit.iloc[i] or stop_hit or target_hit):
             fill_exit_price = curr_open * (1.0 - slippage_pct)
             gross_pnl = (fill_exit_price - entry_price) * position
             exit_comm = fill_exit_price * position * commission_pct
@@ -144,9 +182,9 @@ def run_rule_backtest(
         if position == 0 and execute_entry.iloc[i]:
             fill_entry_price = curr_open * (1.0 + slippage_pct)
             entry_comm = cash * commission_pct
-            capital_to_invest = cash - entry_comm
+            capital_to_invest = (cash - entry_comm) * (position_size_pct / 100.0)
             position = capital_to_invest / fill_entry_price
-            cash = 0.0
+            cash = cash - entry_comm - capital_to_invest
             entry_price = fill_entry_price
             entry_idx = i
 
@@ -169,6 +207,7 @@ def run_rule_backtest(
         run_id=run_id,
         symbol=symbol,
         timeframe=timeframe,
+        strategy_id=strategy_id,
         initial_capital=initial_capital,
         final_equity=round(float(equity_series.iloc[-1]), 2),
         metrics=metrics,

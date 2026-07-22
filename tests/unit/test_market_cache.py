@@ -75,3 +75,14 @@ def test_sqlite_cache_reports_latest_daily_bar_for_ui_availability(tmp_path: Pat
     assert availability.latest_close == 107
     assert availability.earliest == datetime(2025, 1, 2, tzinfo=UTC)
     assert availability.latest == datetime(2025, 1, 3, tzinfo=UTC)
+
+
+def test_sqlite_cache_lists_stored_symbols_even_without_catalogue_rows(tmp_path: Path) -> None:
+    cache = SqliteMarketCache(tmp_path / "market.sqlite3")
+    cache.put(
+        [OHLCVBar(timestamp=datetime(2025, 1, 2, tzinfo=UTC), symbol="RELIANCE", open=100, high=105, low=99, close=102, volume=1_000)],
+        "1day",
+        "nse_common_bhavcopy",
+    )
+
+    assert cache.stored_symbols("rel") == ["RELIANCE"]

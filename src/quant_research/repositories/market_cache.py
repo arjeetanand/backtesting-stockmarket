@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -154,43 +155,99 @@ class SqliteMarketCache:
         clean_symbols = sorted({symbol.strip().upper().removesuffix(".NS") for symbol in symbols if symbol.strip()})
         if not clean_symbols:
             return []
-        placeholders = ", ".join("?" for _ in clean_symbols)
+        by_symbol: dict[str, tuple[str, int, str | None, str | None]] = {}
         with self._connect() as connection:
-            rows = connection.execute(
-                f"""
-                SELECT symbol, COUNT(*), MIN(timestamp), MAX(timestamp)
-                FROM ohlcv_bars
-                WHERE timeframe = ? AND symbol IN ({placeholders})
-                GROUP BY symbol
-                """,
-                (timeframe, *clean_symbols),
-            ).fetchall()
-        by_symbol = {row[0]: row for row in rows}
+            for chunk in _chunks(clean_symbols):
+                placeholders = ", ".join("?" for _ in chunk)
+                rows = connection.execute(
+                    f"""
+                    SELECT symbol, COUNT(*), MIN(timestamp), MAX(timestamp)
+                    FROM ohlcv_bars
+                    WHERE timeframe = ? AND symbol IN ({placeholders})
+                    GROUP BY symbol
+                    """,
+                    (timeframe, *chunk),
+                ).fetchall()
+                by_symbol.update({row[0]: row for row in rows})
         return [
             SymbolCoverage(
                 symbol=symbol,
                 bars=int(by_symbol[symbol][1]) if symbol in by_symbol else 0,
-                earliest=datetime.fromisoformat(by_symbol[symbol][2]) if symbol in by_symbol else None,
-                latest=datetime.fromisoformat(by_symbol[symbol][3]) if symbol in by_symbol else None,
+                earliest=_parse_optional_datetime(by_symbol[symbol][2]) if symbol in by_symbol else None,
+                latest=_parse_optional_datetime(by_symbol[symbol][3]) if symbol in by_symbol else None,
             )
             for symbol in clean_symbols
         ]
+
+    def coverage_days(self, symbols: list[str], timeframe: str, start: date, end: date) -> dict[str, int]:
+        """Return exact NSE archive coverage counts for a date range.
+
+        Queries are chunked because the full NSE equity catalogue is larger than
+        SQLite's commonly configured bound-parameter limit.
+        """
+        clean_symbols = sorted({symbol.strip().upper().removesuffix(".NS") for symbol in symbols if symbol.strip()})
+        counts = dict.fromkeys(clean_symbols, 0)
+        if not clean_symbols or start > end:
+            return counts
+        with self._connect() as connection:
+            for chunk in _chunks(clean_symbols):
+                placeholders = ", ".join("?" for _ in chunk)
+                rows = connection.execute(
+                    f"""
+                    SELECT symbol, COUNT(DISTINCT trading_day)
+                    FROM nse_import_coverage
+                    WHERE timeframe = ? AND trading_day >= ? AND trading_day <= ?
+                      AND symbol IN ({placeholders})
+                    GROUP BY symbol
+                    """,
+                    (timeframe, start.isoformat(), end.isoformat(), *chunk),
+                ).fetchall()
+                for symbol, count in rows:
+                    counts[str(symbol)] = int(count)
+        return counts
+
+    def bars_in_range(self, symbols: list[str], timeframe: str, start: date, end: date) -> dict[str, int]:
+        """Return cached OHLCV bar counts inside an inclusive date range."""
+        clean_symbols = sorted({symbol.strip().upper().removesuffix(".NS") for symbol in symbols if symbol.strip()})
+        counts = dict.fromkeys(clean_symbols, 0)
+        if not clean_symbols or start > end:
+            return counts
+        start_stamp = f"{start.isoformat()}T00:00:00+00:00"
+        end_stamp = f"{end.isoformat()}T23:59:59.999999+00:00"
+        with self._connect() as connection:
+            for chunk in _chunks(clean_symbols):
+                placeholders = ", ".join("?" for _ in chunk)
+                rows = connection.execute(
+                    f"""
+                    SELECT symbol, COUNT(*)
+                    FROM ohlcv_bars
+                    WHERE timeframe = ? AND timestamp >= ? AND timestamp <= ?
+                      AND symbol IN ({placeholders})
+                    GROUP BY symbol
+                    """,
+                    (timeframe, start_stamp, end_stamp, *chunk),
+                ).fetchall()
+                for symbol, count in rows:
+                    counts[str(symbol)] = int(count)
+        return counts
 
     def is_nse_day_covered(self, symbols: list[str], timeframe: str, trading_day: date) -> bool:
         """Whether this exact official archive/day was already processed for every symbol."""
         clean_symbols = sorted({symbol.strip().upper().removesuffix(".NS") for symbol in symbols if symbol.strip()})
         if not clean_symbols:
             return True
-        placeholders = ", ".join("?" for _ in clean_symbols)
         with self._connect() as connection:
-            count = connection.execute(
-                f"""
-                SELECT COUNT(DISTINCT symbol)
-                FROM nse_import_coverage
-                WHERE timeframe = ? AND trading_day = ? AND symbol IN ({placeholders})
-                """,
-                (timeframe, trading_day.isoformat(), *clean_symbols),
-            ).fetchone()[0]
+            count = 0
+            for chunk in _chunks(clean_symbols):
+                placeholders = ", ".join("?" for _ in chunk)
+                count += int(connection.execute(
+                    f"""
+                    SELECT COUNT(DISTINCT symbol)
+                    FROM nse_import_coverage
+                    WHERE timeframe = ? AND trading_day = ? AND symbol IN ({placeholders})
+                    """,
+                    (timeframe, trading_day.isoformat(), *chunk),
+                ).fetchone()[0])
         return int(count) == len(clean_symbols)
 
     def mark_nse_day_covered(self, symbols: list[str], timeframe: str, trading_day: date) -> None:
@@ -247,6 +304,16 @@ class SqliteMarketCache:
                 ).fetchall()
         return [Instrument(*row) for row in rows]
 
+    def stored_symbols(self, query: str = "", limit: int = 500) -> list[str]:
+        """Return symbols that have OHLCV rows, including symbols outside the catalogue."""
+        clean_query = f"%{query.strip().upper()}%"
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT DISTINCT symbol FROM ohlcv_bars WHERE UPPER(symbol) LIKE ? ORDER BY symbol LIMIT ?",
+                (clean_query, limit),
+            ).fetchall()
+        return [str(row[0]) for row in rows]
+
     def universe_symbols(self, universe: str | None = None) -> list[str]:
         with self._connect() as connection:
             rows = connection.execute("SELECT symbol FROM instruments WHERE universe = ? ORDER BY symbol", (universe,)).fetchall() if universe else connection.execute("SELECT symbol FROM instruments ORDER BY symbol").fetchall()
@@ -284,3 +351,12 @@ class SqliteMarketCache:
 
 def _stamp(value: datetime) -> str:
     return value.astimezone(UTC).isoformat()
+
+
+def _parse_optional_datetime(value: str | None) -> datetime | None:
+    return datetime.fromisoformat(value) if value else None
+
+
+def _chunks(values: list[str], size: int = 500) -> Iterator[list[str]]:
+    for offset in range(0, len(values), size):
+        yield values[offset:offset + size]

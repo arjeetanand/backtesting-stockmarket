@@ -77,6 +77,14 @@ def test_vector_backtest_execution(mock_ohlcv_data: pd.DataFrame) -> None:
     assert m.win_rate >= 0.0 and m.win_rate <= 1.0
 
 
+@pytest.mark.parametrize("strategy_id", ["sma_crossover", "ema_crossover", "rsi_mean_reversion", "bollinger_mean_reversion", "macd_crossover", "donchian_breakout", "momentum"])
+def test_strategy_library_variants_execute(mock_ohlcv_data: pd.DataFrame, strategy_id: str) -> None:
+    result = run_rule_backtest(df=mock_ohlcv_data, symbol="RELIANCE", strategy_id=strategy_id)
+
+    assert result.final_equity > 0.0
+    assert len(result.equity_curve) == len(mock_ohlcv_data)
+
+
 def test_robustness_diagnostics(mock_ohlcv_data: pd.DataFrame) -> None:
     """Verify parameter sensitivity grid, Monte Carlo, and stress test scenarios."""
     report = analyze_robustness(

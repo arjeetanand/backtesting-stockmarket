@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from html import unescape
 from typing import Any
+from urllib.request import Request, urlopen
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +54,12 @@ def extract_strategy(url: str, transcript: str | None = None, extractor: Callabl
                 metadata = info if isinstance(info, dict) else {}
         except Exception:
             metadata = {}
+        resolved_transcript = _transcript_from_metadata(metadata)
+    if not resolved_transcript:
+        page_metadata = _youtube_page_metadata(clean_url)
+        if page_metadata:
+            metadata = {**metadata, **page_metadata}
+            resolved_transcript = _transcript_from_metadata(metadata)
 
     text = resolved_transcript.lower()
     indicators = [label for label, token in (("RSI", "rsi"), ("EMA", "ema"), ("SMA", "sma"), ("MACD", "macd"), ("Bollinger Bands", "bollinger"), ("VWAP", "vwap"), ("ATR", "atr")) if token in text]
@@ -79,3 +88,62 @@ def extract_strategy(url: str, transcript: str | None = None, extractor: Callabl
         confidence=round(confidence, 2),
         source_url=clean_url,
     )
+
+
+def _transcript_from_metadata(metadata: dict[str, Any]) -> str:
+    direct = metadata.get("transcript")
+    if isinstance(direct, str) and direct.strip():
+        return direct.strip()
+    tracks = metadata.get("captionTracks") or metadata.get("subtitles") or metadata.get("automatic_captions")
+    if not isinstance(tracks, (list, dict)):
+        return ""
+    candidates: list[dict[str, Any]] = []
+    if isinstance(tracks, list):
+        candidates = [item for item in tracks if isinstance(item, dict)]
+    else:
+        for language, values in tracks.items():
+            if isinstance(values, list):
+                candidates.extend(item for item in values if isinstance(item, dict) and item.setdefault("languageCode", language))
+    candidates.sort(key=lambda item: (str(item.get("languageCode", "")) not in {"en", "en-IN", "hi"}, str(item.get("kind", "")) == "asr"))
+    for track in candidates:
+        base_url = track.get("baseUrl") or track.get("url")
+        if isinstance(base_url, str):
+            text = _download_caption(base_url)
+            if text:
+                return text
+    return ""
+
+
+def _youtube_page_metadata(url: str) -> dict[str, Any]:
+    try:
+        request = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urlopen(request, timeout=15) as response:  # noqa: S310 - user supplied URL is validated as YouTube above
+            page = response.read().decode("utf-8", errors="ignore")
+        match = re.search(r'"captionTracks":(\[.*?\])', page)
+        tracks = json.loads(match.group(1)) if match else []
+        title_match = re.search(r'"title":"((?:\\.|[^"\\])*)"', page)
+        title = json.loads(f'"{title_match.group(1)}"') if title_match else "YouTube strategy source"
+        return {"captionTracks": tracks, "title": title}
+    except Exception:
+        return {}
+
+
+def _download_caption(url: str) -> str:
+    try:
+        request = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urlopen(request, timeout=15) as response:  # noqa: S310 - URL comes from YouTube caption metadata
+            raw = response.read().decode("utf-8", errors="ignore")
+        if raw.lstrip().startswith("{"):
+            payload = json.loads(raw)
+            transcript_lines = [segment.get("utf8", "") for event in payload.get("events", []) for segment in event.get("segs", [])]
+            return " ".join(line.strip() for line in transcript_lines if line.strip())
+        lines: list[str] = []
+        for line in raw.splitlines():
+            clean = re.sub(r"<[^>]+>", "", unescape(line)).strip()
+            if not clean or clean == "WEBVTT" or re.match(r"^\d+$", clean) or " --> " in clean:
+                continue
+            if not lines or lines[-1] != clean:
+                lines.append(clean)
+        return " ".join(lines)
+    except Exception:
+        return ""

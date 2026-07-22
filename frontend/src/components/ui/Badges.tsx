@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
-import type { RunStatus } from "@/lib/mock-data";
+
+export type RunStatus = "COMPLETED" | "RUNNING" | "FAILED" | "PENDING";
 
 interface BadgeProps {
   status: RunStatus;

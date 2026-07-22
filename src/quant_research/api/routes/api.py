@@ -16,6 +16,7 @@ from quant_research.api.schemas import (
     CacheStatusResponse,
     CatalogueRefreshResponse,
     CustomBacktestRequest,
+    DataInventoryItem,
     HealthResponse,
     HypothesisRequest,
     InstrumentResponse,
@@ -40,8 +41,10 @@ from quant_research.domain.backtesting.models import BacktestResult
 from quant_research.domain.backtesting.vector_engine import run_rule_backtest
 from quant_research.domain.data.models import OHLCVBar
 from quant_research.domain.robustness.diagnostics import analyze_robustness
+from quant_research.domain.utils.hashing import calculate_value_hash
 from quant_research.domain.validity.auditor import audit_validity
 from quant_research.llm.ollama import OllamaError
+from quant_research.repositories.artifacts import SqliteArtifactStore
 from quant_research.repositories.market_cache import SqliteMarketCache
 from quant_research.services.hypotheses import HypothesisAnalysis, HypothesisCommand, HypothesisService
 from quant_research.services.nifty500_catalogue import Nifty500CatalogueError, Nifty500CatalogueImporter
@@ -66,10 +69,19 @@ def create_api_router(
     nse_importer: NseBhavcopyImporter | None = None,
     market_cache: SqliteMarketCache | None = None,
     nifty500_catalogue: Nifty500CatalogueImporter | None = None,
+    artifacts: SqliteArtifactStore | None = None,
 ) -> APIRouter:
     """Build routes bound to one fully configured application service."""
     router = APIRouter(prefix="/api/v1")
     import_jobs: dict[str, dict[str, Any]] = {}
+
+    def save_import_job(job_id: str, payload: dict[str, Any]) -> None:
+        import_jobs[job_id] = payload
+        if artifacts is not None:
+            artifacts.save("import_job", job_id, payload)
+
+    def get_import_job(job_id: str) -> dict[str, Any] | None:
+        return import_jobs.get(job_id) or (artifacts.get("import_job", job_id) if artifacts is not None else None)
 
     def selected_symbols(payload: NseImportRequest) -> list[str]:
         if payload.preset == "custom":
@@ -80,26 +92,29 @@ def create_api_router(
             return market_cache.universe_symbols("nse_equities")
         return sorted(set(SENSEX_NSE_STARTER + BANKING_STARTER + SECTOR_ETF_STARTER))
 
+    def weekday_count(start: date, end: date) -> int:
+        return sum(1 for offset in range((end - start).days + 1) if (start + timedelta(days=offset)).weekday() < 5)
+
     def run_import(job_id: str, symbols: list[str], payload: NseImportRequest) -> None:
         if nse_importer is None:
-            import_jobs[job_id] = {"status": "failed", "message": "NSE importer is not configured."}
+            save_import_job(job_id, {"status": "failed", "message": "NSE importer is not configured."})
             return
         try:
             def progress(stage: str, completed_days: int, total_days: int) -> None:
-                import_jobs[job_id] = {
-                    **import_jobs[job_id],
+                save_import_job(job_id, {
+                    **(get_import_job(job_id) or {}),
                     "status": "running",
                     "stage": stage,
                     "completed_days": completed_days,
                     "total_days": total_days,
                     "message": f"{stage} ({completed_days}/{total_days} trading days).",
-                }
+                })
 
-            import_jobs[job_id] = {**import_jobs[job_id], "status": "running", "stage": "Preparing import", "message": "Validating local NSE cache."}
+            save_import_job(job_id, {**(get_import_job(job_id) or {}), "status": "running", "stage": "Preparing import", "message": "Validating local NSE cache."})
             result = nse_importer.import_daily_universe(symbols, payload.start, payload.end, progress=progress)
-            import_jobs[job_id] = {**import_jobs[job_id], "status": "complete", "stage": "Ready", "message": "Official NSE data is ready for backtesting.", **asdict(result)}
+            save_import_job(job_id, {**(get_import_job(job_id) or {}), "status": "complete", "stage": "Ready", "message": "Official NSE data is ready for backtesting.", **asdict(result)})
         except RuntimeError as exc:
-            import_jobs[job_id] = {**import_jobs[job_id], "status": "failed", "stage": "Import failed", "message": str(exc)}
+            save_import_job(job_id, {**(get_import_job(job_id) or {}), "status": "failed", "stage": "Import failed", "message": str(exc)})
 
     def market_frame(symbol: str, timeframe: str, start: datetime, end: datetime) -> pd.DataFrame:
         return pd.DataFrame([bar.model_dump() for bar in market_bars(symbol, timeframe, start, end)]).rename(
@@ -158,6 +173,42 @@ def create_api_router(
             return []
         return [InstrumentResponse(**asdict(item)) for item in market_cache.search_instruments(query=query, limit=limit)]
 
+    @router.get("/data/inventory", response_model=list[DataInventoryItem], tags=["market data"])
+    def data_inventory(
+        query: str = "",
+        start: date | None = None,
+        end: date | None = None,
+        limit: int = Query(default=200, ge=1, le=500),
+    ) -> list[DataInventoryItem]:
+        """Show catalogue symbols together with their exact local history coverage."""
+        if market_cache is None:
+            return []
+        catalogue = market_cache.search_instruments(query=query, limit=limit)
+        metadata = {item.symbol: item for item in catalogue}
+        symbols = list(metadata)
+        for stored_symbol in market_cache.stored_symbols(query=query, limit=limit):
+            if stored_symbol not in metadata:
+                symbols.append(stored_symbol)
+        symbols = symbols[:limit]
+        coverage = {item.symbol: item for item in market_cache.coverage(symbols, "1day")}
+        requested_days = weekday_count(start, end) if start and end and start <= end else 0
+        cached_days = market_cache.coverage_days(symbols, "1day", start, end) if start and end and start <= end else {}
+        return [
+            DataInventoryItem(
+                symbol=symbol,
+                company_name=metadata[symbol].company_name if symbol in metadata else None,
+                industry=metadata[symbol].industry if symbol in metadata else None,
+                bars=coverage[symbol].bars,
+                earliest=coverage[symbol].earliest,
+                latest=coverage[symbol].latest,
+                cached_days=cached_days.get(symbol, 0),
+                requested_days=requested_days,
+                missing_days=max(0, requested_days - cached_days.get(symbol, 0)),
+                fully_available=requested_days > 0 and cached_days.get(symbol, 0) >= requested_days,
+            )
+            for symbol in symbols
+        ]
+
     @router.get("/data/instruments/export", tags=["market data"])
     def export_instruments() -> Response:
         if market_cache is None:
@@ -196,15 +247,18 @@ def create_api_router(
         symbols = selected_symbols(payload)
         if not symbols:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Choose at least one symbol.")
+        if weekday_count(payload.start, payload.end) == 0:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Choose a date range containing at least one weekday.")
         if market_cache is not None:
-            coverage = market_cache.coverage(symbols, "1day")
-            if coverage and all(item.covers(payload.start, payload.end) for item in coverage):
+            total_days = weekday_count(payload.start, payload.end)
+            day_counts = market_cache.coverage_days(symbols, "1day", payload.start, payload.end)
+            if total_days > 0 and day_counts and all(count >= total_days for count in day_counts.values()):
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="This date range is already available locally for every selected symbol. Choose a newer or missing period instead.",
                 )
         job_id = f"nse_{uuid4().hex[:10]}"
-        import_jobs[job_id] = {"status": "queued", "stage": "Queued", "message": "Official NSE import has been queued."}
+        save_import_job(job_id, {"status": "queued", "stage": "Queued", "message": "Official NSE import has been queued."})
         background_tasks.add_task(run_import, job_id, symbols, payload)
         return NseImportJobResponse(job_id=job_id, status="queued", symbols=len(symbols))
 
@@ -219,11 +273,11 @@ def create_api_router(
         source_start = payload.start - timedelta(days=365)
         symbol = payload.symbol.strip().upper().removesuffix(".NS")
         job_id = f"research_nse_{uuid4().hex[:10]}"
-        import_jobs[job_id] = {
+        save_import_job(job_id, {
             "status": "queued",
             "stage": "Queued",
             "message": "Preparing one year of warm-up history and all missing data through today.",
-        }
+        })
         background_tasks.add_task(
             run_import,
             job_id,
@@ -239,46 +293,78 @@ def create_api_router(
         symbols = selected_symbols(payload)
         if not symbols:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Choose at least one symbol.")
+        if weekday_count(payload.start, payload.end) == 0:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Choose a date range containing at least one weekday.")
+        total_days = weekday_count(payload.start, payload.end)
         coverage = market_cache.coverage(symbols, "1day") if market_cache is not None else []
+        day_counts = market_cache.coverage_days(symbols, "1day", payload.start, payload.end) if market_cache is not None else {}
+        range_bars = market_cache.bars_in_range(symbols, "1day", payload.start, payload.end) if market_cache is not None else {}
         items = [
             NseImportCoverageItem(
                 symbol=item.symbol,
-                bars=item.bars,
+                bars=range_bars.get(item.symbol, 0),
                 earliest=item.earliest,
                 latest=item.latest,
-                fully_available=item.covers(payload.start, payload.end),
+                cached_days=day_counts.get(item.symbol, 0),
+                missing_days=max(0, total_days - day_counts.get(item.symbol, 0)),
+                total_days=total_days,
+                fully_available=total_days == 0 or day_counts.get(item.symbol, 0) >= total_days,
             )
             for item in coverage
         ]
         complete = bool(items) and all(item.fully_available for item in items)
+        complete_symbols = sum(1 for item in items if item.fully_available)
+        missing_symbols = len(items) - complete_symbols
+        partial_symbols = sum(1 for item in items if item.cached_days > 0 and not item.fully_available)
+        cached_bars = sum(item.bars for item in items)
+        cached_days = sum(item.cached_days for item in items)
+        missing_days = sum(item.missing_days for item in items)
         return NseImportPreviewResponse(
             requested_symbols=len(symbols),
+            complete_symbols=complete_symbols,
+            partial_symbols=partial_symbols,
+            missing_symbols=missing_symbols,
+            cached_bars=cached_bars,
+            estimated_missing_bars=missing_days,
+            cached_trading_days=cached_days,
+            missing_trading_days=missing_days,
+            total_trading_days=total_days,
             fully_available=complete,
             message=(
-                "The selected period is already in the local cache. Choose a newer or missing date range."
+                f"{complete_symbols} symbols are complete; {missing_symbols} need data. "
+                f"Estimated {missing_days} symbol-days remain. Cached bars are never duplicated."
                 if complete
-                else "Only missing or newer NSE history will be imported; cached bars are never duplicated."
+                else f"{complete_symbols} symbols are complete; {missing_symbols} need data. "
+                f"Estimated {missing_days} symbol-days will be checked and only missing NSE archives imported."
             ),
             coverage=items,
         )
 
     @router.get("/data/nse-import/{job_id}", response_model=NseImportStatusResponse, tags=["market data"])
     def nse_import_status(job_id: str) -> NseImportStatusResponse:
-        current = import_jobs.get(job_id)
+        current = get_import_job(job_id)
         if current is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import job was not found.")
         return NseImportStatusResponse(job_id=job_id, **current)
 
     @router.post("/research/hypothesis", response_model=HypothesisAnalysis, tags=["research"])
     def analyse_hypothesis(payload: HypothesisRequest) -> HypothesisAnalysis:
+        cache_key = calculate_value_hash({"model": hypotheses.model, **payload.model_dump(mode="json")})
+        if artifacts is not None:
+            cached = artifacts.get("hypothesis", cache_key)
+            if cached is not None:
+                return HypothesisAnalysis.model_validate(cached)
         try:
-            return hypotheses.analyse(
+            result = hypotheses.analyse(
                 HypothesisCommand(
                     hypothesis=payload.hypothesis,
                     symbol=payload.symbol,
                     timeframe=payload.timeframe,
                 )
             )
+            if artifacts is not None:
+                artifacts.save("hypothesis", cache_key, result.model_dump(mode="json"))
+            return result
         except OllamaError as exc:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
         except ValueError as exc:
@@ -286,8 +372,16 @@ def create_api_router(
 
     @router.post("/strategy/youtube", tags=["research"])
     def youtube_strategy(payload: YouTubeStrategyRequest) -> dict[str, object]:
+        cache_key = calculate_value_hash({"url": payload.url.strip(), "transcript": payload.transcript or ""})
+        if artifacts is not None:
+            cached = artifacts.get("youtube_strategy", cache_key)
+            if cached is not None:
+                return cached
         try:
-            return asdict(extract_strategy(payload.url, payload.transcript))
+            result = asdict(extract_strategy(payload.url, payload.transcript))
+            if artifacts is not None:
+                artifacts.save("youtube_strategy", cache_key, result)
+            return result
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
 
@@ -348,10 +442,17 @@ def create_api_router(
     )
     def run_custom_backtest(payload: CustomBacktestRequest) -> dict[str, object]:
         """Execute a vectorized multi-indicator strategy backtest with strict no-lookahead execution."""
+        frame = market_frame(payload.symbol, payload.timeframe, payload.start, payload.end)
+        cache_key = calculate_value_hash({"kind": "custom_backtest", **payload.model_dump(mode="json"), "data": frame.to_dict("records")})
+        if artifacts is not None:
+            cached = artifacts.get("custom_backtest", cache_key)
+            if cached is not None:
+                return cached
         res = run_rule_backtest(
-            df=market_frame(payload.symbol, payload.timeframe, payload.start, payload.end),
+            df=frame,
             symbol=payload.symbol,
             timeframe=payload.timeframe,
+            strategy_id=payload.strategy_id,
             rsi_period=payload.rsi_period,
             rsi_oversold=payload.rsi_oversold,
             rsi_overbought=payload.rsi_overbought,
@@ -360,8 +461,14 @@ def create_api_router(
             initial_capital=payload.initial_capital,
             commission_pct=payload.commission_pct,
             slippage_pct=payload.slippage_pct,
+            stop_loss_pct=payload.stop_loss_pct,
+            take_profit_pct=payload.take_profit_pct,
+            position_size_pct=payload.position_size_pct,
         )
-        return asdict(res)
+        result = asdict(res)
+        if artifacts is not None:
+            artifacts.save("custom_backtest", cache_key, result)
+        return result
 
     @router.post(
         "/robustness/analyze",
@@ -369,13 +476,22 @@ def create_api_router(
     )
     def analyze_strategy_robustness(payload: RobustnessAnalysisRequest) -> dict[str, object]:
         """Analyze parameter sensitivity 2D heatmap, Monte Carlo return distributions, and stress tests."""
+        frame = market_frame(payload.symbol, payload.timeframe, payload.start, payload.end)
+        cache_key = calculate_value_hash({"kind": "robustness", **payload.model_dump(mode="json"), "data": frame.to_dict("records")})
+        if artifacts is not None:
+            cached = artifacts.get("robustness", cache_key)
+            if cached is not None:
+                return cached
         report = analyze_robustness(
-            df=market_frame(payload.symbol, payload.timeframe, payload.start, payload.end),
+            df=frame,
             symbol=payload.symbol,
             lookback_range=payload.lookback_range,
             threshold_range=payload.threshold_range,
         )
-        return asdict(report)
+        result = asdict(report)
+        if artifacts is not None:
+            artifacts.save("robustness", cache_key, result)
+        return result
 
     @router.post(
         "/bias-validity/audit",
@@ -410,6 +526,13 @@ def create_api_router(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backtest run was not found.")
         return result
 
+    @router.get("/research/artifacts/{kind}", tags=["research"])
+    def list_saved_artifacts(kind: str, limit: int = Query(default=100, ge=1, le=500)) -> list[dict[str, Any]]:
+        """Return saved computed artifacts so clients can reopen prior work."""
+        if artifacts is None or kind not in {"custom_backtest", "robustness", "hypothesis"}:
+            return []
+        return artifacts.list(kind, limit=limit)
+
     # ── Market Replay Engine Routes ──────────────────────────────
     @router.post("/replay/sessions", status_code=status.HTTP_201_CREATED, tags=["replay"])
     def create_replay_session(payload: ReplaySessionRequest) -> dict[str, object]:
@@ -437,6 +560,7 @@ def create_api_router(
                 mode=payload.mode,
                 initial_capital=payload.initial_capital,
                 bars=bars,
+                store=artifacts,
             )
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
@@ -446,7 +570,7 @@ def create_api_router(
         """Fetch current Replay session state and revealed bars."""
         from quant_research.services.replay import get_session
 
-        session = get_session(session_id)
+        session = get_session(session_id, store=artifacts)
         if not session:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Replay session not found.")
         return session
@@ -456,7 +580,7 @@ def create_api_router(
         """Advance the replay cursor by 1 or more historical candles."""
         from quant_research.services.replay import step_session
 
-        session = step_session(session_id, steps=payload.steps)
+        session = step_session(session_id, steps=payload.steps, store=artifacts)
         if not session:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Replay session not found or already finished.")
         return session
@@ -474,6 +598,7 @@ def create_api_router(
             price=payload.price,
             stop_loss=payload.stop_loss,
             take_profit=payload.take_profit,
+            store=artifacts,
         )
         if not session:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Replay session not found or already finished.")
@@ -484,7 +609,7 @@ def create_api_router(
         """Close an open position at the current replay candle price."""
         from quant_research.services.replay import close_order
 
-        session = close_order(session_id, order_id)
+        session = close_order(session_id, order_id, store=artifacts)
         if not session:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Replay session or order not found.")
         return session
@@ -494,7 +619,7 @@ def create_api_router(
         """Conclude the replay session and calculate final performance metrics."""
         from quant_research.services.replay import finish_session
 
-        session = finish_session(session_id)
+        session = finish_session(session_id, store=artifacts)
         if not session:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Replay session not found.")
         return session

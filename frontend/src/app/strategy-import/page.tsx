@@ -26,39 +26,20 @@ type Extraction = {
   assumptions: string[];
 };
 
-const sampleExtraction: Extraction = {
-  title: "RSI + EMA trend strategy",
-  strategyName: "RSI + EMA strategy",
-  indicators: ["RSI", "EMA", "NIFTY 50"],
-  entryRules: [
-    "Buy when RSI recovers above 30 while fast EMA is above slow EMA.",
-    "Wait for next bar open before filling order.",
-  ],
-  exitRules: ["Exit when RSI reaches 70 or fast EMA crosses below slow EMA."],
-  riskRules: [
-    "Risk no more than 1% of capital per trade.",
-    "Use a fixed stop below most recent swing low.",
-  ],
-  confidence: 0.82,
-  transcriptAvailable: true,
-  assumptions: [
-    "The video describes rules in plain language; thresholds need review.",
-    "No live order will be placed from an extracted strategy.",
-  ],
-};
-
 export default function StrategyImportPage() {
   const [url, setUrl] = useState("");
   const [transcript, setTranscript] = useState("");
   const [extraction, setExtraction] = useState<Extraction | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const runExtraction = async () => {
     if (!url.trim()) return;
     setLoading(true);
+    setError(null);
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1"}/strategy/youtube`,
+        `${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1"}/strategy/youtube`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -78,13 +59,28 @@ export default function StrategyImportPage() {
         transcriptAvailable: data.transcript_available,
         assumptions: data.assumptions,
       });
-    } catch {
-      setExtraction(sampleExtraction);
+      if (!data.transcript_available) {
+        setError("No captions were found for this video. Paste the YouTube transcript or notes below and try again.");
+      }
+    } catch (requestError) {
+      setExtraction(null);
+      setError(requestError instanceof Error ? requestError.message : "Could not read this YouTube video. Paste its transcript and try again.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  const active = extraction ?? sampleExtraction;
+  const active = extraction ?? {
+    title: "No strategy extracted yet",
+    strategyName: "Paste a link to begin",
+    indicators: [],
+    entryRules: [],
+    exitRules: [],
+    riskRules: [],
+    confidence: 0,
+    transcriptAvailable: false,
+    assumptions: [],
+  };
 
   return (
     <div className="backtrack-page">
@@ -92,14 +88,16 @@ export default function StrategyImportPage() {
       <div className="backtrack-content space-y-6">
         <section className="bt-heading-row">
           <div>
-            <div className="bt-kicker"><span className="live-dot" /> 06 / STRATEGY IMPORT</div>
-            <h1>Bring external strategies to the chart.</h1>
-            <p>Paste a YouTube link or transcript. Backtrack extracts rules into a reviewable draft — human review is required before backtesting.</p>
+            <div className="bt-kicker"><span className="live-dot" /> USE A YOUTUBE STRATEGY</div>
+            <h1>Turn a video into testable rules.</h1>
+            <p>Paste a YouTube link or transcript. We will show the rules we found so you can check them before running a backtest.</p>
           </div>
           <div className="bt-heading-actions">
             <span className="data-source"><Sparkles size={14} /> AI Extractor Active</span>
           </div>
-        </section>
+      </section>
+
+        {error && <div className="bt-alert-error" role="alert">{error}</div>}
 
         <div className="bt-import-grid">
           <section className="bt-panel bt-import-form">
@@ -151,7 +149,7 @@ export default function StrategyImportPage() {
           <section className="bt-panel bt-extraction-panel">
             <div className="bt-extraction-head">
               <div>
-                <span className="bt-eyebrow">EXTRACTED DRAFT</span>
+                <span className="bt-eyebrow">YOUR EXTRACTED RULES</span>
                 <h2>{active.strategyName}</h2>
                 <small>{active.title}</small>
               </div>

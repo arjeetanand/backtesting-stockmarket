@@ -7,7 +7,7 @@ import TopBar from "@/components/layout/TopBar";
 import { getMarketAvailability, type MarketAvailability } from "@/lib/market-data";
 import { SymbolCombobox } from "@/components/data/SymbolCombobox";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 const EXAMPLES = [
   "Test whether a 20/50 moving-average crossover can capture medium-term trends.",
   "Test a conservative long-only crossover strategy with realistic costs.",
@@ -57,6 +57,48 @@ export default function ResearchPage() {
   const [loading, setLoading] = useState(false);
   const [runningBacktest, setRunningBacktest] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [restored, setRestored] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("backtrack:research-session");
+      if (saved) {
+        const snapshot = JSON.parse(saved) as Partial<{
+          hypothesis: string;
+          symbol: string;
+          requestedStart: string;
+          requestedEnd: string;
+          analysis: HypothesisAnalysis;
+          availability: MarketAvailability;
+          startDate: string;
+          endDate: string;
+          backtest: BacktestResult;
+          chatHistory: Array<{ role: "ai" | "user"; text: string }>;
+        }>;
+        if (snapshot.hypothesis) setHypothesis(snapshot.hypothesis);
+        if (snapshot.symbol) setSymbol(snapshot.symbol);
+        if (snapshot.requestedStart) setRequestedStart(snapshot.requestedStart);
+        if (snapshot.requestedEnd) setRequestedEnd(snapshot.requestedEnd);
+        if (snapshot.analysis) setAnalysis(snapshot.analysis);
+        if (snapshot.availability) setAvailability(snapshot.availability);
+        if (snapshot.startDate) setStartDate(snapshot.startDate);
+        if (snapshot.endDate) setEndDate(snapshot.endDate);
+        if (snapshot.backtest) setBacktest(snapshot.backtest);
+        if (snapshot.chatHistory) setChatHistory(snapshot.chatHistory);
+      }
+    } catch {
+      window.localStorage.removeItem("backtrack:research-session");
+    } finally {
+      setRestored(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!restored) return;
+    window.localStorage.setItem("backtrack:research-session", JSON.stringify({
+      hypothesis, symbol, requestedStart, requestedEnd, analysis, availability, startDate, endDate, backtest, chatHistory,
+    }));
+  }, [restored, hypothesis, symbol, requestedStart, requestedEnd, analysis, availability, startDate, endDate, backtest, chatHistory]);
 
   const dsl = useMemo(() => analysis ? JSON.stringify({
     source: "local_ollama_review",
@@ -199,8 +241,8 @@ export default function ResearchPage() {
     <TopBar />
     <main className="backtrack-content bt-stack">
       <section className="bt-heading-row">
-        <div><div className="bt-kicker"><span className="live-dot" /> RESEARCH WORKSPACE</div><h1>Natural language to a reviewable strategy.</h1><p>Use the installed local Ollama model to turn a trading hypothesis into a cautious SMA-crossover proposal.</p></div>
-        <span className="data-source"><Sparkles size={14} /> Local Ollama + NSE cache</span>
+        <div><div className="bt-kicker"><span className="live-dot" /> TEST A STRATEGY</div><h1>Describe what you want to test.</h1><p>Tell us your idea in plain language. We will turn it into simple rules, find the stock history, and show the result.</p></div>
+        <span className="data-source">{restored && (analysis || backtest) ? <><CheckCircle size={14} /> Saved session restored</> : <><Sparkles size={14} /> Local Ollama + NSE cache</>}</span>
       </section>
 
       <section className="bt-hypothesis-block">
@@ -214,7 +256,7 @@ export default function ResearchPage() {
 
       {importJob && <section className="bt-panel" style={{ padding: "20px" }}><div className="bt-row-between"><div><div className="bt-row"><Loader2 size={16} className={importJob.status === "complete" || importJob.status === "failed" ? "" : "spin"} style={{ color: importJob.status === "failed" ? "#e11d48" : "#4f46e5" }} /><h3>Official NSE history preparation</h3></div><p className="text-xs text-slate-500" style={{ marginTop: "6px" }}>{importJob.message}</p></div><span className="bt-ai-badge">{importJob.status}</span></div><div className="bt-grid-2" style={{ marginTop: "16px" }}>{["Validate local cache", "Download missing NSE archives", "Store only missing bars", "Ready to backtest"].map((step, index) => { const completed = importJob.status === "complete" || (index === 0 && importJob.status !== "queued") || (index === 1 && importJob.stage?.includes("Saving")); return <div key={step} className="bt-callout"><strong>{completed ? "✓ " : "○ "}{step}</strong><p>{index === 1 && importJob.total_days ? `${importJob.completed_days ?? 0}/${importJob.total_days} trading days checked` : completed ? "Done" : "Waiting"}</p></div>; })}</div>{importJob.status === "failed" && <div className="bt-alert-error" style={{ marginTop: "14px" }}>NSE data could not be imported. Check the symbol and retry Parse Hypothesis.</div>}</section>}
 
-      <section className="bt-panel bt-pipeline-panel"><p className="bt-pipeline-title">Research execution status</p><div className="bt-pipeline-grid">{PIPELINE.map((label, index) => {
+      <section className="bt-panel bt-pipeline-panel"><p className="bt-pipeline-title">What happens next</p><div className="bt-pipeline-grid">{PIPELINE.map((label, index) => {
         const dataReady = Boolean(analysis && availability?.bars && (!importJob || importJob.status === "complete"));
         const completedSteps = backtest ? PIPELINE.length : dataReady ? 4 : analysis ? 2 : 0;
         const runningStep = loading ? 0 : importJob && importJob.status !== "complete" && importJob.status !== "failed" ? 2 : runningBacktest ? 4 : -1;

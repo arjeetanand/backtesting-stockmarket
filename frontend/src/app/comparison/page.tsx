@@ -1,195 +1,133 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Check, Loader2, Play, Scale, Search, TrendingUp } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
-import { TrendingUp, Scale, AlertTriangle, Eye, ArrowUp, ArrowDown } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { SymbolCombobox } from "@/components/data/SymbolCombobox";
+import { getMarketAvailability, type MarketAvailability } from "@/lib/market-data";
+import { runStrategyBacktest, type LiveBacktestResult } from "@/lib/backtest-api";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
+
+type StrategyDefinition = { id: string; title: string; description: string; parameters: string };
+type MatrixResult = {
+  id: string;
+  strategyId: string;
+  title: string;
+  result: LiveBacktestResult | SavedBacktestResult;
+};
+type SavedBacktestResult = {
+  run_id: string;
+  config: { strategy?: string };
+  metrics: Record<string, number>;
+  trades: Array<unknown>;
+};
+type SavedCustomResult = LiveBacktestResult & { strategy_id?: string };
+
+const STRATEGIES: StrategyDefinition[] = [
+  { id: "sma_crossover", title: "SMA Golden Cross", description: "Long when the fast simple moving average crosses above the slow average.", parameters: "SMA 20 / 50" },
+  { id: "ema_crossover", title: "EMA Trend Crossover", description: "Faster exponential averages react earlier to changing trends.", parameters: "EMA 20 / 50" },
+  { id: "rsi_ema", title: "RSI + EMA Filter", description: "Buy oversold pullbacks only when the fast EMA remains above the slow EMA.", parameters: "RSI 14 · EMA 20 / 50" },
+  { id: "rsi_mean_reversion", title: "RSI Mean Reversion", description: "Buy oversold conditions and exit when price momentum normalises.", parameters: "RSI 14 · 30 / 50" },
+  { id: "bollinger_mean_reversion", title: "Bollinger Bands", description: "Buy moves below the lower band and exit at the moving-average midpoint.", parameters: "20 periods · 2σ" },
+  { id: "macd_crossover", title: "MACD Crossover", description: "Follow MACD line and signal-line crossovers for trend confirmation.", parameters: "12 / 26 / 9" },
+  { id: "donchian_breakout", title: "Donchian Breakout", description: "Enter on a new rolling high and exit on a rolling low, inspired by Turtle trading.", parameters: "50-day channel" },
+  { id: "momentum", title: "Price Momentum", description: "Stay long while the selected lookback return is positive.", parameters: "20-day momentum" },
+];
+
+function metric(result: MatrixResult["result"], key: string): number {
+  const metrics = result.metrics as Record<string, number>;
+  if (key === "trades") return "total_trades" in metrics ? Number(metrics.total_trades ?? 0) : Number(metrics.trade_count ?? 0);
+  return Number(metrics[key] ?? 0);
+}
+
+function percentage(value: number): string { return `${(value * 100).toFixed(2)}%`; }
 
 export default function ExperimentComparisonPage() {
-  const [selectedBaseline, setSelectedBaseline] = useState("EXP-9900");
+  const today = new Date().toISOString().slice(0, 10);
+  const [symbol, setSymbol] = useState("RELIANCE");
+  const [start, setStart] = useState("2024-01-01");
+  const [end, setEnd] = useState("2026-06-30");
+  const [availability, setAvailability] = useState<MarketAvailability | null>(null);
+  const [selectedStrategies, setSelectedStrategies] = useState(["sma_crossover", "rsi_ema", "macd_crossover"]);
+  const [results, setResults] = useState<MatrixResult[]>([]);
+  const [baselineId, setBaselineId] = useState("");
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const comparisonData = [
-    { id: "EXP-9942", title: "Momentum Alpha V4", cagr: 24.2, cagrDiff: 5.7, sharpe: 1.82, sharpeDiff: 0.17, sortino: 2.45, sortinoDiff: 0.35, maxDd: -14.8, maxDdDiff: -2.4, profitFactor: 1.52, pfDiff: 0.07, trades: 1412, robustness: "78/100" },
-    { id: "EXP-9915", title: "Mean Reversion V2", cagr: 16.1, cagrDiff: -2.4, sharpe: 1.48, sharpeDiff: -0.17, sortino: 1.95, sortinoDiff: -0.15, maxDd: -11.2, maxDdDiff: 1.2, profitFactor: 1.41, pfDiff: -0.04, trades: 980, robustness: "86/100" },
-    { id: "EXP-9938", title: "RSI+EMA Filtered", cagr: 21.5, cagrDiff: 3.0, sharpe: 2.14, sharpeDiff: 0.49, sortino: 2.98, sortinoDiff: 0.88, maxDd: -9.5, maxDdDiff: 2.9, profitFactor: 1.65, pfDiff: 0.20, trades: 1105, robustness: "91/100", highlight: true },
-    { id: "EXP-9921", title: "Breakout Trend V1", cagr: 14.8, cagrDiff: -3.7, sharpe: 1.75, sharpeDiff: 0.10, sortino: 2.20, sortinoDiff: 0.10, maxDd: -8.4, maxDdDiff: 4.0, profitFactor: 1.55, pfDiff: 0.10, trades: 850, robustness: "95/100" },
-  ];
+  const loadSavedRuns = async () => {
+    try {
+      const [response, customResponse] = await Promise.all([
+        fetch(`${API_BASE_URL}/backtests`),
+        fetch(`${API_BASE_URL}/research/artifacts/custom_backtest`),
+      ]);
+      const saved = response.ok ? await response.json() as SavedBacktestResult[] : [];
+      const custom = customResponse.ok ? await customResponse.json() as SavedCustomResult[] : [];
+      const savedSma = saved.map((result) => ({ id: result.run_id, strategyId: "sma_crossover", title: "Saved SMA crossover", result }));
+      const savedCustom = custom
+        .filter((result) => result.symbol === symbol)
+        .map((result) => ({ id: result.run_id, strategyId: result.strategy_id ?? "rsi_ema", title: `Saved ${result.strategy_id ?? "strategy"}`, result }));
+      setResults([...savedSma, ...savedCustom]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  return (
-    <div className="backtrack-page">
-      <TopBar />
+  useEffect(() => {
+    void Promise.all([getMarketAvailability(symbol), loadSavedRuns()]).then(([data]) => {
+      setAvailability(data);
+      if (data.earliest) setStart(data.earliest.slice(0, 10));
+      if (data.latest) setEnd(data.latest.slice(0, 10));
+    }).catch((requestError) => setError(requestError instanceof Error ? requestError.message : "Could not load local NSE data."));
+  }, [symbol]);
 
-      <div className={cn("backtrack-content", "bt-stack")}>
-        {/* Page Header */}
-        <section className="bt-heading-row">
-          <div>
-            <div className="bt-kicker"><span className="live-dot" /> 03 / EXPERIMENT MATRIX</div>
-            <h1>Cross-sectional experiment analysis.</h1>
-            <p>Compare multi-parameter backtest runs over the 2018-2023 dataset. Variances calculated against baseline.</p>
-          </div>
-          <div className="bt-heading-actions">
-            <span className="data-source"><Scale size={14} /> Baseline: EXP-9900</span>
-          </div>
-        </section>
-        
-        {/* Bento Grid: Aggregate Insights */}
-        <div className="bt-kpi-grid">
-          <div className="bt-stat-card mint">
-            <span>Highest Return</span>
-            <strong>24.2%</strong>
-            <small>CAGR · EXP-9942</small>
-            <TrendingUp />
-          </div>
+  const visibleStrategies = useMemo(() => STRATEGIES.filter((strategy) => `${strategy.title} ${strategy.description}`.toLowerCase().includes(search.toLowerCase())), [search]);
+  const baseline = results.find((row) => row.id === baselineId) ?? results[0];
+  const highestReturn = results.length ? results.reduce((best, row) => metric(row.result, "cagr") > metric(best.result, "cagr") ? row : best) : null;
+  const bestSharpe = results.length ? results.reduce((best, row) => metric(row.result, "sharpe_ratio") > metric(best.result, "sharpe_ratio") ? row : best) : null;
+  const lowestDrawdown = results.length ? results.reduce((best, row) => metric(row.result, "max_drawdown") > metric(best.result, "max_drawdown") ? row : best) : null;
 
-          <div className="bt-stat-card blue">
-            <span>Best Risk Adj.</span>
-            <strong>2.14</strong>
-            <small>Sharpe · EXP-9938</small>
-            <Scale />
-          </div>
+  const toggleStrategy = (strategyId: string) => setSelectedStrategies((current) => current.includes(strategyId) ? current.filter((id) => id !== strategyId) : [...current, strategyId]);
 
-          <div className="bt-stat-card rose">
-            <span>Lowest Drawdown</span>
-            <strong>-8.4%</strong>
-            <small>Max DD · EXP-9921</small>
-            <AlertTriangle />
-          </div>
+  const runMatrix = async () => {
+    if (!selectedStrategies.length) { setError("Select at least one strategy."); return; }
+    if (!start || !end || start > end) { setError("Choose a valid date range."); return; }
+    setRunning(true);
+    setError(null);
+    try {
+      const selected = STRATEGIES.filter((strategy) => selectedStrategies.includes(strategy.id));
+      const next = await Promise.all(selected.map(async (strategy): Promise<MatrixResult> => {
+        if (strategy.id === "sma_crossover") {
+          const response = await fetch(`${API_BASE_URL}/backtests/sma-crossover`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ symbol, start: `${start}T00:00:00`, end: `${end}T23:59:59`, timeframe: "1day", fast_window: 20, slow_window: 50, initial_capital: 100000, commission: 0, slippage: 0 }) });
+          const result = await response.json() as SavedBacktestResult;
+          if (!response.ok) throw new Error("detail" in result ? String(result.detail) : `Could not run ${strategy.title}.`);
+          return { id: result.run_id, strategyId: strategy.id, title: strategy.title, result };
+        }
+        const result = await runStrategyBacktest({ symbol, start, end, initialCapital: 100000, strategyId: strategy.id, rsiPeriod: 14, rsiOversold: 30, rsiOverbought: 70, fastEma: 20, slowEma: 50, commissionPct: 0, slippagePct: 0 });
+        return { id: result.run_id, strategyId: strategy.id, title: strategy.title, result };
+      }));
+      setResults(next);
+      setBaselineId(next[0]?.id ?? "");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "The matrix run failed.");
+    } finally {
+      setRunning(false);
+    }
+  };
 
-          <div className="bt-stat-card violet">
-            <span>Convergence</span>
-            <strong>32 Runs</strong>
-            <small>Optimal Grid Achieved</small>
-            <Scale />
-          </div>
-        </div>
+  return <div className="backtrack-page"><TopBar /><main className="backtrack-content bt-stack">
+    <section className="bt-heading-row"><div><div className="bt-kicker"><span className="live-dot" /> EXPERIMENT MATRIX</div><h1>Compare real strategy runs.</h1><p>Choose well-known strategy rules, run them against local NSE history, and compare the resulting metrics. No sample results are shown.</p></div><span className="data-source"><Scale size={14} /> Local NSE cache</span></section>
 
-        {/* Run Metrics Matrix Table */}
-        <section className="bt-panel" style={{ padding: 0 }}>
-          <div className="bt-panel-head" style={{ padding: '14px 24px', borderBottom: '1px solid #e2e8f0' }}>
-            <div>
-              <span className="bt-eyebrow">MATRIX</span>
-              <h2>Run metrics comparison</h2>
-            </div>
-            {/* Baseline Select */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span className="bt-field-label" style={{ marginBottom: 0 }}>Baseline:</span>
-              <select
-                className="bt-sort-select"
-                value={selectedBaseline}
-                onChange={(e) => setSelectedBaseline(e.target.value)}
-              >
-                <option value="EXP-9900">EXP-9900 (Default)</option>
-                <option value="EXP-9921">EXP-9921</option>
-                <option value="EXP-9938">EXP-9938</option>
-              </select>
-            </div>
-          </div>
+    <section className="bt-panel" style={{ padding: "20px" }}><div className="bt-row-between"><div><span className="bt-eyebrow">RUN CONFIGURATION</span><h2>Market and test window</h2></div><span className="text-xs text-slate-500">{availability?.bars ? `${availability.bars} cached bars` : "Checking cache…"}</span></div><div className="bt-grid-2" style={{ marginTop: "16px" }}><div><label className="bt-field-label">NSE symbol</label><SymbolCombobox value={symbol} onChange={(next) => { setSymbol(next); setResults([]); }} /></div><div><label className="bt-field-label">Data source</label><input className="bt-field-input" value="Official NSE daily cache" disabled /></div><div><label className="bt-field-label">From</label><input className="bt-field-input" type="date" value={start} max={end} onChange={(event) => setStart(event.target.value)} /></div><div><label className="bt-field-label">To</label><input className="bt-field-input" type="date" value={end} min={start} max={today} onChange={(event) => setEnd(event.target.value)} /></div></div>{availability?.bars === 0 && <div className="bt-alert-error" style={{ marginTop: "14px" }}>No local history is available for {symbol}. Import this symbol from Data &amp; Providers first.</div>}{error && <div className="bt-alert-error" role="alert" style={{ marginTop: "14px" }}>{error}</div>}</section>
 
-          <div className="bt-table-wrap">
-            <table className="bt-table">
-              <thead>
-                <tr>
-                  <th>Experiment ID</th>
-                  <th className="right">CAGR</th>
-                  <th className="right">Sharpe</th>
-                  <th className="right">Sortino</th>
-                  <th className="right">Max DD</th>
-                  <th className="right">Profit Factor</th>
-                  <th className="right">Trades</th>
-                  <th className="right">Robustness</th>
-                  <th className="center">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {/* Baseline Row */}
-                <tr className="baseline">
-                  <td style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
-                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#94a3b8' }} />
-                    <span>EXP-9900</span>
-                    <span className="bt-baseline-badge">Base</span>
-                  </td>
-                  <td className="right">18.5%</td>
-                  <td className="right">1.65</td>
-                  <td className="right">2.10</td>
-                  <td className="right">-12.4%</td>
-                  <td className="right">1.45</td>
-                  <td className="right">1,245</td>
-                  <td className="right">82/100</td>
-                  <td className="center">
-                    <button className="bt-row-action view">
-                      <Eye size={14} />
-                    </button>
-                  </td>
-                </tr>
-                {/* Data Rows */}
-                {comparisonData.map((row) => (
-                  <tr
-                    key={row.id}
-                    className={cn(row.highlight ? "highlight" : "")}
-                  >
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: row.highlight ? '#4f46e5' : '#cbd5e1' }} />
-                        <span className={cn(row.highlight ? "bt-run-id" : "")} style={!row.highlight ? { fontWeight: 'bold' } : undefined}>{row.id}</span>
-                        <span className="bt-val-muted">({row.title})</span>
-                      </div>
-                    </td>
-                    <td className="right">
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontWeight: 600 }}>{row.cagr}%</span>
-                        <span className={cn("bt-diff", row.cagrDiff >= 0 ? "up" : "down")}>
-                          {row.cagrDiff >= 0 ? "+" : ""}{row.cagrDiff}%
-                        </span>
-                      </div>
-                    </td>
-                    <td className="right">
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={row.highlight ? { color: '#4f46e5', fontWeight: 'bold' } : { fontWeight: 600 }}>{row.sharpe}</span>
-                        <span className={cn("bt-diff", row.sharpeDiff >= 0 ? "up" : "down")}>
-                          {row.sharpeDiff >= 0 ? "+" : ""}{row.sharpeDiff}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="right">
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={row.highlight ? { color: '#4f46e5', fontWeight: 'bold' } : { fontWeight: 600 }}>{row.sortino}</span>
-                        <span className={cn("bt-diff", row.sortinoDiff >= 0 ? "up" : "down")}>
-                          {row.sortinoDiff >= 0 ? "+" : ""}{row.sortinoDiff}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="right">
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontWeight: 600 }}>{row.maxDd}%</span>
-                        <span className={cn("bt-diff", row.maxDdDiff >= 0 ? "up" : "down")}>
-                          {row.maxDdDiff >= 0 ? "+" : ""}{row.maxDdDiff}%
-                        </span>
-                      </div>
-                    </td>
-                    <td className="right">
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontWeight: 600 }}>{row.profitFactor}</span>
-                        <span className={cn("bt-diff", row.pfDiff >= 0 ? "up" : "down")}>
-                          {row.pfDiff >= 0 ? "+" : ""}{row.pfDiff}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="right" style={{ fontWeight: 500 }}>{row.trades}</td>
-                    <td className="right">
-                      <span className="bt-val-indigo">{row.robustness}</span>
-                    </td>
-                    <td className="center">
-                      <button className="bt-row-action view">
-                        <Eye size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </div>
-    </div>
-  );
+    <section className="bt-panel" style={{ padding: "20px" }}><div className="bt-row-between"><div><span className="bt-eyebrow">STRATEGY LIBRARY</span><h2>Famous strategies</h2><p className="text-xs text-slate-500" style={{ marginTop: "5px" }}>Select one or more deterministic templates for this matrix.</p></div><div className="bt-chat-input-row" style={{ maxWidth: "260px" }}><Search size={14} /><input className="bt-chat-input" placeholder="Search strategies" value={search} onChange={(event) => setSearch(event.target.value)} /></div></div><div className="bt-grid-2" style={{ marginTop: "16px" }}>{visibleStrategies.map((strategy) => { const selected = selectedStrategies.includes(strategy.id); return <button key={strategy.id} type="button" onClick={() => toggleStrategy(strategy.id)} className="bt-callout" style={{ textAlign: "left", border: selected ? "1px solid #818cf8" : "1px solid #e2e8f0", background: selected ? "#eef2ff" : "#fff", cursor: "pointer" }}><div className="bt-row-between"><strong>{strategy.title}</strong><span style={{ color: selected ? "#4f46e5" : "#94a3b8" }}>{selected ? <Check size={16} /> : "＋"}</span></div><p>{strategy.description}</p><small>{strategy.parameters}</small></button>; })}</div><button className="bt-primary" style={{ marginTop: "18px" }} onClick={() => void runMatrix()} disabled={running || !availability?.bars}>{running ? <><Loader2 size={14} className="spin" /> Running selected strategies…</> : <><Play size={14} /> Run selected strategies</>}</button></section>
+
+    <div className="bt-kpi-grid"><div className="bt-stat-card mint"><span>Highest CAGR</span><strong>{highestReturn ? percentage(metric(highestReturn.result, "cagr")) : "—"}</strong><small>{highestReturn?.title ?? "Run a matrix to calculate"}</small><TrendingUp /></div><div className="bt-stat-card blue"><span>Best Sharpe</span><strong>{bestSharpe ? metric(bestSharpe.result, "sharpe_ratio").toFixed(2) : "—"}</strong><small>{bestSharpe?.title ?? "Run a matrix to calculate"}</small><Scale /></div><div className="bt-stat-card rose"><span>Lowest drawdown</span><strong>{lowestDrawdown ? percentage(metric(lowestDrawdown.result, "max_drawdown")) : "—"}</strong><small>{lowestDrawdown?.title ?? "Run a matrix to calculate"}</small><AlertTriangle /></div><div className="bt-stat-card violet"><span>Experiments</span><strong>{results.length}</strong><small>Real runs in this matrix</small><Scale /></div></div>
+
+    <section className="bt-panel" style={{ padding: 0 }}><div className="bt-panel-head" style={{ padding: "14px 24px", borderBottom: "1px solid #e2e8f0" }}><div><span className="bt-eyebrow">RESULTS</span><h2>Run metrics comparison</h2></div>{results.length > 0 && <label className="bt-row text-xs text-slate-500">Baseline<select className="bt-sort-select" value={baseline?.id ?? ""} onChange={(event) => setBaselineId(event.target.value)}>{results.map((row) => <option key={row.id} value={row.id}>{row.title}</option>)}</select></label>}</div>{loading ? <p style={{ padding: "24px" }}>Loading saved runs…</p> : results.length === 0 ? <div style={{ padding: "32px", textAlign: "center" }}><p>No experiment runs yet.</p><p className="text-xs text-slate-500" style={{ marginTop: "6px" }}>Select strategies above and run them on imported NSE data.</p></div> : <div className="bt-table-wrap"><table className="bt-table"><thead><tr><th>Strategy / Run</th><th className="right">CAGR</th><th className="right">Sharpe</th><th className="right">Sortino</th><th className="right">Max DD</th><th className="right">Profit Factor</th><th className="right">Win Rate</th><th className="right">Trades</th></tr></thead><tbody>{results.map((row) => { const base = baseline ? metric(baseline.result, "cagr") : 0; const diff = metric(row.result, "cagr") - base; return <tr key={row.id} className={row.id === baseline?.id ? "baseline" : undefined}><td><strong>{row.title}</strong><br /><span className="bt-val-muted">{row.id} · {symbol} · {start} to {end}</span></td><td className="right">{percentage(metric(row.result, "cagr"))} <span className={cnDiff(diff)}>{diff >= 0 ? "+" : ""}{(diff * 100).toFixed(2)}%</span></td><td className="right">{metric(row.result, "sharpe_ratio").toFixed(2)}</td><td className="right">{metric(row.result, "sortino_ratio").toFixed(2)}</td><td className="right">{percentage(metric(row.result, "max_drawdown"))}</td><td className="right">{metric(row.result, "profit_factor").toFixed(2)}</td><td className="right">{percentage(metric(row.result, "win_rate"))}</td><td className="right">{Math.round(metric(row.result, "trades"))}</td></tr>; })}</tbody></table></div>}</section>
+  </main></div>;
 }
+
+function cnDiff(value: number): string { return value >= 0 ? "bt-diff up" : "bt-diff down"; }

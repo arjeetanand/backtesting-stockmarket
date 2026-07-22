@@ -35,7 +35,7 @@ def create_app(
         allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )
-    app.include_router(create_api_router(container.research, container.hypotheses, container.nse_importer, container.market_cache, container.nifty500_catalogue))
+    app.include_router(create_api_router(container.research, container.hypotheses, container.nse_importer, container.market_cache, container.nifty500_catalogue, container.artifacts))
     return app
 
 

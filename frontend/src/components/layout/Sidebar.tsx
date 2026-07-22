@@ -7,40 +7,31 @@ import {
   FlaskConical,
   Wrench,
   GitCompare,
-  ShieldAlert,
   BarChart3,
   Database,
   Video,
   BookOpenCheck,
   Settings,
-  Plus,
-  TrendingUp,
-  Sparkles,
   Play,
+  TrendingUp,
+  ShieldAlert,
 } from "lucide-react";
 
 const mainNav = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/replay", label: "Chart Replay", icon: Play },
-  { href: "/research", label: "Research", icon: FlaskConical },
-  { href: "/strategy", label: "Strategy Lab", icon: Wrench },
-  { href: "/backtests", label: "Backtest Runs", icon: GitCompare },
-  { href: "/comparison", label: "Experiment Matrix", icon: BarChart3 },
-  { href: "/robustness", label: "Robustness Suite", icon: Sparkles },
-  { href: "/bias-validity", label: "Risk Engine", icon: ShieldAlert },
+  { href: "/", label: "Home", icon: LayoutDashboard },
+  { href: "/research", label: "Test a strategy", icon: FlaskConical },
+  { href: "/backtests", label: "My tests", icon: GitCompare },
+  { href: "/comparison", label: "Compare tests", icon: BarChart3 },
+  { href: "/options", label: "Learn", icon: BookOpenCheck },
 ];
 
 const secondaryNav = [
-  { href: "/strategy-import", label: "YouTube Import", icon: Video },
-  { href: "/options", label: "Options Lab", icon: BookOpenCheck },
-  { href: "/data", label: "Data & Providers", icon: Database },
+  { href: "/strategy", label: "Build rules", icon: Wrench },
+  { href: "/strategy-import", label: "Use a YouTube strategy", icon: Video },
+  { href: "/replay", label: "Replay a chart", icon: Play },
+  { href: "/data", label: "Manage stock data", icon: Database },
+  { href: "/robustness", label: "Check reliability", icon: ShieldAlert },
   { href: "/settings", label: "Settings", icon: Settings },
-];
-
-const recentSessions = [
-  { id: "rsi_ema", label: "RSI EMA Trend Confirmation", active: true },
-  { id: "nifty_mean", label: "NIFTY Mean Reversion", active: false },
-  { id: "mom_vs_bh", label: "Momentum vs Buy & Hold", active: false },
 ];
 
 export default function Sidebar() {
@@ -57,26 +48,18 @@ export default function Sidebar() {
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
               <span className="bt-sidebar-title">backtrack</span>
-              <span className="bt-sidebar-badge">PRO</span>
             </div>
-            <p className="bt-sidebar-subtitle">Quant Platform</p>
+            <p className="bt-sidebar-subtitle">Test ideas with history</p>
           </div>
         </div>
       </div>
 
-      {/* Primary CTA Button */}
-      <div className="bt-sidebar-cta">
-        <Link href="/research">
-          <Plus size={14} />
-          <span>New Research Session</span>
-        </Link>
-      </div>
+      <div className="bt-sidebar-cta"><Link href="/research"><span>Start a new test</span></Link></div>
 
       {/* Main Navigation Area */}
       <nav className="bt-sidebar-nav">
-        {/* Core Modules */}
         <div>
-          <p className="bt-nav-section-label">Core Modules</p>
+          <p className="bt-nav-section-label">Your workspace</p>
           <div className="bt-nav-items">
             {mainNav.map(({ href, label, icon: Icon }) => {
               const isActive =
@@ -97,9 +80,8 @@ export default function Sidebar() {
           </div>
         </div>
 
-        {/* Tools & Data */}
         <div>
-          <p className="bt-nav-section-label">Tools &amp; Data</p>
+          <p className="bt-nav-section-label">More ways to test</p>
           <div className="bt-nav-items">
             {secondaryNav.map(({ href, label, icon: Icon }) => {
               const isActive = pathname.startsWith(href);
@@ -119,24 +101,6 @@ export default function Sidebar() {
           </div>
         </div>
 
-        {/* Recent Experiments */}
-        <div>
-          <p className="bt-nav-section-label">Recent Experiments</p>
-          <div className="bt-nav-items">
-            {recentSessions.map((session) => (
-              <Link
-                key={session.id}
-                href="/backtests"
-                className={`bt-nav-recent-link${session.active ? " active" : ""}`}
-              >
-                <span className={`bt-nav-dot${session.active ? " active" : ""}`} />
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {session.label}
-                </span>
-              </Link>
-            ))}
-          </div>
-        </div>
       </nav>
 
       {/* Footer Status Bar */}
@@ -166,9 +130,9 @@ export default function Sidebar() {
               }}
             />
           </span>
-          <span>FastAPI Engine</span>
+          <span>Data connection</span>
         </div>
-        <span className="bt-sidebar-online">ONLINE</span>
+        <span className="bt-sidebar-online">READY</span>
       </div>
     </aside>
   );

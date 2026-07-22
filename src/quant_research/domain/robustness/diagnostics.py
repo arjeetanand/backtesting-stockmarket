@@ -46,6 +46,15 @@ class StressTestScenario:
 
 
 @dataclass
+class WalkForwardPoint:
+    """One expanding-window in-sample/out-of-sample comparison."""
+
+    period: int
+    in_sample_cagr: float
+    out_of_sample_cagr: float
+
+
+@dataclass
 class RobustnessReport:
     """Aggregate robustness diagnostic report."""
 
@@ -57,6 +66,7 @@ class RobustnessReport:
     sensitivity_grid: list[SensitivityCell]
     monte_carlo: MonteCarloResult
     stress_tests: list[StressTestScenario]
+    walk_forward: list[WalkForwardPoint]
 
 
 def analyze_robustness(
@@ -138,12 +148,13 @@ def analyze_robustness(
         )
     )
 
-    # Scenario C: Delay Execution (+1 Bar)
+    # Scenario C: a larger execution slippage shock. The daily engine cannot
+    # model milliseconds, so do not present slippage as execution latency.
     st_delay = run_rule_backtest(df, symbol=symbol, slippage_pct=0.002)
     delay_pass = "PASS" if st_delay.metrics.cagr > 0 else "FAIL"
     stress_tests.append(
         StressTestScenario(
-            scenario="Execution Delay (+100ms)",
+            scenario="Execution Slippage (+20bps)",
             base_cagr=round(base_cagr * 100, 1),
             stressed_cagr=round(st_delay.metrics.cagr * 100, 1),
             base_max_dd=round(base_dd * 100, 1),
@@ -194,7 +205,44 @@ def analyze_robustness(
         distribution_bins=mc_bins,
     )
 
-    oos_degradation_score = 71
+    # 5. Expanding-window walk-forward evaluation. The final segment is never
+    # used to tune the sensitivity grid; it is held out for this comparison.
+    walk_forward: list[WalkForwardPoint] = []
+    minimum_bars = max(max(lookback_range), 50, 14) + 5
+    if len(df) >= minimum_bars * 2:
+        # Use as many complete OOS folds as the available history supports;
+        # short local caches should still yield a real walk-forward result.
+        fold_count = min(4, max(1, (len(df) - minimum_bars) // minimum_bars))
+        first_train_end = len(df) - (fold_count * minimum_bars)
+        fold_size = max(minimum_bars, (len(df) - first_train_end) // fold_count)
+        for period in range(fold_count):
+            train_end = first_train_end + (period * fold_size)
+            test_end = min(len(df), train_end + fold_size)
+            if test_end <= train_end or train_end < minimum_bars:
+                continue
+            try:
+                in_sample = run_rule_backtest(df.iloc[:train_end], symbol=symbol)
+                out_of_sample = run_rule_backtest(df.iloc[train_end:test_end], symbol=symbol)
+                walk_forward.append(
+                    WalkForwardPoint(
+                        period=period + 1,
+                        in_sample_cagr=round(in_sample.metrics.cagr * 100, 2),
+                        out_of_sample_cagr=round(out_of_sample.metrics.cagr * 100, 2),
+                    )
+                )
+            except Exception:
+                continue
+
+    avg_in_sample = float(np.mean([point.in_sample_cagr for point in walk_forward])) if walk_forward else 0.0
+    avg_out_of_sample = float(np.mean([point.out_of_sample_cagr for point in walk_forward])) if walk_forward else 0.0
+    if abs(avg_in_sample) < 1e-9 and abs(avg_out_of_sample) < 1e-9:
+        oos_degradation_score = 0
+    elif avg_in_sample > 0:
+        oos_degradation_score = int(np.clip((avg_out_of_sample / avg_in_sample) * 100, 0, 100))
+    elif avg_out_of_sample >= avg_in_sample:
+        oos_degradation_score = 100
+    else:
+        oos_degradation_score = 0
     aggregate_score = int((param_stability_score * 0.4) + (stress_resilience_score * 0.3) + (oos_degradation_score * 0.3))
 
     return RobustnessReport(
@@ -206,4 +254,5 @@ def analyze_robustness(
         sensitivity_grid=sensitivity_grid,
         monte_carlo=mc_result,
         stress_tests=stress_tests,
+        walk_forward=walk_forward,
     )
