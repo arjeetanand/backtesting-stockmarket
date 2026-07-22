@@ -1,140 +1,92 @@
 # Backtrack testing and release contract
 
-Last reviewed: 2026-07-22
+Last reviewed: 2026-07-23
 
-This document defines the evidence required before handing a Backtrack change to another agent or user. A passing build is not enough: data correctness, persistence, API behavior, trader-facing wording, and rendered UI must also be considered.
+This project has three verification layers: backend correctness, frontend build correctness, and rendered workflow checks. Market data is never downloaded by automated tests.
 
-## 1. Test layers
-
-```text
-Focused unit/regression test
-        ↓
-Ruff + Mypy
-        ↓
-Full backend pytest suite
-        ↓
-Frontend production build
-        ↓
-Manual/browser UI smoke check when available
-        ↓
-Release review
-```
-
-## 2. Required commands
+## Required commands
 
 From the repository root:
 
 ```bash
-env UV_CACHE_DIR=/tmp/backtrack-uv-cache uv run ruff check src tests
-env UV_CACHE_DIR=/tmp/backtrack-uv-cache uv run mypy src
-env UV_CACHE_DIR=/tmp/backtrack-uv-cache uv run pytest -q
+uv run ruff check src tests
+uv run mypy src
+uv run pytest -q
 git diff --check
-npm --prefix frontend run build -- --webpack
+npm --prefix frontend run build
 ```
 
-The tests use fake providers, fake Ollama payloads, and local temporary SQLite files. They must not require NSE, Yahoo, YouTube, or Ollama network access.
-
-## 3. Backend setup
+Focused checks:
 
 ```bash
-python3.12 -m venv venv
-source venv/bin/activate
-python -m pip install -e ".[dev]"
+uv run pytest -q tests/unit/test_data_inventory_api.py tests/unit/test_nse_import.py
 ```
 
-Run the API for manual smoke tests:
+The frontend package may also expose `npm --prefix frontend run lint`; run it when configured in `package.json`.
 
-```bash
-uvicorn quant_research.api.main:app --reload --port 8000
-```
+## Test boundaries
 
-## 4. Market-data and archive tests
+Automated tests use fake providers, fake Ollama responses, and temporary SQLite databases. They must not require NSE, Yahoo, YouTube, Ollama, broker credentials, or a network connection.
 
-Every change to the importer or market cache must cover:
+## Backend and data tests
 
-- legacy and current NSE Bhavcopy column names;
+Importer and cache changes must cover:
+
+- legacy and current NSE Bhavcopy column aliases;
 - valid OHLCV conversion and invalid-row skipping;
-- one ZIP download per weekday;
-- original ZIP saved under `NSE_ARCHIVE_PATH`;
-- a saved ZIP loaded locally without another network call;
-- every raw archive row persisted to `nse_bhavcopy_rows`;
-- supported EQ/BE/ETF rows persisted to `ohlcv_bars`;
-- archive-day coverage reused for a different stock request;
-- symbol/timeframe/timestamp upsert behavior;
-- exact weekday coverage preview;
-- complete-overlap import rejected with HTTP `409`;
-- holidays/404 archive dates reported as skipped;
-- missing local history produces an actionable import message;
-- no fallback to fabricated or live-looking data.
+- one archive download per trading day;
+- ZIP reuse without another network call;
+- raw rows retained in `nse_bhavcopy_rows`;
+- supported EQ/BE/ETF rows stored in `ohlcv_bars`;
+- archive-day reuse for another stock request;
+- conflict-safe candle upserts;
+- date-range preview and complete-overlap `409` behavior;
+- holiday/unavailable archive handling;
+- actionable missing-data errors;
+- no fabricated or live-looking fallback prices.
 
-The key regression is in `tests/unit/test_nse_import.py`: it creates a local ZIP, prevents `_download_day` from running, and verifies full-row/candle persistence and archive reuse.
+The key regression tests are in `tests/unit/test_nse_import.py` and `tests/unit/test_data_inventory_api.py`.
 
-## 5. Backtest and calculation tests
+## Backtest and persistence tests
 
 Verify:
 
-- start date precedes end date;
-- fast SMA is smaller than slow SMA;
-- signals do not use future bars;
-- entries and exits follow the documented next-bar execution convention;
-- commission and slippage affect results;
-- equity, trades, return, drawdown, and win rate agree;
-- no-trade results are safe and not presented as a misleading success claim;
-- custom rule and DSL parameters are validated;
-- deterministic cache keys return saved identical results;
-- robustness and validity reports are based on the same local bars.
+- valid date and strategy parameters;
+- no future-bar/look-ahead use;
+- documented next-bar execution behavior;
+- fees and slippage affect results;
+- return, trade count, win rate, equity, and drawdown are consistent;
+- no-trade output is safe and clearly explained;
+- deterministic cache keys reuse saved results;
+- backtests, hypotheses, robustness reports, YouTube drafts, import jobs, and replay sessions survive SQLite object recreation;
+- replay orders remain simulated and no credentials are persisted.
 
-## 6. Persistence tests
+## Research and YouTube tests
 
-Verify that data survives service-object recreation using a temporary SQLite path:
+Ollama tests cover valid JSON, Markdown-wrapped JSON, invalid output, timeout, HTTP failure, unavailable server, configured model, and deterministic fallback labeling.
 
-- backtest results can be saved and read by run ID;
-- identical backtests can reuse deterministic cached results;
-- hypotheses, custom results, robustness reports, YouTube results, and import jobs are stored as artifacts;
-- replay sessions, orders, events, cursor, and revealed bars reload after recreation;
-- research localStorage restores the active session;
-- replay localStorage restores the saved session ID;
-- no secrets or broker credentials are persisted.
+YouTube tests cover valid URLs, rejected non-YouTube URLs, pasted transcripts, missing rules, low confidence, captions, and the requirement for human review. Extraction must never automatically place an order or silently invent rules.
 
-## 7. Research, Ollama, and YouTube tests
+## API smoke checks
 
-### Ollama
+Start the API first:
 
-- fake JSON response is parsed into a constrained hypothesis;
-- Markdown-wrapped JSON is accepted;
-- invalid JSON is rejected clearly;
-- empty response, timeout, HTTP error, and unavailable server are explicit errors;
-- model name and base URL come from environment settings;
-- model output is labeled reviewable and never treated as an order.
+```bash
+source .venv/bin/activate
+uvicorn quant_research.api.main:app --reload --port 8000
+```
 
-### YouTube strategy import
-
-- valid YouTube URLs are accepted;
-- non-YouTube URLs are rejected;
-- pasted transcripts deterministically identify indicators and rule sentences;
-- caption metadata can be parsed when available;
-- no transcript produces low confidence and an instruction to paste notes/install `yt-dlp`;
-- missing entry, exit, or risk rules remain visible as review gaps;
-- extraction never automatically runs a backtest or order.
-
-## 8. API smoke tests
-
-Health and provider state:
+Then run:
 
 ```bash
 curl -fsS http://127.0.0.1:8000/api/v1/health
 curl -fsS http://127.0.0.1:8000/api/v1/providers
 curl -fsS http://127.0.0.1:8000/api/v1/data/cache
-```
-
-Search local catalogue/inventory:
-
-```bash
 curl -fsS 'http://127.0.0.1:8000/api/v1/data/instruments?query=RELIANCE'
-curl -fsS 'http://127.0.0.1:8000/api/v1/data/inventory?query=RELIANCE&start=2025-01-01&end=2025-12-31'
+curl -fsS 'http://127.0.0.1:8000/api/v1/data/inventory?query=RELIANCE&limit=50'
 ```
 
-Preview an import:
+Preview an import without starting it:
 
 ```bash
 curl -fsS -X POST http://127.0.0.1:8000/api/v1/data/nse-import/preview \
@@ -142,75 +94,52 @@ curl -fsS -X POST http://127.0.0.1:8000/api/v1/data/nse-import/preview \
   -d '{"start":"2025-01-01","end":"2025-12-31","preset":"custom","symbols":["RELIANCE"]}'
 ```
 
-YouTube extraction with deterministic transcript input:
+## Frontend smoke matrix
+
+Start the UI after the API:
 
 ```bash
-curl -fsS -X POST http://127.0.0.1:8000/api/v1/strategy/youtube \
-  -H 'content-type: application/json' \
-  -d '{"url":"https://www.youtube.com/watch?v=abc1234","transcript":"Buy when the 20 EMA crosses above the 50 EMA. Exit below the 20 EMA. Risk one percent with a stop loss."}'
-```
-
-## 9. Frontend smoke matrix
-
-Start the frontend after starting the API:
-
-```bash
-cd frontend
-npm run dev
+npm --prefix frontend run dev
 ```
 
 | Flow | Expected result |
 | --- | --- |
-| Home → Test a strategy | Selected symbol and dates are carried to Research |
-| Home → Replay a chart | Selected symbol and dates are carried to Replay |
-| Data → Refresh stock list | Official catalogue is saved and searchable |
-| Data → Check database | Cached days, missing days, stored bars, and import plan appear |
-| Data → Import this stock | One job starts; progress shows archive/candle/raw-row counts |
-| Data → repeat same range | Clear already-available/overlap message; no duplicate job |
-| Research → Parse hypothesis | Ollama result is reviewable; no order is placed |
-| Research → missing history | NSE preparation job runs and returns to backtest readiness |
-| Strategy Import → transcript | Entry, exit, risk, confidence, assumptions, and review gaps appear |
-| My tests → open result | Persisted backtest details render from SQLite-backed API |
-| Replay → Start/Step/order/finish | Historical candles reveal progressively and orders remain simulated |
-| Options → change inputs | Payoff, max loss, and breakeven update locally |
-| Backend unavailable | UI shows a clear error, not fake success or fake prices |
+| Home → Test a strategy | Symbol and dates carry into Research |
+| Home → Replay a chart | Symbol and dates carry into Replay |
+| Data → choose all/quick/custom range | Correct date window and button label appear |
+| Data → bulk import | One background job starts and shows progress |
+| Data → repeat an existing range | Existing data is reused; duplicate import is rejected or skipped clearly |
+| Data → type a stock/company name | Search results update without scanning full coverage on every keystroke |
+| Data → backend unavailable | Clear error appears; no fake stock or price data appears |
+| Research → hypothesis | Proposal is reviewable and no order is placed |
+| Research → missing history | Local NSE preparation/import guidance appears |
+| Strategy Import → transcript | Rules, confidence, assumptions, and review gaps appear |
+| My tests → open result | Persisted detail and charts render |
+| Replay → step/order/finish | Candles reveal progressively and orders remain simulated |
+| Options → edit inputs | Payoff, loss, and breakeven update locally |
 
-For visual changes, check the first viewport on desktop and around `390 × 844` mobile. Look for clipping, horizontal overflow, unclear loading states, broken focus, and text that implies real-time data.
+For rendered changes, check a desktop viewport and approximately `390 × 844` mobile. Look for clipping, horizontal overflow, unreadable tables, stale loading, broken focus, and duplicate calls-to-action.
 
-## 10. API error contract
+## API error contract
 
-- `422`: invalid date, symbol, timeframe, or strategy parameters.
-- `404`: unknown run, job, or replay session.
-- `409`: requested NSE range is already fully available.
-- `502`: upstream NSE, YouTube, or Ollama failure.
-- `503`: required local provider/service is unavailable.
+- `422` — invalid date, symbol, timeframe, or strategy request.
+- `404` — unknown run, job, or replay session.
+- `409` — requested range is already fully available.
+- `502` — upstream NSE, YouTube, or Ollama failure.
+- `503` — required local service/provider is unavailable.
 
 Errors must be actionable and must not be replaced with fabricated market data.
 
-## 11. Safety and data-quality gates
+## Release checklist
 
-- Historical bars are chronologically sorted and validated.
-- OHLC relationships and duplicate timestamps are checked.
-- Raw NSE fields are retained without claiming they are all modeled by the engine.
-- Look-ahead bias is not introduced.
-- Fill timing, capital, commission, and slippage are visible in the run contract.
-- Drawdown is represented as a negative peak-to-trough value.
-- YouTube rules remain drafts until human review.
-- Options content is labeled educational.
-- Replay has no broker route.
-- `.env`, SQLite files, archive ZIPs, account data, and tokens are not committed.
-
-## 12. Release checklist
-
-- [ ] Focused regression test added for every provider/import/calculation bug.
+- [ ] Focused regression test added for each backend/import/calculation bug.
 - [ ] Ruff passes.
 - [ ] Mypy passes.
-- [ ] Full pytest suite passes.
+- [ ] Full pytest passes.
 - [ ] `git diff --check` passes.
 - [ ] Frontend production build passes.
-- [ ] API health/providers state is accurate.
-- [ ] NSE inventory/preview/import/duplicate behavior is checked.
-- [ ] Loading, empty, error, and success UI states are present.
+- [ ] Data import/reuse/duplicate behavior is checked.
+- [ ] Search, loading, empty, error, and success states are checked.
 - [ ] Desktop/mobile layout has no obvious overflow.
 - [ ] No live-order or paid-provider language was introduced.
-- [ ] Known limitations are documented in `README.md` and `handover.md`.
+- [ ] README, PROJECT_GUIDE, handover, and the relevant backend/frontend guide are current.

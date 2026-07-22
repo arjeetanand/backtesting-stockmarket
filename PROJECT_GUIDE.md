@@ -1,90 +1,115 @@
-# Backtrack page-by-page guide
+# Backtrack product and page guide
 
-Backtrack is a local, research-only Indian-market backtesting application. The current market-data path is the official NSE daily archive imported into SQLite. No page places real orders.
+Backtrack is a local, research-only Indian-market backtesting application. It uses official NSE daily archive data saved in the local SQLite cache. It does not place real orders or provide live quotes.
 
-## First-use workflow
+## Simple first-use flow
 
-1. **Manage stock data**: search the NSE catalogue, choose dates, check coverage, and import missing archives.
-2. **Test a strategy**: write a hypothesis, review the local Ollama proposal, and run the historical test.
-3. **My tests**: reopen saved results and inspect performance.
-4. **Check reliability / Risk Engine**: inspect robustness and validity before trusting a result.
-5. **Run an ML experiment**: compare return-prediction models using chronological splits and walk-forward checks.
-6. **Replay a chart**: step through the same local history with simulated orders.
+1. Start the backend and frontend using [README.md](README.md).
+2. Open **Manage stock data**.
+3. Choose all history, last four years, last year, a calendar year, or custom dates.
+4. Start the one bulk import and leave the backend running.
+5. Search a symbol or company name to confirm its saved period and candle count.
+6. Open **Test a strategy**, **Build rules**, **Use a YouTube strategy**, or **Replay a chart**.
+7. Review assumptions, fees, slippage, data availability, and validity before trusting a result.
 
 ## Pages
 
-| Page | User task | Current implementation |
+| Page | User task | Current behavior |
 | --- | --- | --- |
-| Home | Choose a stock/date range and start a workflow | Local stock selector, date controls, links to Research, YouTube Import, and Replay |
-| Test a strategy | Turn an idea into a test | Local Ollama proposal, reviewable assumptions, automatic NSE history preparation, saved session restore |
-| Build rules | Configure indicators and entry/exit rules | Strategy Lab form and rule configuration |
-| Use a YouTube strategy | Bring in a strategy found online | URL/caption/transcript extraction into a draft requiring human review |
-| Manage stock data | Import and inspect history | Official catalogue, database inventory, coverage preview, duplicate protection, one-click stock import, progress, archive reuse |
-| My tests | Find completed backtests | Persisted SQLite backtest runs and detail links |
-| Compare tests | Compare runs/configurations | Local-data comparison workflow |
-| Check reliability | Challenge parameter stability | Robustness API and report views |
-| Risk Engine | Review validity and bias | Look-ahead, data quality, and overfitting audit views |
-| ML Lab | Explore machine-learning signals | Past-only technical features, chronological model comparison, cost-aware forecast backtest, and walk-forward diagnostics |
-| Replay a chart | Learn what happened candle by candle | Persisted historical replay sessions and simulated orders/journal |
-| Learn | Understand options concepts | Educational call/put payoff and breakeven calculator |
-| Analytics | Inspect performance and trade quality | Analytics views over available local run data |
-| Settings | Inspect configuration | Local NSE/Ollama/application status; no paid credential flow |
+| Home | Choose where to begin | Select a symbol/date window and enter strategy testing, YouTube import, or replay |
+| Test a strategy | Test a trading idea | Review a proposal, ensure local history, configure capital/risk, and run a saved backtest |
+| Build rules | Create a rule strategy | Configure indicators, entries, exits, risk, fees, and slippage |
+| Use a YouTube strategy | Bring in an online idea | Extract a reviewable draft from a URL, captions, or pasted transcript; human review is required |
+| Manage stock data | Download and search history | Bulk NSE archive import with quick/custom date windows and local catalogue search |
+| My tests | Reopen prior tests | Read persisted backtest results and details from SQLite |
+| Compare tests | Compare alternatives | Compare saved configurations and performance metrics |
+| Check reliability | Challenge stability | Run parameter sensitivity, Monte Carlo, walk-forward, and stress checks |
+| Risk Engine | Check validity | Review look-ahead, data quality, overfitting, and risk diagnostics |
+| ML Lab | Explore predictive features | Run chronological, past-only, cost-aware research experiments |
+| Pattern Finder | Explore recurring setups | Search historical local bars for configurable price patterns and review occurrences |
+| Replay a chart | Learn candle by candle | Reveal historical candles progressively and place simulated orders/journal entries |
+| Learn | Understand options basics | Calculate educational call/put payoff, max loss, and breakeven |
+| Analytics | Inspect performance | Review trade quality and available run analytics |
+| Settings | Inspect local configuration | View API, local cache, Ollama, and provider status |
 
-## Data behavior in the UI
+## Manage stock data
 
-The Data page shows three separate concepts:
+The page has two jobs only: import bulk history and search local stocks.
 
-- **Stock database**: saved candles and exact archive-day coverage for searchable symbols.
-- **Import configuration**: date range, stock universe, and custom symbol selection.
-- **Import plan**: cached days, missing days, estimated rows, and the no-duplicate decision before a job starts.
+### Download history
 
-When importing:
+The date selector supports:
 
-- `Downloading missing NSE archives` means a weekday ZIP was not found locally and is being fetched from NSE.
-- `Loading saved NSE archive` means the original ZIP already exists locally and is being reused.
-- `Saving complete NSE archive to SQLite` stores every raw row and all supported equity/ETF OHLCV rows.
-- A second stock request for an already saved archive day does not download the archive again.
+- **All history · 2000 to today**
+- **Last 4 years · one click**
+- **Last 1 year · one click**
+- Any calendar year
+- **Custom start and end dates**
 
-## Where to change a page
+The importer checks the SQLite database and `data/nse_archives/<year>/` before downloading. A single NSE trading-day archive contains the daily file for all supported stocks, so a successful day is loaded in bulk. There is no starter universe, custom-symbol import mode, or per-stock download button.
+
+### Search local data
+
+Type a symbol or company name into **Find a stock**. Search begins after text is entered and returns a small result set from the official NSE catalogue and stored symbols. Each result shows:
+
+- symbol and company/industry;
+- earliest and latest locally saved candle;
+- total saved candles;
+- `Saved locally` or `Stock list only`.
+
+If no results appear, confirm that the backend is running and refresh the official NSE catalogue by starting an import. The UI must show an error rather than fake data when the API is unavailable.
+
+## Strategy testing
+
+The normal path is:
+
+1. Select a stock and date range.
+2. Choose a known strategy or describe rules.
+3. Confirm that local history covers the requested period.
+4. Review capital, position sizing, risk limit, fees, slippage, and execution convention.
+5. Run the backtest.
+6. Inspect return, win rate, trade count, drawdown, equity curve, and trade ledger.
+7. Save the result and challenge it with comparison, robustness, replay, and validity tools.
+
+Results are historical evidence, not predictions or financial advice.
+
+## Indicators and strategies
+
+The learning and strategy surfaces explain common indicators such as SMA/EMA, RSI, MACD, Bollinger Bands, ATR, and volume. Parameters are displayed with plain-language explanations. For example, RSI 14 means the momentum calculation uses the most recent 14 bars; 30/70 are commonly used reference zones, not automatic buy or sell instructions.
+
+Known strategies are available through the strategy library and include moving-average crossover, RSI mean reversion, RSI plus EMA confirmation, Bollinger mean reversion, MACD trend following, breakout, momentum, and buy-and-hold baselines. Every strategy remains configurable and must be tested on the selected local history.
+
+## YouTube strategy import
+
+Users can paste a YouTube URL, captions, or a transcript. The importer extracts possible entry, exit, indicator, risk, and timeframe rules and labels confidence/review gaps. It does not claim that a video was fully understood, does not invent missing rules, and does not automatically run or execute the strategy.
+
+## Replay
+
+Replay uses the same local daily bars as backtesting. The user selects a symbol, date range, and starting balance, then reveals candles using a step/speed control. The screen should show the current candle timestamp, OHLC values, progress, simulated positions, realized/unrealized P&L, trade attempts, and execution journal. Orders are always paper simulations.
+
+## Persistence and caching
+
+The backend persists market data, archive metadata, raw rows, backtests, research artifacts, import jobs, and replay sessions in `data/market_cache.sqlite3`. The research page stores its active session key in browser storage, and replay stores its server session ID so a refresh can recover the session.
+
+The importer is incremental. Existing ZIPs and complete archive days are reused; candle upserts prevent duplicate `(symbol, timeframe, timestamp)` rows. The background job is process-local, so a server restart may require starting the same import again, but committed data remains safe.
+
+## Managing saved tests
+
+**My tests** stores completed runs locally so they can be reopened later. A user can delete an individual test or clear testing history from the history controls. This removes saved result artifacts, not the historical NSE market-data cache or original archive ZIPs.
+
+## Source locations
 
 ```text
-frontend/src/app/<route>/page.tsx        # page behavior and API calls
-frontend/src/app/globals.css             # shared layout and visual system
-frontend/src/components/layout/         # sidebar/topbar
-frontend/src/components/charts/          # chart rendering
-frontend/src/components/ui/              # buttons/cards/badges
-frontend/src/lib/                        # typed API clients and local swarm
+src/quant_research/api/routes/api.py       # HTTP routes
+src/quant_research/api/schemas.py          # API contracts
+src/quant_research/api/container.py        # dependency wiring
+src/quant_research/services/               # workflows
+src/quant_research/repositories/           # SQLite persistence
+src/quant_research/domain/                 # indicators, DSL, engine, analytics, validity
+frontend/src/app/                          # pages/routes
+frontend/src/components/                  # shared UI and charts
+frontend/src/lib/                         # API clients and local agents
+tests/                                     # automated tests
 ```
 
-## Where to change backend behavior
-
-```text
-src/quant_research/api/routes/api.py    # HTTP route behavior
-src/quant_research/api/schemas.py       # request/response contracts
-src/quant_research/api/container.py     # dependency wiring
-src/quant_research/services/            # workflows and orchestration
-src/quant_research/repositories/        # SQLite persistence
-src/quant_research/domain/              # calculations, validation, DSL, metrics
-```
-
-## Data rules
-
-- One official NSE Common Bhavcopy ZIP is downloaded per weekday at most.
-- Original ZIPs are stored in `data/nse_archives/` and excluded from Git.
-- Every raw archive row is retained in SQLite for future fields/research.
-- Supported EQ/BE/ETF rows are normalized into `ohlcv_bars`.
-- Full overlaps are rejected before import with a clear UI message.
-- OHLCV upserts use `(symbol, timeframe, timestamp)` and do not create duplicate candles.
-- Missing history stops a backtest with an import instruction; it is not silently replaced with fabricated data.
-- Replay orders are simulated only.
-
-## Persistence
-
-The default SQLite file is `data/market_cache.sqlite3`. It stores market data, catalogue metadata, archive coverage, raw archive rows, backtest runs, research artifacts, import jobs, and replay sessions. The browser also keeps the active Research session and Replay session ID in localStorage.
-
-## Handoff references
-
-- [README.md](README.md): setup, product behavior, routes, repository map, and limitations.
-- [handover.md](handover.md): engineering ownership, persistence contract, API source of truth, and release checks.
-- [TESTING.md](TESTING.md): automated commands and QA expectations.
-- [REPLAY_IMPLEMENTATION_PLAN.md](REPLAY_IMPLEMENTATION_PLAN.md): replay design notes.
+For engineering details, see [handover.md](handover.md). For setup, see [README.md](README.md). For backend/frontend details, see [backend/README.md](backend/README.md) and [frontend/README.md](frontend/README.md).

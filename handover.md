@@ -1,6 +1,6 @@
 # Backtrack engineering handover
 
-Last reviewed: 2026-07-22
+Last reviewed: 2026-07-23
 
 This is the current engineering source of truth for the Backtrack repository. Read it before changing data imports, provider behavior, backtesting, persistence, replay, research, or trader-facing claims.
 
@@ -18,7 +18,7 @@ The application is research-only. It has no broker order endpoint, account sync,
 Next.js browser UI
   ├─ Home and trader navigation
   ├─ Research / Strategy Lab / YouTube strategy draft
-  ├─ Data catalogue, archive import, coverage, and inventory
+  ├─ Bulk archive import and local stock search
   ├─ Persisted backtest history and detail reports
   ├─ Comparison, robustness, validity, analytics, and options education
   └─ Historical chart replay with simulated orders
@@ -34,7 +34,7 @@ FastAPI application
           ▼
 Application services and domain
   ├─ NseBhavcopyImporter
-  ├─ Nifty500CatalogueImporter
+  ├─ Nifty500CatalogueImporter (catalogue compatibility service)
   ├─ LocalNseCacheProvider
   ├─ ResearchService and SMA service
   ├─ HypothesisService + OllamaClient
@@ -47,7 +47,7 @@ Application services and domain
           ▼
 SQLite and local archive files
   ├─ data/market_cache.sqlite3
-  └─ data/nse_archives/*.csv.zip
+  └─ data/nse_archives/<year>/*.csv.zip
 ```
 
 The default container wires `LocalNseCacheProvider` as the research provider. `yahoo_finance.py` remains an adapter/test surface, but it is not the configured provider for the current local NSE workflow.
@@ -126,12 +126,14 @@ Persistence is local single-user SQLite. There is no authentication, multi-user 
 | Research | `frontend/src/app/research/page.tsx` | Hypothesis prompt, Ollama proposal, NSE data preparation, backtest handoff, saved-session restore |
 | Strategy Lab | `frontend/src/app/strategy/page.tsx` | Rule/indicator strategy configuration |
 | YouTube Import | `frontend/src/app/strategy-import/page.tsx` | URL/transcript extraction and human-review draft |
-| Manage Stock Data | `frontend/src/app/data/page.tsx` | Catalogue refresh, inventory search, coverage preview, one-click import, progress, and cache status |
+| Manage Stock Data | `frontend/src/app/data/page.tsx` | Bulk quick/custom date-range import, local catalogue search, saved period/candle count, progress, and cache status |
 | My Tests | `frontend/src/app/backtests/page.tsx` | Saved run list and filters |
 | Backtest Detail | `frontend/src/app/backtests/[id]/page.tsx` | Metrics, curves, trades, bias/validity details |
 | Compare Tests | `frontend/src/app/comparison/page.tsx` | Compare selected strategy configurations/results |
 | Robustness | `frontend/src/app/robustness/page.tsx` | Sensitivity, Monte Carlo, walk-forward, and stress views |
 | Risk Engine | `frontend/src/app/bias-validity/page.tsx` | Validity and bias diagnostics |
+| ML Lab | `frontend/src/app/ml-lab/page.tsx` | Chronological ML research experiments |
+| Pattern Finder | `frontend/src/app/pattern-finder/page.tsx` | Historical pattern detection and occurrence review |
 | Chart Replay | `frontend/src/app/replay/page.tsx` | Candle replay, simulated ticket, positions, journal, and session persistence |
 | Options Learn | `frontend/src/app/options/page.tsx` | Educational payoff and breakeven calculator |
 | Analytics | `frontend/src/app/analytics/page.tsx` | Performance and trade-quality analysis |
@@ -147,6 +149,8 @@ Shared frontend infrastructure:
 - `frontend/src/lib/replay/`: replay API client and types.
 - `frontend/src/lib/robustness-api.ts`: robustness API client.
 - `frontend/src/lib/agents/`: five in-process TypeScript swarm modules.
+- `frontend/src/lib/strategy-library.ts`: known strategy definitions used by strategy selection and education.
+- `frontend/src/lib/market-data.ts`: local market-data and availability client.
 - `frontend/src/app/globals.css`: shared design tokens, layout, responsive rules, and page-specific styles.
 
 ## 6. Five-agent local swarm
@@ -196,6 +200,13 @@ API schemas live in `src/quant_research/api/schemas.py`; route behavior lives in
 - `GET /backtests/{run_id}`
 - `POST /robustness/analyze`
 - `POST /bias-validity/audit`
+- `POST /ml/experiments`
+- `GET /ml/experiments`
+- `POST /pattern-finder/test`
+- `DELETE /backtests`
+- `DELETE /backtests/{run_id}`
+- `DELETE /testing-history`
+- `DELETE /research/artifacts/{kind}/{artifact_key}`
 
 ### Replay
 
@@ -222,8 +233,9 @@ backtrack/
 ├── handover.md
 ├── TESTING.md
 ├── PROJECT_GUIDE.md
-├── FRONTEND_CODEBASE_SUMMARY.md
-├── REPLAY_IMPLEMENTATION_PLAN.md
+├── AGENTS.md
+├── backend/README.md
+├── frontend/README.md
 ├── pyproject.toml
 ├── .env.example
 ├── src/quant_research/
@@ -239,7 +251,7 @@ backtrack/
 │   └── src/lib/            # API clients, replay types, helpers, swarm modules
 ├── data/                   # Runtime state, ignored by Git
 │   ├── market_cache.sqlite3
-│   └── nse_archives/*.csv.zip
+│   └── nse_archives/<year>/*.csv.zip
 └── tests/                  # Unit, persistence, import, API, replay, and engine tests
 ```
 
@@ -266,7 +278,7 @@ env UV_CACHE_DIR=/tmp/backtrack-uv-cache uv run ruff check src tests
 env UV_CACHE_DIR=/tmp/backtrack-uv-cache uv run mypy src
 env UV_CACHE_DIR=/tmp/backtrack-uv-cache uv run pytest -q
 git diff --check
-npm --prefix frontend run build -- --webpack
+npm --prefix frontend run build
 ```
 
 For a frontend change, also manually check:
