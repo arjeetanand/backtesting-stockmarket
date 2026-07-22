@@ -26,7 +26,7 @@ export function runSwarmBacktest(config: BacktestConfig): BacktestResult {
     ...risk,
     finalValue: simulation.equity.at(-1)?.strategy ?? config.initialCapital,
     narrative,
-    caveat: "Seeded NSE-compatible data powers this local dashboard preview. Server backtests use keyless Yahoo Finance historical candles; no broker orders are sent.",
+    caveat: "The dashboard preview is being replaced with local official NSE data. Server backtests use the local NSE historical cache; no broker orders are sent.",
   };
 }
 

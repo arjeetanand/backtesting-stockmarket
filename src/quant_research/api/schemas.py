@@ -44,6 +44,21 @@ class NseImportJobResponse(BaseModel):
     symbols: int
 
 
+class NseImportCoverageItem(BaseModel):
+    symbol: str
+    bars: int
+    earliest: datetime | None
+    latest: datetime | None
+    fully_available: bool
+
+
+class NseImportPreviewResponse(BaseModel):
+    requested_symbols: int
+    fully_available: bool
+    message: str
+    coverage: list[NseImportCoverageItem]
+
+
 class NseImportStatusResponse(BaseModel):
     job_id: str
     status: str
@@ -51,6 +66,7 @@ class NseImportStatusResponse(BaseModel):
     downloaded_days: int | None = None
     skipped_days: int | None = None
     stored_bars: int | None = None
+    already_available_days: int | None = None
 
 
 class YouTubeStrategyRequest(BaseModel):

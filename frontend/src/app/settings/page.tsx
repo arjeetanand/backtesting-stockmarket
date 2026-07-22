@@ -34,7 +34,7 @@ export default function SettingsPage() {
               <Settings2 size={16} className="bt-muted-icon" />
             </div>
             <label className="bt-setting-row">
-              <span><strong>Historical data source</strong><small>Keyless Yahoo Finance historical OHLCV for research backtests.</small></span>
+              <span><strong>Historical data source</strong><small>Locally imported official NSE daily OHLCV for research backtests.</small></span>
               <span className="bt-input-suffix">Free</span>
             </label>
             <label className="bt-setting-row">

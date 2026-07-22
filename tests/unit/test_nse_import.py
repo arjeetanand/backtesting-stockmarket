@@ -1,5 +1,7 @@
 from datetime import date
+from pathlib import Path
 
+from quant_research.repositories.market_cache import SqliteMarketCache
 from quant_research.services.nse_import import NseBhavcopyImporter
 
 
@@ -24,3 +26,14 @@ def test_nse_importer_accepts_udiff_columns() -> None:
 
     assert len(bars) == 1
     assert bars[0].volume == 100
+
+
+def test_nse_importer_skips_a_day_already_recorded_for_the_requested_symbols(tmp_path: Path) -> None:
+    cache = SqliteMarketCache(tmp_path / "market.sqlite3")
+    cache.mark_nse_day_covered(["RELIANCE"], "1day", date(2025, 1, 2))
+    importer = NseBhavcopyImporter(cache)
+
+    result = importer.import_daily_universe(["RELIANCE"], date(2025, 1, 2), date(2025, 1, 2))
+
+    assert result.downloaded_days == 0
+    assert result.already_available_days == 1

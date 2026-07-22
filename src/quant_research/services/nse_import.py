@@ -27,6 +27,7 @@ class NseImportResult:
     downloaded_days: int
     skipped_days: int
     stored_bars: int
+    already_available_days: int
 
 
 class NseBhavcopyImporter:
@@ -41,10 +42,14 @@ class NseBhavcopyImporter:
 
     def import_daily_universe(self, symbols: list[str], start: date, end: date) -> NseImportResult:
         selected = {symbol.strip().upper().removesuffix(".NS") for symbol in symbols if symbol.strip()}
-        downloaded_days = skipped_days = stored_bars = 0
+        downloaded_days = skipped_days = stored_bars = already_available_days = 0
         cursor = start
         while cursor <= end:
             if cursor.weekday() < 5:
+                if self._cache.is_nse_day_covered(list(selected), "1day", cursor):
+                    already_available_days += 1
+                    cursor += timedelta(days=1)
+                    continue
                 rows = self._download_day(cursor)
                 if rows is None:
                     skipped_days += 1
@@ -52,10 +57,13 @@ class NseBhavcopyImporter:
                     downloaded_days += 1
                     bars = self._bars_for_rows(rows, selected, cursor)
                     stored_bars += self._cache.put(bars, "1day", source="nse_common_bhavcopy")
+                    # Track an archive even if a requested symbol was not listed that day.
+                    # This makes a future click idempotent and avoids re-downloading holidays/listing gaps.
+                    self._cache.mark_nse_day_covered(list(selected), "1day", cursor)
             cursor += timedelta(days=1)
-        if downloaded_days == 0:
+        if downloaded_days == 0 and already_available_days == 0:
             raise RuntimeError("No NSE Bhavcopy archive was downloaded. Check the chosen dates or retry after NSE archive access is available.")
-        return NseImportResult(downloaded_days, skipped_days, stored_bars)
+        return NseImportResult(downloaded_days, skipped_days, stored_bars, already_available_days)
 
     def _download_day(self, trading_day: date) -> list[dict[str, str]] | None:
         url = self.archive_url.format(

@@ -146,7 +146,7 @@ export default function ReplayPage() {
             <span className="bt-eyebrow">Free Historical Replay</span>
             <h1>Choose your backtest period.</h1>
             <p>
-              Uses keyless Yahoo Finance historical candles. Orders are
+              Uses locally imported official NSE historical candles. Orders are
               simulated only — never sent to a broker.
             </p>
 

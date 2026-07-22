@@ -16,7 +16,9 @@ from quant_research.api.schemas import (
     HealthResponse,
     HypothesisRequest,
     MarketDataResponse,
+    NseImportCoverageItem,
     NseImportJobResponse,
+    NseImportPreviewResponse,
     NseImportRequest,
     NseImportStatusResponse,
     ProviderStatus,
@@ -108,10 +110,10 @@ def create_api_router(
     def providers() -> list[ProviderStatus]:
         return [
             ProviderStatus(
-                name="yahoo_finance",
+                name="local_nse_cache",
                 configured=True,
                 live_feed=False,
-                notes="Keyless historical OHLCV for research backtests; no paid account or API key is required.",
+                notes="Locally cached official NSE daily OHLCV for research backtests; no paid account, API key, or order execution is required.",
             ),
         ]
 
@@ -128,10 +130,47 @@ def create_api_router(
         symbols = selected_symbols(payload)
         if not symbols:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Choose at least one symbol.")
+        if market_cache is not None:
+            coverage = market_cache.coverage(symbols, "1day")
+            if coverage and all(item.covers(payload.start, payload.end) for item in coverage):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="This date range is already available locally for every selected symbol. Choose a newer or missing period instead.",
+                )
         job_id = f"nse_{uuid4().hex[:10]}"
         import_jobs[job_id] = {"status": "queued", "message": "Official NSE import has been queued."}
         background_tasks.add_task(run_import, job_id, symbols, payload)
         return NseImportJobResponse(job_id=job_id, status="queued", symbols=len(symbols))
+
+    @router.post("/data/nse-import/preview", response_model=NseImportPreviewResponse, tags=["market data"])
+    def preview_nse_import(payload: NseImportRequest) -> NseImportPreviewResponse:
+        if payload.start > payload.end:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="start must be on or before end.")
+        symbols = selected_symbols(payload)
+        if not symbols:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Choose at least one symbol.")
+        coverage = market_cache.coverage(symbols, "1day") if market_cache is not None else []
+        items = [
+            NseImportCoverageItem(
+                symbol=item.symbol,
+                bars=item.bars,
+                earliest=item.earliest,
+                latest=item.latest,
+                fully_available=item.covers(payload.start, payload.end),
+            )
+            for item in coverage
+        ]
+        complete = bool(items) and all(item.fully_available for item in items)
+        return NseImportPreviewResponse(
+            requested_symbols=len(symbols),
+            fully_available=complete,
+            message=(
+                "The selected period is already in the local cache. Choose a newer or missing date range."
+                if complete
+                else "Only missing or newer NSE history will be imported; cached bars are never duplicated."
+            ),
+            coverage=items,
+        )
 
     @router.get("/data/nse-import/{job_id}", response_model=NseImportStatusResponse, tags=["market data"])
     def nse_import_status(job_id: str) -> NseImportStatusResponse:

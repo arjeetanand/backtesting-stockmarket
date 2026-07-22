@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from quant_research.domain.data.models import OHLCVBar
@@ -16,3 +16,26 @@ def test_sqlite_cache_round_trips_daily_bars(tmp_path: Path) -> None:
 
     assert cached == [bar]
     assert cache.summary().bars == 1
+
+
+def test_sqlite_cache_reports_coverage_and_records_processed_nse_days(tmp_path: Path) -> None:
+    cache = SqliteMarketCache(tmp_path / "market.sqlite3")
+    cache.put(
+        [
+            OHLCVBar(timestamp=datetime(2025, 1, 2, tzinfo=UTC), symbol="RELIANCE", open=100, high=105, low=99, close=102, volume=1_000),
+            OHLCVBar(timestamp=datetime(2025, 1, 3, tzinfo=UTC), symbol="RELIANCE", open=102, high=106, low=101, close=104, volume=1_000),
+        ],
+        "1day",
+        "nse_common_bhavcopy",
+    )
+
+    coverage = cache.coverage(["RELIANCE", "INFY"], "1day")
+
+    assert coverage[0].symbol == "INFY"
+    assert coverage[0].bars == 0
+    assert coverage[1].covers(date(2025, 1, 2), date(2025, 1, 3))
+    assert not cache.is_nse_day_covered(["RELIANCE", "INFY"], "1day", date(2025, 1, 2))
+
+    cache.mark_nse_day_covered(["RELIANCE", "INFY"], "1day", date(2025, 1, 2))
+
+    assert cache.is_nse_day_covered(["RELIANCE", "INFY"], "1day", date(2025, 1, 2))

@@ -33,4 +33,4 @@ export function fetchMarketData(config: BacktestConfig): MarketBar[] {
   });
 }
 
-export const providerLabel = "Keyless Yahoo Finance historical adapter";
+export const providerLabel = "Local official NSE historical cache";

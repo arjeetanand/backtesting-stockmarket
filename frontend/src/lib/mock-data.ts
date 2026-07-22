@@ -183,16 +183,17 @@ export const mockBacktestResult = {
 export const mockEquityCurve = Array.from({ length: 72 }, (_, i) => {
   const date = new Date("2019-01-01");
   date.setMonth(date.getMonth() + i);
-  const t = i / 71;
+  // Fixed oscillations keep demo data stable across SSR and client hydration.
+  // It is intentionally not random: a changing curve makes a backtest result
+  // impossible to compare and caused React hydration errors in the run view.
   const strategyGrowth =
-    100000 *
-    (1 +
-      0.182 * (i / 12) +
-      Math.sin(i * 0.8) * 3000 +
-      Math.random() * 2000 -
-      1000);
+    100000 * (1 + 0.182 * (i / 12)) +
+    Math.sin(i * 0.8) * 5000 +
+    Math.cos(i * 0.31) * 1800;
   const benchmarkGrowth =
-    100000 * (1 + 0.098 * (i / 12) + Math.sin(i * 0.6) * 2000 + Math.random() * 1500 - 750);
+    100000 * (1 + 0.098 * (i / 12)) +
+    Math.sin(i * 0.6) * 3200 +
+    Math.cos(i * 0.43) * 1100;
   return {
     date: date.toISOString().slice(0, 7),
     strategy: Math.max(80000, strategyGrowth + i * 500),
@@ -217,9 +218,9 @@ export const mockTopStrategies = Array.from({ length: 36 }, (_, i) => {
   date.setMonth(date.getMonth() + i);
   return {
     date: date.toISOString().slice(0, 7),
-    "RSI+EMA": 100 + i * 1.5 + Math.sin(i * 0.9) * 4 + Math.random() * 2,
-    "MACD Momentum": 100 + i * 1.1 + Math.sin(i * 0.7) * 5 + Math.random() * 3,
-    "EMA Crossover": 100 + i * 0.8 + Math.sin(i * 0.5) * 3 + Math.random() * 2,
+    "RSI+EMA": 100 + i * 1.5 + Math.sin(i * 0.9) * 4 + Math.cos(i * 0.29),
+    "MACD Momentum": 100 + i * 1.1 + Math.sin(i * 0.7) * 5 + Math.cos(i * 0.41) * 1.5,
+    "EMA Crossover": 100 + i * 0.8 + Math.sin(i * 0.5) * 3 + Math.cos(i * 0.63),
   };
 });
 
