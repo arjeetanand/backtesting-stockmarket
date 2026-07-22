@@ -9,7 +9,7 @@ It does not connect to a broker, place real orders, execute trades, or require a
 | Capability | Current behavior |
 | --- | --- |
 | Historical market data | Official NSE Common Bhavcopy daily archives imported into a local SQLite database |
-| Archive reuse | Original daily ZIP files are saved locally and reused for later stock requests |
+| Archive reuse | Original daily ZIP files are saved locally and reused for later stock requests; they are never committed to Git |
 | Backtesting | SMA crossover and configurable indicator-rule backtests with fees/slippage |
 | Research | Natural-language hypothesis review through local Ollama, when Ollama is installed |
 | YouTube import | Extracts reviewable rules from a YouTube URL, captions, or pasted transcript |
@@ -99,6 +99,22 @@ Open:
 - UI: `http://localhost:3000`
 - API documentation: `http://localhost:8000/docs`
 - Health: `http://localhost:8000/api/v1/health`
+
+## Market data is downloaded on demand
+
+The SQLite database and NSE ZIP archives are intentionally excluded from Git. They can grow to several gigabytes and are local runtime data, not application source code.
+
+After a fresh clone:
+
+1. Start the backend and frontend using the commands above.
+2. Open **Manage stock data**.
+3. Refresh the official NSE catalogue if needed.
+4. Select the date range and stock universe.
+5. Click **Check database**, then **Import missing data**.
+
+The importer creates `data/market_cache.sqlite3` and `data/nse_archives/<year>/` locally. It checks the SQLite coverage and local archive folder first, downloads only missing official NSE archive days, saves each original ZIP locally, and bulk-loads the archive rows into SQLite. Repeating the same request reuses the local archive/database coverage instead of downloading the day again.
+
+No market data is downloaded by `git clone`, Python installation, or `npm install`. If you already have archives from another machine, copy them into `data/nse_archives/<year>/` before importing and the importer will check them first.
 
 ## Environment configuration
 
@@ -231,9 +247,9 @@ backtrack/
 │   ├── src/app/                      # Next.js route pages
 │   ├── src/components/               # Shared layout, charts, UI primitives
 │   └── src/lib/                      # API clients, replay types, local swarm modules
-├── data/                             # Runtime cache; ignored by Git
-│   ├── market_cache.sqlite3          # SQLite data, runs, artifacts, replay sessions
-│   └── nse_archives/                 # Original NSE daily ZIP archives
+├── data/                             # Local runtime data; ignored by Git
+│   ├── market_cache.sqlite3          # Created locally on first import
+│   └── nse_archives/                 # Downloaded locally on demand, grouped by year
 └── tests/                            # Backend unit, persistence, API, and engine tests
 ```
 

@@ -8,9 +8,20 @@ __pycache__/
 .mypy_cache/
 *.egg-info/
 .gitignore
-
+data/*.sqlite3
 data/*.sqlite3-*
 data/*.bak
-data/nse_archives/
+
+# Local databases and generated database backups must never be committed.
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+*.bak
+
+# NSE archives are downloaded on demand and kept locally; never commit them.
+data/**/*.zip
+data/*.zip
 .DS_Store
 data/.DS_Store
