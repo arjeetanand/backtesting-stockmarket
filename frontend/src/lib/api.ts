@@ -10,13 +10,23 @@ export async function fetchWithTimeout(input: RequestInfo | URL, init: RequestIn
     else externalSignal.addEventListener("abort", forwardAbort, { once: true });
   }
   try {
-    const timeout = new Promise<Response>((_, reject) => {
+    return await new Promise<Response>((resolve, reject) => {
+      let settled = false;
       timer = window.setTimeout(() => {
+        settled = true;
         controller.abort();
-        reject(new Error("The local data service did not respond in time. Check that the API is running and try again."));
+        reject(new Error("Could not connect to the local data service. Start the backend on port 8000, then try again."));
       }, timeoutMs);
+      void fetch(input, { ...init, signal: controller.signal }).then((response) => {
+        if (settled) return;
+        settled = true;
+        resolve(response);
+      }).catch((error: unknown) => {
+        if (settled) return;
+        settled = true;
+        reject(error);
+      });
     });
-    return await Promise.race([fetch(input, { ...init, signal: controller.signal }), timeout]);
   } catch (error) {
     throw error;
   } finally {

@@ -194,7 +194,7 @@ export default function StrategyImportPage() {
             <div><label className="bt-field-label">From</label><input className="bt-field-input" type="date" max={endDate} value={startDate} onChange={(event) => setStartDate(event.target.value)} /></div>
             <div><label className="bt-field-label">To</label><input className="bt-field-input" type="date" min={startDate} max={today} value={endDate} onChange={(event) => setEndDate(event.target.value)} /></div>
           </div>
-          <div className="bt-popular-footer"><span><Sparkles size={13} /> The backtest uses next-candle execution, commission, slippage, and the selected starting capital.</span>{selectedTemplate && <div className="bt-row"><a className="bt-secondary small" href={selectedTemplate.sourceUrl} target="_blank" rel="noreferrer"><ExternalLink size={13} /> Review source</a><Link className="bt-primary small" href={backtestHref}>Backtest selected strategy <ArrowRight size={13} /></Link></div>}</div>
+          <div className="bt-popular-footer"><span><Sparkles size={13} /> The backtest uses next-candle execution, commission, slippage, and the selected starting capital.</span>{selectedTemplate && !extraction && <div className="bt-row"><a className="bt-secondary small" href={selectedTemplate.sourceUrl} target="_blank" rel="noreferrer"><ExternalLink size={13} /> Review source</a><Link className="bt-primary small" href={backtestHref}>Backtest selected strategy <ArrowRight size={13} /></Link></div>}</div>
         </section>
 
         <div className="bt-import-grid">

@@ -108,6 +108,7 @@ Open:
 CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=qwen3:4b
+OLLAMA_TIMEOUT_SECONDS=25
 MARKET_CACHE_PATH=data/market_cache.sqlite3
 NSE_ARCHIVE_PATH=data/nse_archives
 ```
@@ -120,7 +121,7 @@ NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000/api/v1
 
 ### Ollama
 
-Ollama is optional. It is used by **Research** to turn a natural-language idea into a constrained, reviewable SMA proposal. It does not place orders. If Ollama is unavailable, the UI should show an explicit error rather than inventing model output.
+Ollama is optional. It is used by **Research** to turn a natural-language idea into a constrained, reviewable strategy proposal. It does not place orders. The API waits up to `OLLAMA_TIMEOUT_SECONDS` (25 seconds by default); if the local service is stopped, the model is missing, or inference times out, Research returns an explicitly labelled deterministic catalogue proposal instead of pretending it came from an LLM. The proposal can still be tested against the real cached NSE history, and a later retry can use Ollama once it is healthy.
 
 Example setup:
 
@@ -145,6 +146,7 @@ The configured model can be changed with `OLLAMA_MODEL`.
 | `/comparison` | Compare tests | Compare configured strategy runs using the local cache |
 | `/robustness` | Check reliability | Parameter sensitivity, Monte Carlo, walk-forward, and stress analysis |
 | `/bias-validity` | Risk Engine | Look-ahead, data quality, overfitting, and validity checks |
+| `/ml-lab` | ML Lab | Compare return-prediction models on local NSE history with chronological validation and walk-forward diagnostics |
 | `/replay` | Replay a chart | Step through historical NSE candles and place simulated orders |
 | `/options` | Learn | Educational call/put payoff and breakeven calculator |
 | `/analytics` | Analytics | Performance and trade-quality views for available local run data |
@@ -185,6 +187,8 @@ All routes are prefixed with `/api/v1`.
 | GET | `/backtests/{run_id}` | Read one persisted result |
 | POST | `/robustness/analyze` | Run/cache parameter, Monte Carlo, and stress analysis |
 | POST | `/bias-validity/audit` | Audit look-ahead, data, and strategy validity |
+| POST | `/ml/experiments` | Run/cache a chronological ML return-prediction experiment |
+| GET | `/ml/experiments` | List saved ML experiment reports |
 
 ### Replay
 
@@ -222,7 +226,7 @@ backtrack/
 │   │   └── validity/                 # Bias and validity auditing
 │   ├── llm/                          # Local Ollama client
 │   ├── repositories/                 # SQLite market, run, and artifact stores
-│   └── services/                     # Import, research, replay, strategy services
+│   └── services/                     # Import, research, replay, strategy, and ML services
 ├── frontend/
 │   ├── src/app/                      # Next.js route pages
 │   ├── src/components/               # Shared layout, charts, UI primitives

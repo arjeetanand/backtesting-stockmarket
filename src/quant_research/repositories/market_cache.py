@@ -123,6 +123,18 @@ class SqliteMarketCache:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS cache_summary (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    symbols INTEGER NOT NULL,
+                    bars INTEGER NOT NULL,
+                    earliest TEXT,
+                    latest TEXT,
+                    refreshed_at TEXT NOT NULL
+                )
+                """
+            )
             # These read paths are used by the data-management screen on every
             # visit. Keep the date-coverage and archive lookups indexed so a
             # large NSE catalogue does not turn the first render into a scan.
@@ -172,14 +184,45 @@ class SqliteMarketCache:
 
     def summary(self) -> CacheSummary:
         with self._connect() as connection:
-            symbols, bars, earliest, latest = connection.execute(
-                "SELECT COUNT(DISTINCT symbol), COUNT(*), MIN(timestamp), MAX(timestamp) FROM ohlcv_bars"
-            ).fetchone()
+            row = connection.execute("SELECT symbols, bars, earliest, latest FROM cache_summary WHERE id = 1").fetchone()
+            if row is None:
+                return self.refresh_summary(connection)
+            symbols, bars, earliest, latest = row
         return CacheSummary(
             symbols=int(symbols), bars=int(bars),
             earliest=datetime.fromisoformat(earliest) if earliest else None,
             latest=datetime.fromisoformat(latest) if latest else None,
         )
+
+    def refresh_summary(self, connection: sqlite3.Connection | None = None) -> CacheSummary:
+        """Refresh the persisted summary after a batch import or migration."""
+        owns_connection = connection is None
+        active_connection = connection or self._connect()
+        try:
+            symbols, bars, earliest, latest = active_connection.execute(
+                "SELECT COUNT(DISTINCT symbol), COUNT(*), MIN(timestamp), MAX(timestamp) FROM ohlcv_bars"
+            ).fetchone()
+            active_connection.execute(
+                """
+                INSERT INTO cache_summary (id, symbols, bars, earliest, latest, refreshed_at)
+                VALUES (1, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    symbols = excluded.symbols, bars = excluded.bars,
+                    earliest = excluded.earliest, latest = excluded.latest,
+                    refreshed_at = excluded.refreshed_at
+                """,
+                (int(symbols), int(bars), earliest, latest, datetime.now(UTC).isoformat()),
+            )
+            if owns_connection:
+                active_connection.commit()
+            return CacheSummary(
+                symbols=int(symbols), bars=int(bars),
+                earliest=datetime.fromisoformat(earliest) if earliest else None,
+                latest=datetime.fromisoformat(latest) if latest else None,
+            )
+        finally:
+            if owns_connection:
+                active_connection.close()
 
     def coverage(self, symbols: list[str], timeframe: str) -> list[SymbolCoverage]:
         """Return per-symbol cached range without fetching an upstream provider."""
@@ -434,6 +477,7 @@ class SqliteMarketCache:
                 """,
                 records,
             )
+        self.refresh_summary()
         return len(records)
 
     @staticmethod

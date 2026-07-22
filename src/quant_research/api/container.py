@@ -12,6 +12,7 @@ from quant_research.repositories.artifacts import SqliteArtifactStore
 from quant_research.repositories.backtests import SqliteBacktestRepository
 from quant_research.repositories.market_cache import SqliteMarketCache
 from quant_research.services.hypotheses import HypothesisService, JsonLlmClient
+from quant_research.services.ml_research import MlResearchService
 from quant_research.services.nifty500_catalogue import Nifty500CatalogueImporter
 from quant_research.services.nse_import import NseBhavcopyImporter
 from quant_research.services.research import ResearchService
@@ -26,6 +27,7 @@ class ApplicationContainer:
     nse_importer: NseBhavcopyImporter
     nifty500_catalogue: Nifty500CatalogueImporter
     artifacts: SqliteArtifactStore
+    ml_research: MlResearchService
 
 
 def create_container(
@@ -35,7 +37,11 @@ def create_container(
     configured_provider = provider or LocalNseCacheProvider(market_cache)
     repository = SqliteBacktestRepository(settings.market_cache_path)
     artifacts = SqliteArtifactStore(settings.market_cache_path)
-    configured_llm = llm_client or OllamaClient(model=settings.ollama_model, base_url=settings.ollama_base_url)
+    configured_llm = llm_client or OllamaClient(
+        model=settings.ollama_model,
+        base_url=settings.ollama_base_url,
+        timeout_seconds=settings.ollama_timeout_seconds,
+    )
     return ApplicationContainer(
         settings=settings,
         research=ResearchService(configured_provider, repository),
@@ -44,4 +50,5 @@ def create_container(
         nse_importer=NseBhavcopyImporter(market_cache, archive_path=settings.nse_archive_path),
         nifty500_catalogue=Nifty500CatalogueImporter(market_cache),
         artifacts=artifacts,
+        ml_research=MlResearchService(configured_provider, artifacts),
     )

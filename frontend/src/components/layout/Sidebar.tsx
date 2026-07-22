@@ -15,6 +15,7 @@ import {
   Play,
   TrendingUp,
   ShieldAlert,
+  BrainCircuit,
 } from "lucide-react";
 
 const mainNav = [
@@ -22,6 +23,7 @@ const mainNav = [
   { href: "/research", label: "Test a strategy", icon: FlaskConical },
   { href: "/backtests", label: "My tests", icon: GitCompare },
   { href: "/comparison", label: "Compare tests", icon: BarChart3 },
+  { href: "/ml-lab", label: "ML Lab", icon: BrainCircuit },
   { href: "/options", label: "Learn", icon: BookOpenCheck },
 ];
 

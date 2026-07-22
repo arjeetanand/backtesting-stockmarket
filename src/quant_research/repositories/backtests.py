@@ -30,6 +30,16 @@ class InMemoryBacktestRepository:
         with self._lock:
             return sorted(self._results.values(), key=lambda result: result.execution_timestamp, reverse=True)
 
+    def delete(self, run_id: str) -> bool:
+        with self._lock:
+            return self._results.pop(run_id, None) is not None
+
+    def clear(self) -> int:
+        with self._lock:
+            count = len(self._results)
+            self._results.clear()
+            return count
+
 
 class SqliteBacktestRepository:
     """Store complete backtest results and reuse identical completed runs."""
@@ -83,6 +93,16 @@ class SqliteBacktestRepository:
         with self._connect() as connection:
             rows = connection.execute("SELECT payload FROM backtest_runs ORDER BY execution_timestamp DESC").fetchall()
         return [BacktestResult.model_validate(json.loads(row[0])) for row in rows]
+
+    def delete(self, run_id: str) -> bool:
+        with self._connect() as connection:
+            cursor = connection.execute("DELETE FROM backtest_runs WHERE run_id = ?", (run_id,))
+        return cursor.rowcount > 0
+
+    def clear(self) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute("DELETE FROM backtest_runs")
+        return cursor.rowcount
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.path)

@@ -8,7 +8,8 @@ Backtrack is a local, research-only Indian-market backtesting application. The c
 2. **Test a strategy**: write a hypothesis, review the local Ollama proposal, and run the historical test.
 3. **My tests**: reopen saved results and inspect performance.
 4. **Check reliability / Risk Engine**: inspect robustness and validity before trusting a result.
-5. **Replay a chart**: step through the same local history with simulated orders.
+5. **Run an ML experiment**: compare return-prediction models using chronological splits and walk-forward checks.
+6. **Replay a chart**: step through the same local history with simulated orders.
 
 ## Pages
 
@@ -23,6 +24,7 @@ Backtrack is a local, research-only Indian-market backtesting application. The c
 | Compare tests | Compare runs/configurations | Local-data comparison workflow |
 | Check reliability | Challenge parameter stability | Robustness API and report views |
 | Risk Engine | Review validity and bias | Look-ahead, data quality, and overfitting audit views |
+| ML Lab | Explore machine-learning signals | Past-only technical features, chronological model comparison, cost-aware forecast backtest, and walk-forward diagnostics |
 | Replay a chart | Learn what happened candle by candle | Persisted historical replay sessions and simulated orders/journal |
 | Learn | Understand options concepts | Educational call/put payoff and breakeven calculator |
 | Analytics | Inspect performance and trade quality | Analytics views over available local run data |

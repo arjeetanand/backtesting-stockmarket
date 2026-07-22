@@ -2,7 +2,7 @@
 
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from quant_research.domain.data.models import DataQualityReport, OHLCVBar
 
@@ -181,6 +181,29 @@ class RobustnessAnalysisRequest(BaseModel):
     timeframe: str = Field(default="1day")
     lookback_range: list[int] = Field(default=[10, 14, 20, 30, 40, 50])
     threshold_range: list[float] = Field(default=[20.0, 25.0, 30.0, 35.0, 40.0])
+
+
+class MlExperimentRequest(BaseModel):
+    symbol: str = Field(..., min_length=1, max_length=50)
+    start: datetime
+    end: datetime
+    timeframe: str = Field(default="1day")
+    horizon_days: int = Field(default=5, ge=1, le=60)
+    train_ratio: float = Field(default=0.6, gt=0.0, lt=1.0)
+    validation_ratio: float = Field(default=0.2, gt=0.0, lt=1.0)
+    test_ratio: float = Field(default=0.2, gt=0.0, lt=1.0)
+    models: list[str] = Field(default=["ridge", "random_forest", "hist_gradient_boosting"], min_length=1, max_length=3)
+    commission_pct: float = Field(default=0.001, ge=0.0, le=0.05)
+    slippage_pct: float = Field(default=0.0005, ge=0.0, le=0.05)
+
+    @model_validator(mode="after")
+    def validate_split(self) -> "MlExperimentRequest":
+        if abs(self.train_ratio + self.validation_ratio + self.test_ratio - 1.0) > 1e-9:
+            raise ValueError("train_ratio, validation_ratio, and test_ratio must sum to 1.")
+        allowed = {"ridge", "random_forest", "hist_gradient_boosting"}
+        if any(model not in allowed for model in self.models):
+            raise ValueError("models must contain only ridge, random_forest, or hist_gradient_boosting.")
+        return self
 
 
 class ReplaySessionRequest(BaseModel):

@@ -104,6 +104,7 @@ def test_fixed_trade_amount_and_chart_signals(mock_ohlcv_data: pd.DataFrame) -> 
     assert "SMA 10" in result.indicators
     assert "SMA 30" in result.indicators
     assert all(signal["type"] in {"entry", "exit"} for signal in result.signals)
+    assert all("unrealized_pnl" in point for point in result.trade_path)
 
 
 def test_robustness_diagnostics(mock_ohlcv_data: pd.DataFrame) -> None:

@@ -6,7 +6,7 @@ import csv
 import io
 from dataclasses import asdict
 from datetime import date, datetime, timedelta
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 from uuid import uuid4
 
 import pandas as pd
@@ -22,6 +22,7 @@ from quant_research.api.schemas import (
     InstrumentResponse,
     MarketAvailabilityResponse,
     MarketDataResponse,
+    MlExperimentRequest,
     NseImportCoverageItem,
     NseImportJobResponse,
     NseImportPreviewResponse,
@@ -47,6 +48,7 @@ from quant_research.llm.ollama import OllamaError
 from quant_research.repositories.artifacts import SqliteArtifactStore
 from quant_research.repositories.market_cache import SqliteMarketCache
 from quant_research.services.hypotheses import HypothesisAnalysis, HypothesisCommand, HypothesisService
+from quant_research.services.ml_research import MlExperimentCommand, MlResearchService, ModelName
 from quant_research.services.nifty500_catalogue import Nifty500CatalogueError, Nifty500CatalogueImporter
 from quant_research.services.nse_import import (
     BANKING_STARTER,
@@ -70,6 +72,7 @@ def create_api_router(
     market_cache: SqliteMarketCache | None = None,
     nifty500_catalogue: Nifty500CatalogueImporter | None = None,
     artifacts: SqliteArtifactStore | None = None,
+    ml_research: MlResearchService | None = None,
 ) -> APIRouter:
     """Build routes bound to one fully configured application service."""
     router = APIRouter(prefix="/api/v1")
@@ -376,7 +379,19 @@ def create_api_router(
                 artifacts.save("hypothesis", cache_key, result.model_dump(mode="json"))
             return result
         except OllamaError as exc:
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+            # Ollama is an optional local assistant. Keep the research workflow
+            # usable when it is cold, stopped, or missing a model; the response
+            # is explicitly labelled as a deterministic fallback and is not
+            # cached, so a later retry can use Ollama once it is healthy.
+            return hypotheses.curated_fallback(
+                HypothesisCommand(
+                    hypothesis=payload.hypothesis,
+                    symbol=payload.symbol,
+                    timeframe=payload.timeframe,
+                    strategy_id=payload.strategy_id,
+                ),
+                reason=str(exc),
+            )
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
 
@@ -394,6 +409,35 @@ def create_api_router(
             return result
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+
+    @router.post("/ml/experiments", tags=["machine learning"])
+    def run_ml_experiment(payload: MlExperimentRequest) -> dict[str, object]:
+        if ml_research is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="The ML research service is not configured.")
+        try:
+            return ml_research.run(
+                MlExperimentCommand(
+                    symbol=payload.symbol,
+                    timeframe=payload.timeframe,
+                    start=payload.start,
+                    end=payload.end,
+                    horizon_days=payload.horizon_days,
+                    train_ratio=payload.train_ratio,
+                    validation_ratio=payload.validation_ratio,
+                    test_ratio=payload.test_ratio,
+                    models=cast(tuple[ModelName, ...], tuple(payload.models)),
+                    commission_pct=payload.commission_pct,
+                    slippage_pct=payload.slippage_pct,
+                )
+            )
+        except (MarketDataUnavailableError, ValueError) as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+
+    @router.get("/ml/experiments", tags=["machine learning"])
+    def list_ml_experiments(limit: Annotated[int, Query(ge=1, le=100)] = 25) -> list[dict[str, Any]]:
+        if ml_research is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="The ML research service is not configured.")
+        return ml_research.list(limit)
 
     @router.get("/market-data", response_model=MarketDataResponse, tags=["market data"])
     def market_data(
@@ -530,6 +574,22 @@ def create_api_router(
     def list_backtests() -> list[BacktestResult]:
         return research.list_backtests()
 
+    @router.delete("/backtests", tags=["backtests"])
+    def clear_backtests() -> dict[str, object]:
+        """Delete saved backtest runs only; market data is untouched."""
+        return {"deleted_runs": research.clear_backtests(), "message": "Saved backtest runs cleared. Market data was preserved."}
+
+    @router.delete("/testing-history", tags=["research"])
+    def clear_testing_history() -> dict[str, object]:
+        """Delete saved tests and analysis artifacts without deleting market data."""
+        deleted_runs = research.clear_backtests()
+        deleted_artifacts = artifacts.clear_kinds(("custom_backtest", "hypothesis", "robustness", "youtube_strategy", "replay_session")) if artifacts is not None else 0
+        return {
+            "deleted_runs": deleted_runs,
+            "deleted_artifacts": deleted_artifacts,
+            "message": "Testing history cleared. NSE market data, instruments, archives, and import coverage were preserved.",
+        }
+
     @router.get("/backtests/{run_id}", response_model=BacktestResult, tags=["backtests"])
     def get_backtest(run_id: str) -> BacktestResult:
         result = research.get_backtest(run_id)
@@ -537,12 +597,26 @@ def create_api_router(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backtest run was not found.")
         return result
 
+    @router.delete("/backtests/{run_id}", tags=["backtests"])
+    def delete_backtest(run_id: str) -> Response:
+        if not research.delete_backtest(run_id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backtest run was not found.")
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
     @router.get("/research/artifacts/{kind}", tags=["research"])
     def list_saved_artifacts(kind: str, limit: int = Query(default=100, ge=1, le=500)) -> list[dict[str, Any]]:
         """Return saved computed artifacts so clients can reopen prior work."""
         if artifacts is None or kind not in {"custom_backtest", "robustness", "hypothesis"}:
             return []
-        return artifacts.list(kind, limit=limit)
+        return artifacts.list_with_metadata(kind, limit=limit)
+
+    @router.delete("/research/artifacts/{kind}/{artifact_key}", tags=["research"])
+    def delete_saved_artifact(kind: str, artifact_key: str) -> Response:
+        if artifacts is None or kind not in {"custom_backtest", "robustness", "hypothesis", "youtube_strategy", "replay_session"}:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved testing artifact was not found.")
+        if not artifacts.delete(kind, artifact_key):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved testing artifact was not found.")
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     # ── Market Replay Engine Routes ──────────────────────────────
     @router.post("/replay/sessions", status_code=status.HTTP_201_CREATED, tags=["replay"])

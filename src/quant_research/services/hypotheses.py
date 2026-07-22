@@ -113,6 +113,58 @@ Required JSON: {{"summary": string, "assumptions": [string], "risks": [string], 
             ),
         )
 
+    def curated_fallback(self, command: HypothesisCommand, reason: str = "") -> HypothesisAnalysis:
+        """Return a deterministic proposal when the optional local model is unavailable.
+
+        The fallback never pretends to be an LLM response. It keeps the selected
+        symbol, timeframe, and strategy intact so the user can still run a real
+        historical test against the local NSE cache and retry the model later.
+        """
+        clean_symbol = command.symbol.strip().upper()
+        if not clean_symbol:
+            raise ValueError("symbol must not be empty.")
+        strategy_label = self.STRATEGY_LABELS.get(command.strategy_id, command.strategy_id.replace("_", " "))
+        defaults = {
+            "sma_crossover": (20, 50),
+            "ema_crossover": (20, 50),
+            "rsi_ema": (14, 50),
+            "rsi_mean_reversion": (14, 50),
+            "bollinger_mean_reversion": (20, 50),
+            "macd_crossover": (12, 26),
+            "donchian_breakout": (20, 50),
+            "momentum": (20, 50),
+        }
+        fast_window, slow_window = defaults.get(command.strategy_id, (20, 50))
+        model_note = reason.strip().replace("\n", " ")[:240]
+        risks = [
+            "This is a deterministic rule template, not an LLM interpretation.",
+            "Historical results are not a forecast or investment advice.",
+            "Check fees, slippage, sample size, and market-regime changes.",
+        ]
+        if model_note:
+            risks.append(f"Ollama was unavailable for this request: {model_note}")
+        return HypothesisAnalysis(
+            generated_by="Backtrack deterministic fallback (Ollama unavailable)",
+            model="Backtrack strategy catalogue",
+            summary=(
+                f"Ollama did not respond in time, so Backtrack prepared a transparent {strategy_label} "
+                f"proposal for {clean_symbol} using the catalogue defaults; you can still run the historical test."
+            ),
+            assumptions=[
+                "Signals use the selected NSE candle timeframe and execute on the next candle.",
+                "The selected strategy parameters are the catalogue defaults until reviewed.",
+                "Commission and slippage are applied by the backtest engine.",
+            ],
+            risks=risks[:8],
+            suggested_backtest=SuggestedSmaBacktest(
+                symbol=clean_symbol,
+                timeframe=command.timeframe,
+                fast_window=fast_window,
+                slow_window=slow_window,
+                rationale=f"Transparent {strategy_label} catalogue defaults ({fast_window}/{slow_window}) for a reviewable historical test.",
+            ),
+        )
+
     @staticmethod
     def _text(value: object, fallback: str, maximum: int) -> str:
         if not isinstance(value, str) or not value.strip():

@@ -113,6 +113,7 @@ class NseBhavcopyImporter:
             cursor += timedelta(days=1)
         if downloaded_days == 0 and reused_archive_days == 0 and already_available_days == 0 and skipped_days == 0:
             raise RuntimeError("No NSE Bhavcopy archive was downloaded. Check the chosen dates or retry after NSE archive access is available.")
+        self._cache.refresh_summary()
         return NseImportResult(downloaded_days, skipped_days, stored_bars, already_available_days, reused_archive_days, archive_rows)
 
     def _download_day(self, trading_day: date) -> list[dict[str, str]] | None:

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AlertCircle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Database, Download, FileDown, ListChecks, RefreshCw, Search } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import { fetchWithTimeout } from "@/lib/api";
@@ -116,15 +116,15 @@ export default function DataPage() {
     symbols: customSymbols,
   });
 
-  const refreshCache = async (force = false) => {
+  const refreshCache = useCallback(async (force = false) => {
     try {
       setCache(await fetchDataJson<CacheStatus>("cache-status", `${API_BASE_URL}/data/cache`, 6_000, force));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Could not read cache status.");
     }
-  };
+  }, []);
 
-  const refreshInventory = async (force = false) => {
+  const refreshInventory = useCallback(async (force = false) => {
     setInventoryLoading(true);
     try {
       const key = `inventory:${inventoryQuery.trim().toUpperCase()}:${start}:${end}`;
@@ -134,17 +134,17 @@ export default function DataPage() {
     } finally {
       setInventoryLoading(false);
     }
-  };
+  }, [end, inventoryQuery, start]);
 
   useEffect(() => {
     const initialFetch = window.setTimeout(() => { void refreshCache(); }, 0);
     return () => window.clearTimeout(initialFetch);
-  }, []);
+  }, [refreshCache]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void refreshInventory(); }, 250);
     return () => window.clearTimeout(timer);
-  }, [inventoryQuery, start, end]);
+  }, [inventoryQuery, start, end, refreshInventory]);
 
   useEffect(() => {
     if (preset !== "custom") return;
@@ -178,7 +178,7 @@ export default function DataPage() {
       }
     }, 3000);
     return () => window.clearInterval(timer);
-  }, [job]);
+  }, [job, refreshCache, refreshInventory]);
 
   const startImport = async () => {
     setError(null);
@@ -265,8 +265,8 @@ export default function DataPage() {
             <p>Find a stock, check what is already saved, and download only the missing days.</p>
           </div>
           <div className="bt-heading-actions">
-            <button className="bt-secondary" onClick={() => void refreshCache(true)}>
-              <RefreshCw size={14} /> Refresh saved data
+              <button className="bt-secondary" onClick={() => void refreshCache(true)}>
+              <RefreshCw size={14} /> Refresh cache summary
             </button>
           </div>
         </section>
@@ -302,7 +302,7 @@ export default function DataPage() {
           </div>
           <div className="bt-inventory-controls">
             <div className="bt-search-field"><Search size={15} /><input className="bt-field-input" value={inventoryQuery} onChange={(event) => setInventoryQuery(event.target.value)} placeholder="Search by stock symbol or company name" aria-label="Search saved stocks" /></div>
-            <button type="button" className="bt-secondary whitespace-nowrap" onClick={() => void refreshInventory(true)} disabled={inventoryLoading}><RefreshCw size={14} className={inventoryLoading ? "spin" : ""} /> Refresh</button>
+            <button type="button" className="bt-secondary whitespace-nowrap" onClick={() => void refreshInventory(true)} disabled={inventoryLoading}><RefreshCw size={14} className={inventoryLoading ? "spin" : ""} /> Refresh coverage</button>
           </div>
           <div className="bt-table-wrap" style={{ maxHeight: "390px", overflow: "auto" }}>
             <table className="bt-table">
@@ -370,16 +370,16 @@ export default function DataPage() {
               <label className={`bt-radio-card ${preset === "custom" ? "is-selected" : ""}`}><input name="stock-universe" value="custom" type="radio" checked={preset === "custom"} onClick={() => { setPreset("custom"); clearPreview(); }} onChange={() => { setPreset("custom"); clearPreview(); }} /><span><strong>My NSE symbols</strong><small>Pick specific stocks</small></span></label>
             </div>
             {preset === "custom" && <>
-              <div className="bt-catalogue-controls"><div className="bt-search-field"><Search size={15} /><input className="bt-field-input" value={instrumentQuery} onChange={(event) => setInstrumentQuery(event.target.value)} placeholder="Search all NSE equities by symbol or company" aria-label="Search NSE equity catalogue" /></div><button type="button" className="bt-secondary whitespace-nowrap" onClick={() => void refreshCatalogue()}><RefreshCw size={14} /> Refresh NSE list</button><a className="bt-secondary whitespace-nowrap" href={`${API_BASE_URL}/data/instruments/export`}><FileDown size={14} /> Download CSV</a></div>
+              <div className="bt-catalogue-controls"><div className="bt-search-field"><Search size={15} /><input className="bt-field-input" value={instrumentQuery} onChange={(event) => setInstrumentQuery(event.target.value)} placeholder="Search all NSE equities by symbol or company" aria-label="Search NSE equity catalogue" /></div><button type="button" className="bt-secondary whitespace-nowrap" onClick={() => void refreshCatalogue()}><RefreshCw size={14} /> Refresh stock list</button><a className="bt-secondary whitespace-nowrap" href={`${API_BASE_URL}/data/instruments/export`}><FileDown size={14} /> Download CSV</a></div>
               {catalogueMessage && <p className="text-xs text-emerald-700 mb-2">{catalogueMessage}</p>}
               <div className="border border-slate-200 rounded-lg max-h-52 overflow-auto bg-white">
                 {instruments.map((instrument) => <label key={instrument.symbol} className="flex items-center gap-3 px-3 py-2 border-b border-slate-100 text-xs cursor-pointer hover:bg-slate-50"><input type="checkbox" checked={customSymbols.includes(instrument.symbol)} onChange={() => toggleSymbol(instrument.symbol)} /><span className="font-mono font-bold text-indigo-700 w-24">{instrument.symbol}</span><span className="flex-1 text-slate-700">{instrument.company_name}</span><span className="text-slate-400">{instrument.industry ?? "—"}</span></label>)}
-                {instruments.length === 0 && <p className="p-3 text-xs text-slate-500">No local NSE list yet. Use “Refresh NSE list” to download the official equity catalogue.</p>}
+                {instruments.length === 0 && <p className="p-3 text-xs text-slate-500">No local NSE list yet. Use “Refresh stock list” to download the official equity catalogue.</p>}
               </div>
               {customSymbols.length > 0 && <p className="text-xs text-slate-600 mt-2">Selected: <strong>{customSymbols.join(", ")}</strong></p>}
               <p className="text-xs text-slate-500 mt-2">The catalogue is local after refresh. Search does not repeatedly call NSE. Select only the stocks you want to import and backtest.</p>
             </>}
-            {preset === "nse_equities" && <div className="bt-universe-info"><p>The full NSE catalogue is checked against SQLite before import. One complete archive-day contains all stocks for that date, so each missing weekday is downloaded once and reused for every selected stock.</p><div className="bt-catalogue-actions"><button type="button" className="bt-secondary whitespace-nowrap" onClick={() => void refreshCatalogue()}><RefreshCw size={14} /> Refresh NSE list</button><a className="bt-secondary whitespace-nowrap" href={`${API_BASE_URL}/data/instruments/export`}><FileDown size={14} /> Download CSV</a></div></div>}
+            {preset === "nse_equities" && <div className="bt-universe-info"><p>The full NSE catalogue is checked against SQLite before import. One complete archive-day contains all stocks for that date, so each missing weekday is downloaded once and reused for every selected stock.</p><div className="bt-catalogue-actions"><button type="button" className="bt-secondary whitespace-nowrap" onClick={() => void refreshCatalogue()}><RefreshCw size={14} /> Refresh stock list</button><a className="bt-secondary whitespace-nowrap" href={`${API_BASE_URL}/data/instruments/export`}><FileDown size={14} /> Download CSV</a></div></div>}
           </div>
 
           <div className="bt-import-actions">

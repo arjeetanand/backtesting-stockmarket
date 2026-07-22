@@ -50,3 +50,21 @@ def test_hypothesis_service_forces_the_requested_symbol_and_timeframe() -> None:
 
     assert proposal.suggested_backtest.symbol == "AAPL"
     assert proposal.suggested_backtest.timeframe == "1day"
+
+
+def test_hypothesis_service_curated_fallback_is_explicit_and_testable() -> None:
+    proposal = HypothesisService(FakeLlmClient()).curated_fallback(
+        HypothesisCommand(
+            hypothesis="Test a Donchian breakout on Reliance.",
+            symbol="reliance",
+            timeframe="1day",
+            strategy_id="donchian_breakout",
+        ),
+        reason="Could not reach Ollama",
+    )
+
+    assert "Ollama unavailable" in proposal.generated_by
+    assert proposal.model == "Backtrack strategy catalogue"
+    assert proposal.suggested_backtest.symbol == "RELIANCE"
+    assert proposal.suggested_backtest.fast_window < proposal.suggested_backtest.slow_window
+    assert any("Could not reach Ollama" in risk for risk in proposal.risks)

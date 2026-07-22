@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import json
 import sqlite3
 from datetime import UTC, datetime
@@ -52,13 +53,43 @@ class SqliteArtifactStore:
                 (kind, artifact_key, json.dumps(payload, default=str), datetime.now(UTC).isoformat()),
             )
 
-    def list(self, kind: str, limit: int = 100) -> list[dict[str, Any]]:
+    def list(self, kind: str, limit: int = 100) -> builtins.list[dict[str, Any]]:
         with self._connect() as connection:
             rows = connection.execute(
                 "SELECT payload FROM research_artifacts WHERE kind = ? ORDER BY updated_at DESC LIMIT ?",
                 (kind, limit),
             ).fetchall()
         return [json.loads(row[0]) for row in rows]
+
+    def list_with_metadata(self, kind: str, limit: int = 100) -> builtins.list[dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT artifact_key, payload, updated_at FROM research_artifacts WHERE kind = ? ORDER BY updated_at DESC LIMIT ?",
+                (kind, limit),
+            ).fetchall()
+        return [
+            {**json.loads(row[1]), "_artifact_key": row[0], "_saved_at": row[2]}
+            for row in rows
+        ]
+
+    def delete(self, kind: str, artifact_key: str) -> bool:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM research_artifacts WHERE kind = ? AND artifact_key = ?",
+                (kind, artifact_key),
+            )
+        return cursor.rowcount > 0
+
+    def clear_kinds(self, kinds: tuple[str, ...]) -> int:
+        if not kinds:
+            return 0
+        placeholders = ",".join("?" for _ in kinds)
+        with self._connect() as connection:
+            cursor = connection.execute(
+                f"DELETE FROM research_artifacts WHERE kind IN ({placeholders})",
+                kinds,
+            )
+        return cursor.rowcount
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.path)

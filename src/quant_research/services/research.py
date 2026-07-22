@@ -125,3 +125,9 @@ class ResearchService:
 
     def get_backtest(self, run_id: str) -> BacktestResult | None:
         return self._repository.get(run_id)
+
+    def delete_backtest(self, run_id: str) -> bool:
+        return self._repository.delete(run_id)
+
+    def clear_backtests(self) -> int:
+        return self._repository.clear()

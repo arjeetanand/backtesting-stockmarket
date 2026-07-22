@@ -104,7 +104,7 @@ export default function StrategyPage() {
   return <div className="backtrack-page">
     <TopBar />
     <div className="backtrack-content bt-stack">
-    <section className="bt-heading-row"><div><div className="bt-kicker"><span className="live-dot" /> BUILD A STRATEGY</div><h1>Build your strategy.</h1><p>Start with a familiar template, change the rules if you want, and test the idea on historical NSE data.</p></div><div className="bt-heading-actions"><span className="data-source"><Sparkles size={14} /> {result ? "Test complete" : "Ready to test"}</span><button className="bt-primary" onClick={() => void execute("run")} disabled={running || previewing}><Play size={13} /> {running ? "Testing…" : "Run this test"}</button></div></section>
+    <section className="bt-heading-row"><div><div className="bt-kicker"><span className="live-dot" /> BUILD A STRATEGY</div><h1>Build your strategy.</h1><p>Start with a familiar template, change the rules if you want, and test the idea on historical NSE data.</p></div><div className="bt-heading-actions"><span className="data-source"><Sparkles size={14} /> {result ? "Test complete" : "Ready to test"}</span></div></section>
       {error && <div className="bt-alert-error" role="alert">{error}</div>}
       {message && <div className="bt-data-note" role="status"><CheckCircle size={16} className="text-emerald-600" /> <span>{message}</span></div>}
 

@@ -30,6 +30,9 @@ class TradeRecord:
     pnl: float
     return_pct: float
     holding_days: int
+    entry_amount: float = 0.0
+    max_unrealized_pnl: float = 0.0
+    min_unrealized_pnl: float = 0.0
 
 
 @dataclass
@@ -49,6 +52,7 @@ class VectorBacktestResult:
     candles: list[dict[str, float | str]] = field(default_factory=list)
     indicators: dict[str, list[dict[str, float | str | None]]] = field(default_factory=dict)
     signals: list[dict[str, float | str]] = field(default_factory=list)
+    trade_path: list[dict[str, float | str]] = field(default_factory=list)
 
 
 def run_rule_backtest(
@@ -158,7 +162,11 @@ def run_rule_backtest(
     drawdown_points: list[dict[str, float | str]] = []
     trades: list[TradeRecord] = []
     trades_pnl: list[float] = []
+    trade_path: list[dict[str, float | str]] = []
     trade_counter = 1
+    current_entry_amount = 0.0
+    current_max_unrealized = 0.0
+    current_min_unrealized = 0.0
 
     dates = df.index
     peak_equity = initial_capital
@@ -167,6 +175,12 @@ def run_rule_backtest(
         dt_str = str(dates[i].strftime("%Y-%m-%d") if hasattr(dates[i], "strftime") else dates[i])
         curr_open = float(open_p.iloc[i])
         curr_close = float(close.iloc[i])
+
+        if position > 0:
+            marked_pnl = (curr_close - entry_price) * position
+            current_max_unrealized = max(current_max_unrealized, marked_pnl)
+            current_min_unrealized = min(current_min_unrealized, marked_pnl)
+            trade_path.append({"trade_id": trade_counter, "date": dt_str, "entry_amount": current_entry_amount, "market_value": position * curr_close, "unrealized_pnl": marked_pnl, "realized_pnl": 0.0})
 
         # Check Exit Execution
         stop_hit = stop_loss_pct > 0 and curr_open <= entry_price * (1.0 - stop_loss_pct)
@@ -192,13 +206,21 @@ def run_rule_backtest(
                     pnl=round(net_pnl, 2),
                     return_pct=round(ret_pct * 100.0, 2),
                     holding_days=i - entry_idx,
+                    entry_amount=round(current_entry_amount, 2),
+                    max_unrealized_pnl=round(current_max_unrealized, 2),
+                    min_unrealized_pnl=round(current_min_unrealized, 2),
                 )
             )
+            if trade_path:
+                trade_path[-1]["realized_pnl"] = round(net_pnl, 2)
             trades_pnl.append(net_pnl)
             trade_counter += 1
 
             position = 0.0
             entry_price = 0.0
+            current_entry_amount = 0.0
+            current_max_unrealized = 0.0
+            current_min_unrealized = 0.0
 
         # Check Entry Execution
         if position == 0 and execute_entry.iloc[i]:
@@ -213,6 +235,9 @@ def run_rule_backtest(
             cash = cash - entry_comm - capital_to_invest
             entry_price = fill_entry_price
             entry_idx = i
+            current_entry_amount = capital_to_invest
+            current_max_unrealized = 0.0
+            current_min_unrealized = 0.0
 
         # Calculate Portfolio Equity at Close of Bar i
         curr_equity = cash + (position * curr_close if position > 0 else 0.0)
@@ -259,4 +284,5 @@ def run_rule_backtest(
         candles=chart_candles,
         indicators=chart_indicators,
         signals=chart_signals,
+        trade_path=trade_path,
     )
