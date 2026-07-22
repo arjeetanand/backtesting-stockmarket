@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import io
 from dataclasses import asdict
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Annotated, Any
 from uuid import uuid4
 
@@ -30,6 +30,7 @@ from quant_research.api.schemas import (
     ReplayOrderRequest,
     ReplaySessionRequest,
     ReplayStepRequest,
+    ResearchDataEnsureRequest,
     RobustnessAnalysisRequest,
     SmaBacktestRequest,
     YouTubeStrategyRequest,
@@ -73,10 +74,10 @@ def create_api_router(
     def selected_symbols(payload: NseImportRequest) -> list[str]:
         if payload.preset == "custom":
             return payload.symbols
-        if payload.preset == "nifty500":
+        if payload.preset == "nse_equities":
             if market_cache is None:
                 return []
-            return market_cache.universe_symbols("nifty500")
+            return market_cache.universe_symbols("nse_equities")
         return sorted(set(SENSEX_NSE_STARTER + BANKING_STARTER + SECTOR_ETF_STARTER))
 
     def run_import(job_id: str, symbols: list[str], payload: NseImportRequest) -> None:
@@ -84,10 +85,21 @@ def create_api_router(
             import_jobs[job_id] = {"status": "failed", "message": "NSE importer is not configured."}
             return
         try:
-            result = nse_importer.import_daily_universe(symbols, payload.start, payload.end)
-            import_jobs[job_id] = {"status": "complete", "message": "Official NSE import completed.", **asdict(result)}
+            def progress(stage: str, completed_days: int, total_days: int) -> None:
+                import_jobs[job_id] = {
+                    **import_jobs[job_id],
+                    "status": "running",
+                    "stage": stage,
+                    "completed_days": completed_days,
+                    "total_days": total_days,
+                    "message": f"{stage} ({completed_days}/{total_days} trading days).",
+                }
+
+            import_jobs[job_id] = {**import_jobs[job_id], "status": "running", "stage": "Preparing import", "message": "Validating local NSE cache."}
+            result = nse_importer.import_daily_universe(symbols, payload.start, payload.end, progress=progress)
+            import_jobs[job_id] = {**import_jobs[job_id], "status": "complete", "stage": "Ready", "message": "Official NSE data is ready for backtesting.", **asdict(result)}
         except RuntimeError as exc:
-            import_jobs[job_id] = {"status": "failed", "message": str(exc)}
+            import_jobs[job_id] = {**import_jobs[job_id], "status": "failed", "stage": "Import failed", "message": str(exc)}
 
     def market_frame(symbol: str, timeframe: str, start: datetime, end: datetime) -> pd.DataFrame:
         return pd.DataFrame([bar.model_dump() for bar in market_bars(symbol, timeframe, start, end)]).rename(
@@ -159,17 +171,23 @@ def create_api_router(
         return Response(
             content=stream.getvalue(),
             media_type="text/csv",
-            headers={"Content-Disposition": "attachment; filename=nifty500_constituents.csv"},
+            headers={"Content-Disposition": "attachment; filename=nse_equity_catalogue.csv"},
         )
 
-    @router.post("/data/nifty500/refresh", response_model=CatalogueRefreshResponse, tags=["market data"])
-    def refresh_nifty500_catalogue() -> CatalogueRefreshResponse:
+    @router.post("/data/instruments/refresh", response_model=CatalogueRefreshResponse, tags=["market data"])
+    def refresh_nse_equity_catalogue() -> CatalogueRefreshResponse:
         if nifty500_catalogue is None:
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Nifty 500 catalogue importer is not configured.")
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="NSE equity catalogue importer is not configured.")
         try:
             return CatalogueRefreshResponse(**asdict(nifty500_catalogue.refresh()))
         except Nifty500CatalogueError as exc:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    # Backwards-compatible endpoint for saved clients. It now refreshes the
+    # complete NSE equity catalogue instead of an index-only universe.
+    @router.post("/data/nifty500/refresh", response_model=CatalogueRefreshResponse, tags=["market data"], deprecated=True)
+    def refresh_nifty500_catalogue() -> CatalogueRefreshResponse:
+        return refresh_nse_equity_catalogue()
 
     @router.post("/data/nse-import", response_model=NseImportJobResponse, status_code=status.HTTP_202_ACCEPTED, tags=["market data"])
     def start_nse_import(payload: NseImportRequest, background_tasks: BackgroundTasks) -> NseImportJobResponse:
@@ -186,9 +204,33 @@ def create_api_router(
                     detail="This date range is already available locally for every selected symbol. Choose a newer or missing period instead.",
                 )
         job_id = f"nse_{uuid4().hex[:10]}"
-        import_jobs[job_id] = {"status": "queued", "message": "Official NSE import has been queued."}
+        import_jobs[job_id] = {"status": "queued", "stage": "Queued", "message": "Official NSE import has been queued."}
         background_tasks.add_task(run_import, job_id, symbols, payload)
         return NseImportJobResponse(job_id=job_id, status="queued", symbols=len(symbols))
+
+    @router.post("/research/ensure-data", response_model=NseImportJobResponse, status_code=status.HTTP_202_ACCEPTED, tags=["research"])
+    def ensure_research_data(payload: ResearchDataEnsureRequest, background_tasks: BackgroundTasks) -> NseImportJobResponse:
+        """Ensure one symbol has a year of warm-up history through today before backtesting."""
+        if nse_importer is None or market_cache is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="The local NSE importer is not configured.")
+        today = date.today()
+        if payload.start > today:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="The requested start date cannot be in the future.")
+        source_start = payload.start - timedelta(days=365)
+        symbol = payload.symbol.strip().upper().removesuffix(".NS")
+        job_id = f"research_nse_{uuid4().hex[:10]}"
+        import_jobs[job_id] = {
+            "status": "queued",
+            "stage": "Queued",
+            "message": "Preparing one year of warm-up history and all missing data through today.",
+        }
+        background_tasks.add_task(
+            run_import,
+            job_id,
+            [symbol],
+            NseImportRequest(start=source_start, end=today, preset="custom", symbols=[symbol]),
+        )
+        return NseImportJobResponse(job_id=job_id, status="queued", symbols=1, source_start=source_start, source_end=today)
 
     @router.post("/data/nse-import/preview", response_model=NseImportPreviewResponse, tags=["market data"])
     def preview_nse_import(payload: NseImportRequest) -> NseImportPreviewResponse:

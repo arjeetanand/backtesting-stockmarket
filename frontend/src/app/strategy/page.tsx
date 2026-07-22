@@ -14,6 +14,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
+import { SymbolCombobox } from "@/components/data/SymbolCombobox";
 
 const templates = [
   { name: "RSI Momentum", type: "Mean Reversion", sharpe: 1.87 },
@@ -74,6 +75,7 @@ const riskFields = [
 ];
 
 export default function StrategyPage() {
+  const [symbol, setSymbol] = useState("RELIANCE");
   const [showIndicators, setShowIndicators] = useState(true);
   const [showRisk, setShowRisk] = useState(true);
   const [selectedTemplate, setSelectedTemplate] = useState("RSI Momentum");
@@ -185,14 +187,7 @@ export default function StrategyPage() {
               <div className="bt-grid-2">
                 <div>
                   <label className="bt-field-label">Universe / Symbol</label>
-                  <div className="bt-field-wrap">
-                    <select className="bt-field-select">
-                      <option>NIFTY 50 · NSE</option>
-                      <option>BANKNIFTY · NSE</option>
-                      <option>NIFTY MIDCAP 150</option>
-                    </select>
-                    <ChevronDown size={14} />
-                  </div>
+                  <SymbolCombobox value={symbol} onChange={setSymbol} label="Universe or symbol" />
                 </div>
                 <div>
                   <label className="bt-field-label">Timeframe</label>

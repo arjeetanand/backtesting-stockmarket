@@ -43,14 +43,23 @@ class MarketAvailabilityResponse(BaseModel):
 class NseImportRequest(BaseModel):
     start: date
     end: date
-    preset: str = Field(default="sensex_banks_sector_etfs", pattern="^(sensex_banks_sector_etfs|nifty500|custom)$")
+    preset: str = Field(default="sensex_banks_sector_etfs", pattern="^(sensex_banks_sector_etfs|nse_equities|custom)$")
     symbols: list[str] = Field(default_factory=list, max_length=200)
+
+
+class ResearchDataEnsureRequest(BaseModel):
+    """Requested backtest period; the importer also fetches a one-year warm-up."""
+
+    symbol: str = Field(..., min_length=1, max_length=50)
+    start: date
 
 
 class NseImportJobResponse(BaseModel):
     job_id: str
     status: str
     symbols: int
+    source_start: date | None = None
+    source_end: date | None = None
 
 
 class NseImportCoverageItem(BaseModel):
@@ -89,6 +98,9 @@ class NseImportStatusResponse(BaseModel):
     skipped_days: int | None = None
     stored_bars: int | None = None
     already_available_days: int | None = None
+    stage: str | None = None
+    completed_days: int | None = None
+    total_days: int | None = None
 
 
 class YouTubeStrategyRequest(BaseModel):

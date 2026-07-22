@@ -1,4 +1,4 @@
-"""Official Nifty 500 constituent catalogue importer."""
+"""Official NSE equity-security catalogue importer."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from quant_research.repositories.market_cache import Instrument, SqliteMarketCac
 
 
 class Nifty500CatalogueError(RuntimeError):
-    """Raised when the official constituent file is unavailable or malformed."""
+    """Raised when the official NSE equity-security file is unavailable or malformed."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,10 +24,14 @@ class CatalogueRefreshResult:
 
 
 class Nifty500CatalogueImporter:
-    """Downloads the published NSE constituent CSV and persists a searchable local catalogue."""
+    """Downloads NSE's complete tradable equity list into the local symbol catalogue.
 
-    # Linked by NSE's own Nifty 500 product page (not the retired niftyindices.com URL).
-    source_url = "https://nsearchives.nseindia.com/content/indices/ind_nifty500list.csv"
+    The historical class name is retained so existing deployments keep working.  The
+    source is deliberately the full equity-security list, not an index constituent
+    list, so an IPO appears after the next catalogue refresh.
+    """
+
+    source_url = "https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv"
 
     def __init__(
         self,
@@ -45,13 +49,13 @@ class Nifty500CatalogueImporter:
             with self._opener(request, timeout=self._timeout_seconds) as response:
                 payload = response.read().decode("utf-8-sig")
         except HTTPError as exc:
-            raise Nifty500CatalogueError(f"Official NSE Nifty 500 file returned HTTP {exc.code}. Please retry later.") from exc
+            raise Nifty500CatalogueError(f"Official NSE equity list returned HTTP {exc.code}. Please retry later.") from exc
         except URLError as exc:
-            raise Nifty500CatalogueError("Could not reach the official NSE Nifty 500 constituent file.") from exc
+            raise Nifty500CatalogueError("Could not reach the official NSE equity-security list.") from exc
         instruments = self._parse(payload)
-        if len(instruments) < 400:
-            raise Nifty500CatalogueError("Official NSE constituent file did not contain a complete Nifty 500 catalogue.")
-        self._cache.replace_instruments(instruments, universe="nifty500", source=self.source_url)
+        if len(instruments) < 1_000:
+            raise Nifty500CatalogueError("Official NSE equity list did not contain a complete tradable equity catalogue.")
+        self._cache.replace_instruments(instruments, universe="nse_equities", source=self.source_url)
         return CatalogueRefreshResult(instruments=len(instruments), source=self.source_url)
 
     @staticmethod
@@ -62,8 +66,10 @@ class Nifty500CatalogueImporter:
         for row in rows:
             normalized = {str(key).strip().upper(): str(value).strip() for key, value in row.items() if key}
             symbol = normalized.get("SYMBOL", "").upper()
-            company_name = normalized.get("COMPANY NAME") or normalized.get("COMPANY") or ""
-            if not symbol or not company_name or symbol in seen:
+            company_name = normalized.get("NAME OF COMPANY") or normalized.get("COMPANY NAME") or normalized.get("COMPANY") or ""
+            series = normalized.get("SERIES") or None
+            # These are the cash-equity series supported by the Bhavcopy importer.
+            if not symbol or not company_name or symbol in seen or series not in {"EQ", "BE"}:
                 continue
             seen.add(symbol)
             instruments.append(
@@ -71,8 +77,8 @@ class Nifty500CatalogueImporter:
                     symbol=symbol,
                     company_name=company_name,
                     industry=normalized.get("INDUSTRY") or None,
-                    series=normalized.get("SERIES") or None,
-                    isin=normalized.get("ISIN CODE") or normalized.get("ISIN") or None,
+                    series=series,
+                    isin=normalized.get("ISIN NUMBER") or normalized.get("ISIN CODE") or normalized.get("ISIN") or None,
                 )
             )
         return instruments

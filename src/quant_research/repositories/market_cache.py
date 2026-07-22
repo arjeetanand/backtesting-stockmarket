@@ -216,6 +216,10 @@ class SqliteMarketCache:
                 """
                 INSERT INTO instruments (symbol, company_name, industry, series, isin, universe, source, refreshed_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(symbol) DO UPDATE SET
+                    company_name = excluded.company_name, industry = excluded.industry,
+                    series = excluded.series, isin = excluded.isin, universe = excluded.universe,
+                    source = excluded.source, refreshed_at = excluded.refreshed_at
                 """,
                 [
                     (item.symbol, item.company_name, item.industry, item.series, item.isin, universe, source, refreshed_at)
@@ -224,24 +228,28 @@ class SqliteMarketCache:
             )
         return len(instruments)
 
-    def search_instruments(self, query: str = "", universe: str = "nifty500", limit: int = 50) -> list[Instrument]:
+    def search_instruments(self, query: str = "", universe: str | None = None, limit: int = 50) -> list[Instrument]:
         clean_query = f"%{query.strip().upper()}%"
         with self._connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT symbol, company_name, industry, series, isin
-                FROM instruments
-                WHERE universe = ? AND (UPPER(symbol) LIKE ? OR UPPER(company_name) LIKE ? OR UPPER(COALESCE(industry, '')) LIKE ?)
-                ORDER BY symbol
-                LIMIT ?
-                """,
-                (universe, clean_query, clean_query, clean_query, limit),
-            ).fetchall()
+            if universe:
+                rows = connection.execute(
+                    """SELECT symbol, company_name, industry, series, isin FROM instruments
+                    WHERE universe = ? AND (UPPER(symbol) LIKE ? OR UPPER(company_name) LIKE ? OR UPPER(COALESCE(industry, '')) LIKE ?)
+                    ORDER BY symbol LIMIT ?""",
+                    (universe, clean_query, clean_query, clean_query, limit),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    """SELECT symbol, company_name, industry, series, isin FROM instruments
+                    WHERE UPPER(symbol) LIKE ? OR UPPER(company_name) LIKE ? OR UPPER(COALESCE(industry, '')) LIKE ?
+                    ORDER BY symbol LIMIT ?""",
+                    (clean_query, clean_query, clean_query, limit),
+                ).fetchall()
         return [Instrument(*row) for row in rows]
 
-    def universe_symbols(self, universe: str = "nifty500") -> list[str]:
+    def universe_symbols(self, universe: str | None = None) -> list[str]:
         with self._connect() as connection:
-            rows = connection.execute("SELECT symbol FROM instruments WHERE universe = ? ORDER BY symbol", (universe,)).fetchall()
+            rows = connection.execute("SELECT symbol FROM instruments WHERE universe = ? ORDER BY symbol", (universe,)).fetchall() if universe else connection.execute("SELECT symbol FROM instruments ORDER BY symbol").fetchall()
         return [str(row[0]) for row in rows]
 
     def market_availability(self, symbol: str, timeframe: str = "1day") -> MarketAvailability:

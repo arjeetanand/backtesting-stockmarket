@@ -55,7 +55,10 @@ class OllamaClient:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                "options": {"temperature": 0.2, "num_predict": 350},
+                # A structured research proposal can exceed 350 tokens. Truncation
+                # leaves a syntactically invalid JSON object, so retain enough room
+                # for the complete response while keeping local inference bounded.
+                "options": {"temperature": 0.2, "num_predict": 650},
             }
         ).encode("utf-8")
         request = Request(

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Activity,
   ArrowDownRight,
@@ -19,6 +19,8 @@ import {
 } from "@/lib/agents/orchestrator";
 import type { AgentSnapshot } from "@/lib/agents/types";
 import { runLocalBacktest, type LiveBacktestResult } from "@/lib/backtest-api";
+import { EquityChart } from "@/components/charts/Charts";
+import { SymbolCombobox } from "@/components/data/SymbolCombobox";
 
 const defaultConfig: BacktestConfig = {
   symbol: "RELIANCE",
@@ -117,82 +119,7 @@ function EquityCurve({
   data: Array<{ date: string; equity: number }>;
   initialCapital: number;
 }) {
-  const width = 960;
-  const height = 270;
-  const left = 58;
-  const right = 12;
-  const top = 12;
-  const bottom = 30;
-  const plotWidth = width - left - right;
-  const plotHeight = height - top - bottom;
-  const values = data.map((point) => point.equity);
-  const min = Math.min(...values, initialCapital) * 0.96;
-  const max = Math.max(...values, initialCapital) * 1.04;
-
-  const xFor = (index: number) =>
-    left + (index / Math.max(data.length - 1, 1)) * plotWidth;
-  const yFor = (value: number) =>
-    top + ((max - value) / Math.max(max - min, 1)) * plotHeight;
-
-  const strategyPath = data.map((point, index) => `${index === 0 ? "M" : "L"} ${xFor(index).toFixed(1)} ${yFor(point.equity).toFixed(1)}`).join(" ");
-  const strategyArea = `${strategyPath} L ${xFor(data.length - 1).toFixed(
-    1
-  )} ${(top + plotHeight).toFixed(1)} L ${left} ${(top + plotHeight).toFixed(
-    1
-  )} Z`;
-
-  return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      className="w-full h-auto overflow-visible"
-    >
-      <defs>
-        <linearGradient id="strategyGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#4f46e5" stopOpacity="0.2" />
-          <stop offset="100%" stopColor="#4f46e5" stopOpacity="0.0" />
-        </linearGradient>
-      </defs>
-
-      {/* Area fill under Strategy Curve */}
-      <path d={strategyArea} fill="url(#strategyGrad)" />
-
-      {/* Grid Lines */}
-      {[0, 0.25, 0.5, 0.75, 1].map((pct) => {
-        const y = top + plotHeight * pct;
-        const val = max - (max - min) * pct;
-        return (
-          <g key={pct}>
-            <line
-              x1={left}
-              y1={y}
-              x2={width - right}
-              y2={y}
-              stroke="#e2e8f0"
-              strokeDasharray="4 4"
-            />
-            <text
-              x={left - 8}
-              y={y + 4}
-              fill="#94a3b8"
-              fontSize="10"
-              textAnchor="end"
-              fontFamily="var(--font-jetbrains)"
-            >
-              ₹{Math.round(val).toLocaleString()}
-            </text>
-          </g>
-        );
-      })}
-
-      {/* Strategy Line */}
-      <path
-        d={strategyPath}
-        fill="none"
-        stroke="#4f46e5"
-        strokeWidth="2.5"
-      />
-    </svg>
-  );
+  return <EquityChart height={300} data={data.map((point) => ({ date: point.date, strategy: point.equity, benchmark: initialCapital }))} />;
 }
 
 export default function DashboardPage() {
@@ -201,15 +128,26 @@ export default function DashboardPage() {
   const [result, setResult] = useState<LiveBacktestResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const handleRun = async () => {
+  const runBacktest = useCallback(async (requestedConfig: BacktestConfig) => {
+    const symbol = requestedConfig.symbol.trim().toUpperCase();
+    const initialCapital = Number(requestedConfig.initialCapital);
+    if (!symbol) { setError("Choose an NSE symbol before running the backtest."); setResult(null); return; }
+    if (!requestedConfig.start || !requestedConfig.end || requestedConfig.start > requestedConfig.end) { setError("Choose a valid date range: start date must be on or before end date."); setResult(null); return; }
+    if (!Number.isFinite(initialCapital) || initialCapital <= 0) { setError("Initial capital must be greater than ₹0."); setResult(null); return; }
     setRunning(true);
     setError(null);
-    try { setResult(await runLocalBacktest({ symbol: config.symbol, start: config.start, end: config.end, initialCapital: config.initialCapital })); }
+    setResult(null);
+    try { setResult(await runLocalBacktest({ symbol, start: requestedConfig.start, end: requestedConfig.end, initialCapital })); }
     catch (requestError) { setResult(null); setError(requestError instanceof Error ? requestError.message : "Could not run the local backtest."); }
     finally { setRunning(false); }
-  };
+  }, []);
 
-  useEffect(() => { void handleRun(); }, []); // Load the default, locally cached backtest once.
+  const handleRun = () => { void runBacktest(config); };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void runBacktest(defaultConfig); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [runBacktest]); // Load the default, locally cached backtest once.
 
   const applyQuick = (symbol: string, strategy: string) => {
     setConfig((prev) => ({ ...prev, symbol, strategy }));
@@ -260,7 +198,7 @@ export default function DashboardPage() {
               className="reset-link"
               onClick={() => {
                 setConfig(defaultConfig);
-                void handleRun();
+                void runBacktest(defaultConfig);
               }}
             >
               Reset defaults
@@ -270,12 +208,7 @@ export default function DashboardPage() {
           <div className="setup-fields">
             <div className="field-group">
               <label>Target Symbol</label>
-              <input
-                value={config.symbol}
-                onChange={(e) =>
-                  setConfig({ ...config, symbol: e.target.value })
-                }
-              />
+              <SymbolCombobox value={config.symbol} onChange={(symbol) => setConfig({ ...config, symbol })} label="Target symbol" />
             </div>
             <div className="field-group field-strategy">
               <label>Strategy Rule</label>
@@ -305,6 +238,7 @@ export default function DashboardPage() {
               <input
                 type="date"
                 value={config.start}
+                max={config.end}
                 onChange={(e) =>
                   setConfig({ ...config, start: e.target.value })
                 }
@@ -315,6 +249,7 @@ export default function DashboardPage() {
               <input
                 type="date"
                 value={config.end}
+                min={config.start}
                 onChange={(e) => setConfig({ ...config, end: e.target.value })}
               />
             </div>
@@ -476,6 +411,7 @@ export default function DashboardPage() {
                       </td>
                     </tr>
                   ))}
+                  {result && result.trades.length === 0 && <tr><td colSpan={4} className="text-slate-500">No closed trades in this range. Try a wider range or another symbol.</td></tr>}
                 </tbody>
               </table>
             </div>

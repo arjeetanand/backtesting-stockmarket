@@ -37,3 +37,22 @@ def test_nse_importer_skips_a_day_already_recorded_for_the_requested_symbols(tmp
 
     assert result.downloaded_days == 0
     assert result.already_available_days == 1
+
+
+def test_nse_importer_reports_progress_for_cache_and_download_steps(tmp_path: Path, monkeypatch) -> None:
+    cache = SqliteMarketCache(tmp_path / "market.sqlite3")
+    importer = NseBhavcopyImporter(cache)
+    events: list[tuple[str, int, int]] = []
+    monkeypatch.setattr(importer, "_download_day", lambda _: [])
+
+    result = importer.import_daily_universe(
+        ["RELIANCE"],
+        date(2025, 1, 2),
+        date(2025, 1, 3),
+        progress=lambda stage, completed, total: events.append((stage, completed, total)),
+    )
+
+    assert result.downloaded_days == 2
+    assert any(stage == "Downloading official NSE archives" for stage, _, _ in events)
+    assert any(stage == "Saving missing bars to the local cache" for stage, _, _ in events)
+    assert events[-1][1:] == (2, 2)

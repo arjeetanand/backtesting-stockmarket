@@ -53,6 +53,7 @@ class HypothesisService:
         system_prompt = """Return one compact JSON object only. You are a cautious quantitative-research assistant.
 Propose one long-only SMA crossover test. Do not claim profitability or give investment advice.
 Use the provided symbol and timeframe exactly. fast_window must be at least 2 and less than slow_window.
+Use no more than 3 short assumptions and 3 short risks. Keep the summary and rationale to one sentence each.
 Required JSON: {"summary": string, "assumptions": [string], "risks": [string], "suggested_backtest": {"symbol": string, "timeframe": string, "fast_window": integer, "slow_window": integer, "rationale": string}}."""
         user_prompt = (
             f"Hypothesis: {command.hypothesis}\n"

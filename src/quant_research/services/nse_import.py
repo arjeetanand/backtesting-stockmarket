@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from urllib.error import HTTPError, URLError
@@ -40,22 +41,37 @@ class NseBhavcopyImporter:
         self._cache = cache
         self._timeout_seconds = timeout_seconds
 
-    def import_daily_universe(self, symbols: list[str], start: date, end: date) -> NseImportResult:
+    def import_daily_universe(
+        self,
+        symbols: list[str],
+        start: date,
+        end: date,
+        progress: Callable[[str, int, int], None] | None = None,
+    ) -> NseImportResult:
         selected = {symbol.strip().upper().removesuffix(".NS") for symbol in symbols if symbol.strip()}
         downloaded_days = skipped_days = stored_bars = already_available_days = 0
         cursor = start
+        total_weekdays = sum(1 for offset in range((end - start).days + 1) if (start + timedelta(days=offset)).weekday() < 5)
+        processed_weekdays = 0
         while cursor <= end:
             if cursor.weekday() < 5:
+                processed_weekdays += 1
                 if self._cache.is_nse_day_covered(list(selected), "1day", cursor):
                     already_available_days += 1
+                    if progress:
+                        progress("Checking local cache", processed_weekdays, total_weekdays)
                     cursor += timedelta(days=1)
                     continue
+                if progress:
+                    progress("Downloading official NSE archives", processed_weekdays, total_weekdays)
                 rows = self._download_day(cursor)
                 if rows is None:
                     skipped_days += 1
                 else:
                     downloaded_days += 1
                     bars = self._bars_for_rows(rows, selected, cursor)
+                    if progress:
+                        progress("Saving missing bars to the local cache", processed_weekdays, total_weekdays)
                     stored_bars += self._cache.put(bars, "1day", source="nse_common_bhavcopy")
                     # Track an archive even if a requested symbol was not listed that day.
                     # This makes a future click idempotent and avoids re-downloading holidays/listing gaps.

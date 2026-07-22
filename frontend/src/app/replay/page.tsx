@@ -11,6 +11,9 @@ import {
   ShieldCheck,
   Zap,
   Activity,
+  Crosshair,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import {
@@ -22,6 +25,7 @@ import {
 } from "@/lib/replay/api";
 import type { ReplaySessionData, ReplayBar } from "@/lib/replay/types";
 import { getMarketAvailability, type MarketAvailability } from "@/lib/market-data";
+import { SymbolCombobox } from "@/components/data/SymbolCombobox";
 
 const formatINR = (val: number) =>
   `₹${Math.round(val).toLocaleString("en-IN")}`;
@@ -176,12 +180,7 @@ export default function ReplayPage() {
             <div className="bt-grid-2" style={{ marginTop: "24px" }}>
               <div>
                 <label className="bt-field-label">Symbol</label>
-                <input
-                  className="bt-field-input"
-                  value={symbol}
-                  onChange={(e) => setSymbol(e.target.value)}
-                  placeholder="RELIANCE"
-                />
+                <SymbolCombobox value={symbol} onChange={setSymbol} />
               </div>
               <div>
                 <label className="bt-field-label">Timeframe</label>
@@ -565,35 +564,62 @@ export default function ReplayPage() {
 
 /* ── Candlestick Chart ───────────────────────────────────── */
 function ReplayCandleChart({ bars }: { bars: ReplayBar[] }) {
+  const [zoom, setZoom] = useState(1);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   if (!bars || bars.length === 0) return null;
-  const width = 800;
-  const height = 280;
-  const padding = 20;
+  const height = 310;
+  const leftPadding = 18;
+  const rightPadding = 64;
+  const topPadding = 16;
+  const bottomPadding = 42;
+  const candleWidth = 7 * zoom;
+  const candleGap = 4 * zoom;
+  const width = Math.max(820, leftPadding + rightPadding + bars.length * (candleWidth + candleGap));
   const minPrice = Math.min(...bars.map((b) => b.low)) * 0.998;
   const maxPrice = Math.max(...bars.map((b) => b.high)) * 1.002;
   const priceRange = Math.max(maxPrice - minPrice, 1);
-  const candleWidth = Math.max(3, Math.floor((width - padding * 2) / bars.length) - 2);
+  const plotHeight = height - topPadding - bottomPadding;
+  const tickIndexes = bars.reduce<number[]>((ticks, bar, index) => {
+    const current = new Date(bar.date);
+    const previous = index > 0 ? new Date(bars[index - 1].date) : null;
+    const monthChanged = !previous || current.getMonth() !== previous.getMonth() || current.getFullYear() !== previous.getFullYear();
+    const lastTick = ticks.at(-1) ?? -99;
+    if ((index === 0 || index === bars.length - 1 || monthChanged) && index - lastTick >= 6) ticks.push(index);
+    return ticks;
+  }, []);
+  const xFor = (index: number) => leftPadding + index * (candleWidth + candleGap) + candleWidth / 2;
+  const yFor = (price: number) => topPadding + ((maxPrice - price) / priceRange) * plotHeight;
+  const hovered = hoveredIndex === null ? null : bars[hoveredIndex];
+
+  const handlePointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const svgX = ((event.clientX - rect.left) / rect.width) * width;
+    setHoveredIndex(Math.max(0, Math.min(bars.length - 1, Math.round((svgX - leftPadding - candleWidth / 2) / (candleWidth + candleGap)))));
+  };
 
   return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      style={{ width: "100%", height: "256px", overflow: "visible", display: "block" }}
-    >
+    <div className="bt-replay-chart-shell">
+      <div className="bt-replay-chart-tools">
+        <span><Crosshair size={13} /> Crosshair · hover any candle for OHLC</span>
+        <div><button type="button" onClick={() => setZoom((value) => Math.max(0.65, value - 0.2))} aria-label="Zoom out"><ZoomOut size={13} /></button><button type="button" onClick={() => setZoom((value) => Math.min(2.6, value + 0.2))} aria-label="Zoom in"><ZoomIn size={13} /></button><button type="button" onClick={() => setZoom(1)}>Reset</button></div>
+      </div>
+      <div className="bt-replay-chart-scroll" aria-label="Historical candlestick chart. Scroll horizontally to inspect earlier dates.">
+      <svg viewBox={`0 0 ${width} ${height}`} width={width} height={height} className="bt-replay-candle-svg" onPointerMove={handlePointerMove} onPointerLeave={() => setHoveredIndex(null)}>
       {[0, 0.25, 0.5, 0.75, 1].map((pct) => {
-        const y = padding + (height - padding * 2) * pct;
+        const y = topPadding + plotHeight * pct;
         const val = maxPrice - priceRange * pct;
         return (
           <g key={pct}>
             <line
-              x1={padding}
+              x1={leftPadding}
               y1={y}
-              x2={width - padding}
+              x2={width - rightPadding}
               y2={y}
               stroke="#e2e8f0"
               strokeDasharray="3 3"
             />
             <text
-              x={width - padding + 4}
+              x={width - rightPadding + 6}
               y={y + 3}
               fill="#94a3b8"
               fontSize={9}
@@ -605,15 +631,11 @@ function ReplayCandleChart({ bars }: { bars: ReplayBar[] }) {
         );
       })}
       {bars.map((bar, idx) => {
-        const x = padding + idx * (candleWidth + 2) + candleWidth / 2;
-        const yOpen =
-          padding + ((maxPrice - bar.open) / priceRange) * (height - padding * 2);
-        const yClose =
-          padding + ((maxPrice - bar.close) / priceRange) * (height - padding * 2);
-        const yHigh =
-          padding + ((maxPrice - bar.high) / priceRange) * (height - padding * 2);
-        const yLow =
-          padding + ((maxPrice - bar.low) / priceRange) * (height - padding * 2);
+        const x = xFor(idx);
+        const yOpen = yFor(bar.open);
+        const yClose = yFor(bar.close);
+        const yHigh = yFor(bar.high);
+        const yLow = yFor(bar.low);
         const isBullish = bar.close >= bar.open;
         const color = isBullish ? "#059669" : "#e11d48";
         const topY = Math.min(yOpen, yClose);
@@ -632,6 +654,19 @@ function ReplayCandleChart({ bars }: { bars: ReplayBar[] }) {
           </g>
         );
       })}
-    </svg>
+      {hovered && hoveredIndex !== null && <g className="bt-replay-crosshair"><line x1={xFor(hoveredIndex)} y1={topPadding} x2={xFor(hoveredIndex)} y2={height - bottomPadding} /><circle cx={xFor(hoveredIndex)} cy={yFor(hovered.close)} r="4" /><g transform={`translate(${Math.min(xFor(hoveredIndex) + 12, width - rightPadding - 132)}, ${topPadding + 10})`}><rect width="124" height="88" rx="5" /><text x="8" y="17">{new Date(hovered.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</text><text x="8" y="36">O ₹{hovered.open}</text><text x="8" y="51">H ₹{hovered.high}</text><text x="8" y="66">L ₹{hovered.low}</text><text x="8" y="81">C ₹{hovered.close}</text></g></g>}
+      {tickIndexes.map((index) => {
+        const date = new Date(bars[index].date);
+        return <g key={`date-${index}`}>
+          <line x1={xFor(index)} y1={height - bottomPadding} x2={xFor(index)} y2={height - bottomPadding + 4} stroke="#94a3b8" />
+          <text x={xFor(index)} y={height - 14} textAnchor="middle" fill="#64748b" fontSize={10} fontFamily="JetBrains Mono">
+            {date.toLocaleDateString("en-IN", { month: "short", year: "2-digit" })}
+          </text>
+        </g>;
+      })}
+      <line x1={leftPadding} y1={height - bottomPadding} x2={width - rightPadding} y2={height - bottomPadding} stroke="#cbd5e1" />
+      </svg>
+    </div>
+    </div>
   );
 }

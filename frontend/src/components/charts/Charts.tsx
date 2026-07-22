@@ -1,233 +1,148 @@
 "use client";
 
+import { useMemo, useState, type ReactNode, type WheelEvent } from "react";
+import { Maximize2, MoveHorizontal, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
 import {
-  AreaChart,
   Area,
-  LineChart,
+  AreaChart,
+  Brush,
+  CartesianGrid,
+  Legend,
   Line,
+  LineChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
 } from "recharts";
 
-// Custom tooltip — plain interface, not extending Recharts types to avoid conflicts
-interface CustomTooltipProps {
+type Point = Record<string, string | number>;
+
+interface ChartTooltipProps {
   active?: boolean;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  payload?: any[];
+  payload?: Array<{ name: string; value: number; color: string }>;
   label?: string;
-  formatter?: (v: number) => string;
+  formatter?: (value: number) => string;
 }
 
-const CustomTooltip = ({ active, payload, label, formatter }: CustomTooltipProps) => {
-  if (active && payload && payload.length) {
-    return (
-      <div
-        style={{
-          background: "rgba(10,14,26,0.95)",
-          border: "1px solid rgba(0,212,255,0.2)",
-          borderRadius: 8,
-          padding: "10px 14px",
-          backdropFilter: "blur(12px)",
-          fontFamily: "var(--font-jetbrains)",
-          fontSize: 12,
-        }}
-      >
-        <p style={{ color: "rgba(255,255,255,0.5)", marginBottom: 6 }}>{label}</p>
-        {payload.map((entry: { name: string; value: number; color: string }, i: number) => (
-          <p key={i} style={{ color: entry.color, marginBottom: 2 }}>
-            <span style={{ color: "rgba(255,255,255,0.4)" }}>{entry.name}: </span>
-            {formatter ? formatter(entry.value) : entry.value.toFixed(2)}
-          </p>
-        ))}
+function ChartTooltip({ active, payload, label, formatter }: ChartTooltipProps) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bt-chart-tooltip">
+      <p>{label}</p>
+      {payload.map((entry) => (
+        <div key={entry.name}>
+          <span style={{ backgroundColor: entry.color }} />
+          <b>{entry.name}</b>
+          <strong>{formatter ? formatter(entry.value) : entry.value.toFixed(2)}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ChartControls({
+  dataLength,
+  visibleCount,
+  setVisibleCount,
+}: {
+  dataLength: number;
+  visibleCount: number;
+  setVisibleCount: (value: number) => void;
+}) {
+  const zoom = (direction: "in" | "out") => {
+    const next = direction === "in" ? Math.round(visibleCount * 0.7) : Math.round(visibleCount * 1.4);
+    setVisibleCount(Math.max(Math.min(next, dataLength), Math.min(12, dataLength)));
+  };
+  return (
+    <div className="bt-chart-controls" aria-label="Chart range controls">
+      {[30, 90].filter((range) => range < dataLength).map((range) => (
+        <button key={range} type="button" onClick={() => setVisibleCount(range)} className={visibleCount === range ? "is-active" : ""}>
+          {range}D
+        </button>
+      ))}
+      <button type="button" onClick={() => setVisibleCount(dataLength)} className={visibleCount === dataLength ? "is-active" : ""}>All</button>
+      <i />
+      <button type="button" onClick={() => zoom("out")} aria-label="Zoom out"><ZoomOut size={14} /></button>
+      <button type="button" onClick={() => zoom("in")} aria-label="Zoom in"><ZoomIn size={14} /></button>
+      <button type="button" onClick={() => setVisibleCount(dataLength)} aria-label="Reset chart scale"><RotateCcw size={14} /></button>
+    </div>
+  );
+}
+
+function InteractiveShell({
+  data,
+  children,
+  height,
+  title,
+}: {
+  data: Point[];
+  children: (visibleData: Point[]) => ReactNode;
+  height: number;
+  title: string;
+}) {
+  const [visibleCount, setVisibleCount] = useState(data.length);
+  const visibleData = useMemo(() => data.slice(Math.max(0, data.length - visibleCount)), [data, visibleCount]);
+  const onWheel = (event: WheelEvent<HTMLDivElement>) => {
+    if (!event.ctrlKey && !event.metaKey) return;
+    event.preventDefault();
+    setVisibleCount((count) => Math.max(Math.min(Math.round(count * (event.deltaY < 0 ? 0.82 : 1.22)), data.length), Math.min(12, data.length)));
+  };
+
+  return (
+    <div className="bt-interactive-chart" onWheel={onWheel}>
+      <div className="bt-chart-toolbar">
+        <div><MoveHorizontal size={14} /><span>{title}</span><small>Ctrl/⌘ + scroll to zoom</small></div>
+        <ChartControls dataLength={data.length} visibleCount={visibleCount} setVisibleCount={setVisibleCount} />
       </div>
-    );
-  }
-  return null;
+      <div style={{ height }}>{children(visibleData)}</div>
+      {data.length > 18 && (
+        <div className="bt-chart-navigator" aria-label="Chart range navigator">
+          <Maximize2 size={13} />
+          <span>Drag the handles below to inspect a time range</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const axis = {
+  tick: { fill: "#64748b", fontFamily: "var(--font-jetbrains)", fontSize: 10 },
+  tickLine: false,
+  axisLine: { stroke: "#e2e8f0" },
 };
 
-interface EquityChartProps {
-  data: Array<{ date: string; strategy: number; benchmark: number }>;
-  height?: number;
+function Navigator({ data }: { data: Point[] }) {
+  if (data.length < 19) return null;
+  return <Brush dataKey="date" height={24} travellerWidth={8} stroke="#4f46e5" fill="#f8fafc" tickFormatter={() => ""} />;
 }
 
-export function EquityChart({ data, height = 280 }: EquityChartProps) {
-  const fmt = (v: number) => `$${(v / 1000).toFixed(0)}k`;
+export function EquityChart({ data, height = 280 }: { data: Array<{ date: string; strategy: number; benchmark: number }>; height?: number }) {
+  const fmt = (value: number) => `₹${(value / 1000).toFixed(0)}k`;
   return (
-    <ResponsiveContainer width="100%" height={height}>
-      <AreaChart data={data} margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
-        <defs>
-          <linearGradient id="strategyGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#10B981" stopOpacity={0.25} />
-            <stop offset="95%" stopColor="#10B981" stopOpacity={0.02} />
-          </linearGradient>
-          <linearGradient id="benchmarkGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#64748b" stopOpacity={0.15} />
-            <stop offset="95%" stopColor="#64748b" stopOpacity={0.02} />
-          </linearGradient>
-        </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-        <XAxis
-          dataKey="date"
-          tick={{ fill: "rgba(255,255,255,0.3)", fontFamily: "var(--font-jetbrains)", fontSize: 10 }}
-          tickLine={false}
-          axisLine={{ stroke: "rgba(255,255,255,0.08)" }}
-          interval="preserveStartEnd"
-        />
-        <YAxis
-          tickFormatter={fmt}
-          tick={{ fill: "rgba(255,255,255,0.3)", fontFamily: "var(--font-jetbrains)", fontSize: 10 }}
-          tickLine={false}
-          axisLine={false}
-          width={48}
-        />
-        <Tooltip
-          content={({ active, payload, label }) => (
-            <CustomTooltip
-              active={active}
-              payload={payload ? [...payload] : []}
-              label={label != null ? String(label) : undefined}
-              formatter={fmt}
-            />
-          )}
-        />
-        <Legend
-          wrapperStyle={{
-            fontFamily: "var(--font-jetbrains)",
-            fontSize: 11,
-            color: "rgba(255,255,255,0.5)",
-            paddingTop: 12,
-          }}
-        />
-        <Area
-          type="monotone"
-          dataKey="benchmark"
-          name="Buy & Hold"
-          stroke="#475569"
-          strokeWidth={1.5}
-          strokeDasharray="4 3"
-          fill="url(#benchmarkGradient)"
-        />
-        <Area
-          type="monotone"
-          dataKey="strategy"
-          name="Strategy"
-          stroke="#10B981"
-          strokeWidth={2}
-          fill="url(#strategyGradient)"
-        />
-      </AreaChart>
-    </ResponsiveContainer>
+    <InteractiveShell data={data} height={height} title="Equity performance">
+      {(visibleData) => <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={visibleData} margin={{ top: 10, right: 18, left: 6, bottom: 0 }}>
+          <defs><linearGradient id="strategyGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#059669" stopOpacity={0.2} /><stop offset="1" stopColor="#059669" stopOpacity={0.01} /></linearGradient></defs>
+          <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="date" minTickGap={42} {...axis} />
+          <YAxis orientation="right" tickFormatter={fmt} width={56} domain={["dataMin - 1000", "dataMax + 1000"]} {...axis} />
+          <Tooltip cursor={{ stroke: "#64748b", strokeDasharray: "4 4" }} content={<ChartTooltip formatter={fmt} />} />
+          <Legend wrapperStyle={{ fontFamily: "var(--font-jetbrains)", fontSize: 11, paddingTop: 8 }} />
+          <Area type="monotone" dataKey="benchmark" name="Buy & Hold" stroke="#0ea5e9" strokeWidth={1.5} strokeDasharray="5 4" fill="none" />
+          <Area type="monotone" dataKey="strategy" name="Strategy" stroke="#059669" strokeWidth={2.25} fill="url(#strategyGradient)" activeDot={{ r: 4, strokeWidth: 2, stroke: "#fff" }} />
+          <Navigator data={visibleData} />
+        </AreaChart>
+      </ResponsiveContainer>}
+    </InteractiveShell>
   );
 }
 
-interface MultiLineChartProps {
-  data: Array<Record<string, string | number>>;
-  lines: Array<{ key: string; color: string; label: string }>;
-  height?: number;
+export function MultiLineChart({ data, lines, height = 220 }: { data: Point[]; lines: Array<{ key: string; color: string; label: string }>; height?: number }) {
+  return <InteractiveShell data={data} height={height} title="Performance comparison">{(visibleData) => <ResponsiveContainer width="100%" height="100%"><LineChart data={visibleData} margin={{ top: 10, right: 18, left: 6, bottom: 0 }}><CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} /><XAxis dataKey="date" minTickGap={42} {...axis} /><YAxis orientation="right" width={46} {...axis} /><Tooltip cursor={{ stroke: "#64748b", strokeDasharray: "4 4" }} content={<ChartTooltip />} /><Legend wrapperStyle={{ fontFamily: "var(--font-jetbrains)", fontSize: 11, paddingTop: 8 }} />{lines.map((line) => <Line key={line.key} type="monotone" dataKey={line.key} name={line.label} stroke={line.color} strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: "#fff", strokeWidth: 2 }} />)}<Navigator data={visibleData} /></LineChart></ResponsiveContainer>}</InteractiveShell>;
 }
 
-export function MultiLineChart({ data, lines, height = 220 }: MultiLineChartProps) {
-  return (
-    <ResponsiveContainer width="100%" height={height}>
-      <LineChart data={data} margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-        <XAxis
-          dataKey="date"
-          tick={{ fill: "rgba(255,255,255,0.3)", fontFamily: "var(--font-jetbrains)", fontSize: 10 }}
-          tickLine={false}
-          axisLine={{ stroke: "rgba(255,255,255,0.08)" }}
-          interval="preserveStartEnd"
-        />
-        <YAxis
-          tickFormatter={(v) => `${v.toFixed(0)}`}
-          tick={{ fill: "rgba(255,255,255,0.3)", fontFamily: "var(--font-jetbrains)", fontSize: 10 }}
-          tickLine={false}
-          axisLine={false}
-          width={40}
-        />
-        <Tooltip
-          content={({ active, payload, label }) => (
-            <CustomTooltip active={active} payload={payload ? [...payload] : []} label={label != null ? String(label) : undefined} />
-          )}
-        />
-        <Legend
-          wrapperStyle={{
-            fontFamily: "var(--font-jetbrains)",
-            fontSize: 11,
-            color: "rgba(255,255,255,0.5)",
-            paddingTop: 8,
-          }}
-        />
-        {lines.map((line) => (
-          <Line
-            key={line.key}
-            type="monotone"
-            dataKey={line.key}
-            name={line.label}
-            stroke={line.color}
-            strokeWidth={1.5}
-            dot={false}
-            activeDot={{ r: 3, strokeWidth: 0 }}
-          />
-        ))}
-      </LineChart>
-    </ResponsiveContainer>
-  );
-}
-
-interface DrawdownChartProps {
-  data: Array<{ date: string; drawdown: number }>;
-  height?: number;
-}
-
-export function DrawdownChart({ data, height = 180 }: DrawdownChartProps) {
-  return (
-    <ResponsiveContainer width="100%" height={height}>
-      <AreaChart data={data} margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
-        <defs>
-          <linearGradient id="ddGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#EF4444" stopOpacity={0.3} />
-            <stop offset="95%" stopColor="#EF4444" stopOpacity={0.02} />
-          </linearGradient>
-        </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-        <XAxis
-          dataKey="date"
-          tick={{ fill: "rgba(255,255,255,0.3)", fontFamily: "var(--font-jetbrains)", fontSize: 10 }}
-          tickLine={false}
-          axisLine={{ stroke: "rgba(255,255,255,0.08)" }}
-          interval="preserveStartEnd"
-        />
-        <YAxis
-          tickFormatter={(v) => `${v.toFixed(0)}%`}
-          tick={{ fill: "rgba(255,255,255,0.3)", fontFamily: "var(--font-jetbrains)", fontSize: 10 }}
-          tickLine={false}
-          axisLine={false}
-          width={44}
-        />
-        <Tooltip
-          content={({ active, payload, label }) => (
-            <CustomTooltip
-              active={active}
-              payload={payload ? [...payload] : []}
-              label={label != null ? String(label) : undefined}
-              formatter={(v) => `${v.toFixed(2)}%`}
-            />
-          )}
-        />
-        <Area
-          type="monotone"
-          dataKey="drawdown"
-          name="Drawdown"
-          stroke="#EF4444"
-          strokeWidth={1.5}
-          fill="url(#ddGradient)"
-        />
-      </AreaChart>
-    </ResponsiveContainer>
-  );
+export function DrawdownChart({ data, height = 180 }: { data: Array<{ date: string; drawdown: number }>; height?: number }) {
+  return <InteractiveShell data={data} height={height} title="Drawdown analysis">{(visibleData) => <ResponsiveContainer width="100%" height="100%"><AreaChart data={visibleData} margin={{ top: 10, right: 18, left: 6, bottom: 0 }}><defs><linearGradient id="ddGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#e11d48" stopOpacity={0.05} /><stop offset="1" stopColor="#e11d48" stopOpacity={0.32} /></linearGradient></defs><CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} /><XAxis dataKey="date" minTickGap={42} {...axis} /><YAxis orientation="right" tickFormatter={(value) => `${value.toFixed(0)}%`} width={48} {...axis} /><ReferenceLine y={0} stroke="#94a3b8" /><Tooltip cursor={{ stroke: "#64748b", strokeDasharray: "4 4" }} content={<ChartTooltip formatter={(value) => `${value.toFixed(2)}%`} />} /><Area type="monotone" dataKey="drawdown" name="Drawdown" stroke="#e11d48" strokeWidth={2} fill="url(#ddGradient)" activeDot={{ r: 4, stroke: "#fff", strokeWidth: 2 }} /><Navigator data={visibleData} /></AreaChart></ResponsiveContainer>}</InteractiveShell>;
 }
