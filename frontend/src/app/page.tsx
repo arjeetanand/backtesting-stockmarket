@@ -14,26 +14,26 @@ import {
 } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import {
-  runSwarmBacktest,
   swarmAgents,
   type BacktestConfig,
 } from "@/lib/agents/orchestrator";
 import type { AgentSnapshot } from "@/lib/agents/types";
+import { runLocalBacktest, type LiveBacktestResult } from "@/lib/backtest-api";
 
 const defaultConfig: BacktestConfig = {
-  symbol: "NIFTY 50",
-  strategy: "RSI + EMA trend",
-  timeframe: "1D",
-  start: "2021-01-01",
-  end: "2024-12-31",
+  symbol: "RELIANCE",
+  strategy: "RSI oversold + EMA trend",
+  timeframe: "1day",
+  start: "2024-01-01",
+  end: "2026-06-30",
   initialCapital: 100000,
   commissionBps: 10,
 };
 
 const quickConfigs: Array<Pick<BacktestConfig, "symbol" | "strategy">> = [
-  { symbol: "NIFTY 50", strategy: "RSI + EMA trend" },
-  { symbol: "BANKNIFTY", strategy: "MACD momentum" },
-  { symbol: "RELIANCE", strategy: "Bollinger mean reversion" },
+  { symbol: "RELIANCE", strategy: "RSI oversold + EMA trend" },
+  { symbol: "HDFCBANK", strategy: "RSI oversold + EMA trend" },
+  { symbol: "TCS", strategy: "RSI oversold + EMA trend" },
 ];
 
 const formatINR = (value: number) =>
@@ -114,7 +114,7 @@ function EquityCurve({
   data,
   initialCapital,
 }: {
-  data: Array<{ date: string; strategy: number; benchmark: number }>;
+  data: Array<{ date: string; equity: number }>;
   initialCapital: number;
 }) {
   const width = 960;
@@ -125,7 +125,7 @@ function EquityCurve({
   const bottom = 30;
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
-  const values = data.flatMap((point) => [point.strategy, point.benchmark]);
+  const values = data.map((point) => point.equity);
   const min = Math.min(...values, initialCapital) * 0.96;
   const max = Math.max(...values, initialCapital) * 1.04;
 
@@ -134,17 +134,7 @@ function EquityCurve({
   const yFor = (value: number) =>
     top + ((max - value) / Math.max(max - min, 1)) * plotHeight;
 
-  const pathFor = (key: "strategy" | "benchmark") =>
-    data
-      .map(
-        (point, index) =>
-          `${index === 0 ? "M" : "L"} ${xFor(index).toFixed(1)} ${yFor(
-            point[key]
-          ).toFixed(1)}`
-      )
-      .join(" ");
-
-  const strategyPath = pathFor("strategy");
+  const strategyPath = data.map((point, index) => `${index === 0 ? "M" : "L"} ${xFor(index).toFixed(1)} ${yFor(point.equity).toFixed(1)}`).join(" ");
   const strategyArea = `${strategyPath} L ${xFor(data.length - 1).toFixed(
     1
   )} ${(top + plotHeight).toFixed(1)} L ${left} ${(top + plotHeight).toFixed(
@@ -194,15 +184,6 @@ function EquityCurve({
         );
       })}
 
-      {/* Benchmark Line */}
-      <path
-        d={pathFor("benchmark")}
-        fill="none"
-        stroke="#0ea5e9"
-        strokeWidth="2"
-        strokeDasharray="4 4"
-      />
-
       {/* Strategy Line */}
       <path
         d={strategyPath}
@@ -217,25 +198,24 @@ function EquityCurve({
 export default function DashboardPage() {
   const [config, setConfig] = useState<BacktestConfig>(defaultConfig);
   const [running, setRunning] = useState(false);
-  const [result, setResult] = useState(() => runSwarmBacktest(defaultConfig));
+  const [result, setResult] = useState<LiveBacktestResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!running) return;
-    const timer = setTimeout(() => {
-      setResult(runSwarmBacktest(config));
-      setRunning(false);
-    }, 600);
-    return () => clearTimeout(timer);
-  }, [running, config]);
+  const handleRun = async () => {
+    setRunning(true);
+    setError(null);
+    try { setResult(await runLocalBacktest({ symbol: config.symbol, start: config.start, end: config.end, initialCapital: config.initialCapital })); }
+    catch (requestError) { setResult(null); setError(requestError instanceof Error ? requestError.message : "Could not run the local backtest."); }
+    finally { setRunning(false); }
+  };
 
-  const handleRun = () => setRunning(true);
+  useEffect(() => { void handleRun(); }, []); // Load the default, locally cached backtest once.
 
   const applyQuick = (symbol: string, strategy: string) => {
     setConfig((prev) => ({ ...prev, symbol, strategy }));
-    setRunning(true);
   };
 
-  const netPnl = result.finalValue - config.initialCapital;
+  const netPnl = (result?.final_equity ?? config.initialCapital) - config.initialCapital;
   const netPnlTone = netPnl >= 0 ? "gain" : "loss";
 
   return (
@@ -257,10 +237,11 @@ export default function DashboardPage() {
           </div>
           <div className="bt-heading-actions">
             <span className="data-source">
-              <Zap size={14} /> FastAPI Engine v2.4
+              <Zap size={14} /> Local NSE daily cache
             </span>
           </div>
         </section>
+        {error && <div className="bt-alert-error">{error}</div>}
 
         {/* Configuration Panel */}
         <div className="bt-panel setup-panel">
@@ -279,7 +260,7 @@ export default function DashboardPage() {
               className="reset-link"
               onClick={() => {
                 setConfig(defaultConfig);
-                setResult(runSwarmBacktest(defaultConfig));
+                void handleRun();
               }}
             >
               Reset defaults
@@ -313,9 +294,7 @@ export default function DashboardPage() {
                   setConfig({ ...config, timeframe: e.target.value })
                 }
               >
-                <option value="1D">1 Day (Daily)</option>
-                <option value="1H">1 Hour</option>
-                <option value="15m">15 Mins</option>
+                <option value="1day">1 Day (official NSE cache)</option>
               </select>
             </div>
           </div>
@@ -373,42 +352,42 @@ export default function DashboardPage() {
         <div className="metric-grid">
           <MetricTile
             label="Net Profit"
-            value={formatINR(netPnl)}
-            detail={formatPct(result.netReturn)}
+            value={result ? formatINR(netPnl) : "—"}
+            detail={result ? formatPct(result.metrics.total_return * 100) : "Run local backtest"}
             tone={netPnlTone}
             icon={<TrendingUp size={16} />}
           />
           <MetricTile
             label="Sharpe Ratio"
-            value={result.sharpe.toFixed(2)}
+            value={result ? result.metrics.sharpe_ratio.toFixed(2) : "—"}
             detail="Risk Adjusted"
             tone="cyan"
             icon={<Gauge size={16} />}
           />
           <MetricTile
             label="Max Drawdown"
-            value={`${result.maxDrawdown.toFixed(1)}%`}
+            value={result ? `${(result.metrics.max_drawdown * 100).toFixed(1)}%` : "—"}
             detail="Peak to Trough"
             tone="loss"
             icon={<ArrowDownRight size={16} />}
           />
           <MetricTile
             label="Win Rate"
-            value={`${(result.winRate * 100).toFixed(1)}%`}
-            detail={`${result.trades.length} Trades`}
+            value={result ? `${(result.metrics.win_rate * 100).toFixed(1)}%` : "—"}
+            detail={result ? `${result.metrics.total_trades} Trades` : "—"}
             tone="cyan"
             icon={<ShieldCheck size={16} />}
           />
           <MetricTile
             label="Profit Factor"
-            value={result.profitFactor.toFixed(2)}
+            value={result ? result.metrics.profit_factor.toFixed(2) : "—"}
             detail="Gross Win / Loss"
             tone="cyan"
             icon={<Activity size={16} />}
           />
           <MetricTile
             label="Ending Equity"
-            value={formatINR(result.finalValue)}
+            value={result ? formatINR(result.final_equity) : "—"}
             detail={`Started: ${formatINR(config.initialCapital)}`}
             tone="gain"
             icon={<WalletCards size={16} />}
@@ -423,15 +402,9 @@ export default function DashboardPage() {
               <div className="legend-item">
                 <span className="swatch-strategy" /> Strategy Equity
               </div>
-              <div className="legend-item">
-                <span className="swatch-benchmark" /> Benchmark (Buy &amp; Hold)
-              </div>
             </div>
           </div>
-          <EquityCurve
-            data={result.equity}
-            initialCapital={config.initialCapital}
-          />
+          {result ? <EquityCurve data={result.equity_curve} initialCapital={config.initialCapital} /> : <p className="text-sm text-slate-500 p-8">No local result yet. Import the selected symbol and range, then run the backtest.</p>}
         </div>
 
         {/* Lower Grid: Swarm Agents + AI Summary */}
@@ -463,14 +436,13 @@ export default function DashboardPage() {
                 <p>
                   The <strong>{config.strategy}</strong> configuration on{" "}
                   <strong>{config.symbol}</strong> generated a net profit of{" "}
-                  <strong>{formatINR(netPnl)}</strong> (
-                  {formatPct(result.netReturn)}).
+                  <strong>{result ? formatINR(netPnl) : "—"}</strong>{result ? ` (${formatPct(result.metrics.total_return * 100)}).` : "."}
                 </p>
                 <br />
                 <p>
                   Risk exposure remained controlled with a max drawdown of{" "}
-                  <strong>{result.maxDrawdown.toFixed(1)}%</strong> and Sharpe
-                  ratio of <strong>{result.sharpe.toFixed(2)}</strong>.
+                  <strong>{result ? `${(result.metrics.max_drawdown * 100).toFixed(1)}%` : "—"}</strong> and Sharpe
+                  ratio of <strong>{result ? result.metrics.sharpe_ratio.toFixed(2) : "—"}</strong>.
                 </p>
               </div>
             </div>
@@ -490,11 +462,11 @@ export default function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {result.trades.slice(0, 5).map((trade) => (
-                    <tr key={trade.id}>
-                      <td>{trade.exit}</td>
-                      <td>{trade.side}</td>
-                      <td>{formatPct(trade.returnPct)}</td>
+                  {result?.trades.slice(0, 5).map((trade) => (
+                    <tr key={trade.trade_id}>
+                      <td>{trade.exit_date}</td>
+                      <td>{trade.position}</td>
+                      <td>{formatPct(trade.return_pct)}</td>
                       <td
                         className={
                           trade.pnl >= 0 ? "text-emerald-600" : "text-rose-600"

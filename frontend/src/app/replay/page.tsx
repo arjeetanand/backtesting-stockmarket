@@ -21,6 +21,7 @@ import {
   finishReplaySession,
 } from "@/lib/replay/api";
 import type { ReplaySessionData, ReplayBar } from "@/lib/replay/types";
+import { getMarketAvailability, type MarketAvailability } from "@/lib/market-data";
 
 const formatINR = (val: number) =>
   `₹${Math.round(val).toLocaleString("en-IN")}`;
@@ -41,12 +42,32 @@ export default function ReplayPage() {
   const [takeProfit, setTakeProfit] = useState<string>("");
 
   // Setup Form State
-  const [symbol, setSymbol] = useState("NIFTY 50");
+  const [symbol, setSymbol] = useState("RELIANCE");
   const [timeframe, setTimeframe] = useState("1day");
-  const [start, setStart] = useState("2021-01-01");
-  const [end, setEnd] = useState("2025-12-31");
+  const [start, setStart] = useState("2024-01-01");
+  const [end, setEnd] = useState("2026-06-30");
+  const [availability, setAvailability] = useState<MarketAvailability | null>(null);
   const mode = "manual";
   const initialCapital = 100000;
+
+  useEffect(() => {
+    const cleanSymbol = symbol.trim();
+    if (!cleanSymbol) { setAvailability(null); return; }
+    const timer = window.setTimeout(async () => {
+      try {
+        const next = await getMarketAvailability(cleanSymbol);
+        setAvailability(next);
+        if (next.earliest && next.latest) {
+          setStart(next.earliest.slice(0, 10));
+          setEnd(next.latest.slice(0, 10));
+        }
+      } catch (requestError) {
+        setAvailability(null);
+        setError(requestError instanceof Error ? requestError.message : "Could not read local data availability.");
+      }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [symbol]);
 
   const handleInitSession = async () => {
     setLoading(true);
@@ -159,23 +180,12 @@ export default function ReplayPage() {
                   className="bt-field-input"
                   value={symbol}
                   onChange={(e) => setSymbol(e.target.value)}
-                  placeholder="RELIANCE or NIFTY 50"
+                  placeholder="RELIANCE"
                 />
               </div>
               <div>
                 <label className="bt-field-label">Timeframe</label>
-                <select
-                  className="bt-field-input"
-                  value={timeframe}
-                  onChange={(e) => setTimeframe(e.target.value)}
-                >
-                  <option value="1day">1 day</option>
-                  <option value="1week">1 week</option>
-                  <option value="1month">1 month</option>
-                  <option value="1h">1 hour (recent)</option>
-                  <option value="15m">15 minutes (recent)</option>
-                  <option value="5m">5 minutes (recent)</option>
-                </select>
+                <input className="bt-field-input" value="1 day (official NSE cache)" disabled aria-label="Timeframe" />
               </div>
               <div>
                 <label className="bt-field-label">Start date</label>
@@ -197,15 +207,17 @@ export default function ReplayPage() {
               </div>
             </div>
 
-            <p style={{ marginTop: "10px", color: "#94a3b8", fontSize: "11px", fontFamily: "var(--font-jetbrains)" }}>
-              Intraday history is limited by the free source; use daily candles for older periods.
+            <p style={{ marginTop: "10px", color: "#64748b", fontSize: "11px", fontFamily: "var(--font-jetbrains)" }}>
+              {availability?.bars
+                ? `${availability.symbol}: ${availability.bars.toLocaleString("en-IN")} daily bars · ${availability.earliest?.slice(0, 10)} to ${availability.latest?.slice(0, 10)} · latest close ₹${availability.latest_close?.toLocaleString("en-IN")}`
+                : "Enter an imported NSE symbol. Only daily historical data currently exists in the free local cache."}
             </p>
 
             <button
               className="bt-primary"
               style={{ width: "100%", marginTop: "20px", padding: "11px 16px", fontSize: "14px" }}
               onClick={handleInitSession}
-              disabled={loading}
+              disabled={loading || !availability?.bars}
             >
               {loading ? (
                 <>
@@ -369,6 +381,7 @@ export default function ReplayPage() {
                     {session.timeframe} · NSE
                   </span>
                 </div>
+                <p className="text-xs text-slate-500 font-mono mt-1">Bar timestamp: {currentBar.date} · Replay timeframe: {session.timeframe}</p>
                 <div className="bt-ohlc-row">
                   <span className="bt-ohlc-open">O <b>₹{currentBar.open}</b></span>
                   <span className="bt-ohlc-high">H <b>₹{currentBar.high}</b></span>

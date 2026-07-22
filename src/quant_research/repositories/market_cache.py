@@ -31,6 +31,25 @@ class SymbolCoverage:
         return bool(self.earliest and self.latest and self.earliest.date() <= start and self.latest.date() >= end)
 
 
+@dataclass(frozen=True, slots=True)
+class Instrument:
+    symbol: str
+    company_name: str
+    industry: str | None
+    series: str | None
+    isin: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class MarketAvailability:
+    symbol: str
+    timeframe: str
+    bars: int
+    earliest: datetime | None
+    latest: datetime | None
+    latest_close: float | None
+
+
 class SqliteMarketCache:
     """Small, dependency-free local store. It contains research data only."""
 
@@ -51,6 +70,20 @@ class SqliteMarketCache:
                     volume REAL NOT NULL,
                     source TEXT NOT NULL,
                     PRIMARY KEY (symbol, timeframe, timestamp)
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS instruments (
+                    symbol TEXT PRIMARY KEY,
+                    company_name TEXT NOT NULL,
+                    industry TEXT,
+                    series TEXT,
+                    isin TEXT,
+                    universe TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    refreshed_at TEXT NOT NULL
                 )
                 """
             )
@@ -173,6 +206,69 @@ class SqliteMarketCache:
                 """,
                 [(symbol, timeframe, trading_day.isoformat()) for symbol in clean_symbols],
             )
+
+    def replace_instruments(self, instruments: list[Instrument], universe: str, source: str) -> int:
+        """Atomically replace a downloaded universe so removed constituents disappear too."""
+        refreshed_at = datetime.now(UTC).isoformat()
+        with self._connect() as connection:
+            connection.execute("DELETE FROM instruments WHERE universe = ?", (universe,))
+            connection.executemany(
+                """
+                INSERT INTO instruments (symbol, company_name, industry, series, isin, universe, source, refreshed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (item.symbol, item.company_name, item.industry, item.series, item.isin, universe, source, refreshed_at)
+                    for item in instruments
+                ],
+            )
+        return len(instruments)
+
+    def search_instruments(self, query: str = "", universe: str = "nifty500", limit: int = 50) -> list[Instrument]:
+        clean_query = f"%{query.strip().upper()}%"
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT symbol, company_name, industry, series, isin
+                FROM instruments
+                WHERE universe = ? AND (UPPER(symbol) LIKE ? OR UPPER(company_name) LIKE ? OR UPPER(COALESCE(industry, '')) LIKE ?)
+                ORDER BY symbol
+                LIMIT ?
+                """,
+                (universe, clean_query, clean_query, clean_query, limit),
+            ).fetchall()
+        return [Instrument(*row) for row in rows]
+
+    def universe_symbols(self, universe: str = "nifty500") -> list[str]:
+        with self._connect() as connection:
+            rows = connection.execute("SELECT symbol FROM instruments WHERE universe = ? ORDER BY symbol", (universe,)).fetchall()
+        return [str(row[0]) for row in rows]
+
+    def market_availability(self, symbol: str, timeframe: str = "1day") -> MarketAvailability:
+        clean_symbol = symbol.strip().upper().removesuffix(".NS")
+        with self._connect() as connection:
+            summary = connection.execute(
+                """
+                SELECT COUNT(*), MIN(timestamp), MAX(timestamp)
+                FROM ohlcv_bars WHERE symbol = ? AND timeframe = ?
+                """,
+                (clean_symbol, timeframe),
+            ).fetchone()
+            latest = connection.execute(
+                """
+                SELECT close FROM ohlcv_bars
+                WHERE symbol = ? AND timeframe = ? ORDER BY timestamp DESC LIMIT 1
+                """,
+                (clean_symbol, timeframe),
+            ).fetchone()
+        return MarketAvailability(
+            symbol=clean_symbol,
+            timeframe=timeframe,
+            bars=int(summary[0]),
+            earliest=datetime.fromisoformat(summary[1]) if summary[1] else None,
+            latest=datetime.fromisoformat(summary[2]) if summary[2] else None,
+            latest_close=float(latest[0]) if latest else None,
+        )
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.path)

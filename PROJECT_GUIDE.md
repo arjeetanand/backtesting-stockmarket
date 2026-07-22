@@ -24,7 +24,7 @@ Backtrack is a research-only Indian-market backtesting application. It does not 
 | Risk Engine | Review bias and validity risks | Use it after a backtest to identify look-ahead, overfitting, and data-quality risks. | Backend audit endpoint exists; UI data wiring remains. |
 | YouTube Import | Convert a video/transcript into a reviewable strategy draft | Paste a public YouTube URL and transcript, then review every extracted rule manually. | API-backed extraction; it never runs a strategy automatically. |
 | Options Lab | Learn option payoff and loss limits | Adjust the educational contract inputs and read the payoff illustration. | Calculator/education only; no options-chain import or execution. |
-| Data & Providers | Manage local daily NSE history | Choose starter universe or **My NSE symbols**, set dates, click **Check availability**, then **Import missing data** only when required. | Real SQLite cache + official NSE archive import. |
+| Data & Providers | Manage local daily NSE history | Refresh the official Nifty 500 catalogue, search/select stocks, optionally download its CSV for Excel, set dates, click **Check availability**, then **Import missing data** only when required. | Real SQLite cache + official NSE archive import. |
 | Settings | View research configuration | Confirm local-data-only mode and local AI settings. | Configuration display; no paid market-data credential required. |
 
 ## Current local data
@@ -42,7 +42,7 @@ At the time this guide was created, `data/market_cache.sqlite3` contains 27,997 
 ## Data rules
 
 - Only exchange-traded NSE equities and ETFs are imported in the first implementation; mutual-fund NAVs and intraday bars are outside this source.
-- Custom NSE symbols are supported. Enter symbols such as `RELIANCE`, `TCS`, or `HDFCBANK`; they are validated against the downloaded official archive.
+- The Nifty 500 constituent catalogue is fetched from the official NSE product page's linked archive, saved in SQLite, searchable by symbol/company/industry, and downloadable as an Excel-compatible CSV. Custom selections use this catalogue.
 - The cache key is `(symbol, timeframe, timestamp)`, so a candle cannot be duplicated.
 - A cache coverage preview blocks a full date-range overlap before it creates an import job.
 - The importer records successfully processed archive/symbol days, so retrying the same request skips them even when the archive had no bar (for example, a holiday or pre-listing day).

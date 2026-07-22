@@ -10,6 +10,7 @@ type CacheStatus = { symbols: number; bars: number; earliest: string | null; lat
 type ImportStatus = { job_id: string; status: string; message: string; symbols?: number; downloaded_days?: number; skipped_days?: number; stored_bars?: number; already_available_days?: number };
 type CoverageItem = { symbol: string; bars: number; earliest: string | null; latest: string | null; fully_available: boolean };
 type ImportPreview = { requested_symbols: number; fully_available: boolean; message: string; coverage: CoverageItem[] };
+type Instrument = { symbol: string; company_name: string; industry: string | null; series: string | null; isin: string | null };
 
 export default function DataPage() {
   const [cache, setCache] = useState<CacheStatus | null>(null);
@@ -17,8 +18,11 @@ export default function DataPage() {
   const [end, setEnd] = useState("2026-06-30");
   const [job, setJob] = useState<ImportStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [preset, setPreset] = useState<"sensex_banks_sector_etfs" | "custom">("sensex_banks_sector_etfs");
-  const [customSymbols, setCustomSymbols] = useState("");
+  const [preset, setPreset] = useState<"sensex_banks_sector_etfs" | "nifty500" | "custom">("sensex_banks_sector_etfs");
+  const [customSymbols, setCustomSymbols] = useState<string[]>([]);
+  const [instrumentQuery, setInstrumentQuery] = useState("");
+  const [instruments, setInstruments] = useState<Instrument[]>([]);
+  const [catalogueMessage, setCatalogueMessage] = useState<string | null>(null);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [checking, setChecking] = useState(false);
 
@@ -26,7 +30,7 @@ export default function DataPage() {
     start,
     end,
     preset,
-    symbols: customSymbols.split(/[\s,]+/).map((symbol) => symbol.trim().toUpperCase()).filter(Boolean),
+    symbols: customSymbols,
   });
 
   const refreshCache = async () => {
@@ -43,6 +47,21 @@ export default function DataPage() {
     const initialFetch = window.setTimeout(() => { void refreshCache(); }, 0);
     return () => window.clearTimeout(initialFetch);
   }, []);
+
+  useEffect(() => {
+    if (preset !== "custom") return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/data/instruments?query=${encodeURIComponent(instrumentQuery)}`, { signal: controller.signal });
+        if (!response.ok) throw new Error("Could not load the Nifty 500 catalogue.");
+        setInstruments(await response.json() as Instrument[]);
+      } catch (requestError) {
+        if (!(requestError instanceof DOMException && requestError.name === "AbortError")) setError(requestError instanceof Error ? requestError.message : "Could not load the Nifty 500 catalogue.");
+      }
+    }, 200);
+    return () => { controller.abort(); window.clearTimeout(timer); };
+  }, [preset, instrumentQuery]);
 
   useEffect(() => {
     if (!job || !["queued", "running"].includes(job.status)) return;
@@ -91,6 +110,23 @@ export default function DataPage() {
       setChecking(false);
     }
   };
+
+  const refreshCatalogue = async () => {
+    setError(null);
+    setCatalogueMessage("Refreshing official NSE Nifty 500 list…");
+    try {
+      const response = await fetch(`${API_BASE_URL}/data/nifty500/refresh`, { method: "POST" });
+      const payload = await response.json() as { instruments?: number; detail?: string };
+      if (!response.ok) throw new Error(payload.detail ?? "Could not refresh the Nifty 500 catalogue.");
+      setCatalogueMessage(`${payload.instruments ?? 0} Nifty 500 instruments saved locally. Search by symbol, company, or industry.`);
+      setInstrumentQuery("");
+    } catch (requestError) {
+      setCatalogueMessage(null);
+      setError(requestError instanceof Error ? requestError.message : "Could not refresh the Nifty 500 catalogue.");
+    }
+  };
+
+  const toggleSymbol = (symbol: string) => setCustomSymbols((current) => current.includes(symbol) ? current.filter((item) => item !== symbol) : [...current, symbol]);
 
   const importing = job?.status === "queued" || job?.status === "running";
 
@@ -167,12 +203,20 @@ export default function DataPage() {
             <label className="bt-field-label">Instruments</label>
             <div className="flex gap-3 flex-wrap mb-3">
               <label className="text-xs text-slate-700 flex items-center gap-2"><input type="radio" checked={preset === "sensex_banks_sector_etfs"} onChange={() => setPreset("sensex_banks_sector_etfs")} /> Starter universe: Sensex, banks &amp; sector ETFs</label>
+              <label className="text-xs text-slate-700 flex items-center gap-2"><input type="radio" checked={preset === "nifty500"} onChange={() => setPreset("nifty500")} /> Entire Nifty 500 universe</label>
               <label className="text-xs text-slate-700 flex items-center gap-2"><input type="radio" checked={preset === "custom"} onChange={() => setPreset("custom")} /> My NSE symbols</label>
             </div>
             {preset === "custom" && <>
-              <textarea className="bt-field-input" rows={3} value={customSymbols} onChange={(event) => setCustomSymbols(event.target.value)} placeholder="RELIANCE, INFY, TCS, HDFCBANK" />
-              <p className="text-xs text-slate-500 mt-2">Enter NSE equity or ETF symbols, separated by commas or spaces. Daily historical OHLCV will be stored locally for each valid symbol.</p>
+              <div className="flex gap-2 mb-2"><input className="bt-field-input" value={instrumentQuery} onChange={(event) => setInstrumentQuery(event.target.value)} placeholder="Search Nifty 500 by symbol, company, or industry" /><button type="button" className="bt-secondary whitespace-nowrap" onClick={() => void refreshCatalogue()}>Refresh Nifty 500 list</button><a className="bt-secondary whitespace-nowrap" href={`${API_BASE_URL}/data/instruments/export`}>Download CSV</a></div>
+              {catalogueMessage && <p className="text-xs text-emerald-700 mb-2">{catalogueMessage}</p>}
+              <div className="border border-slate-200 rounded-lg max-h-52 overflow-auto bg-white">
+                {instruments.map((instrument) => <label key={instrument.symbol} className="flex items-center gap-3 px-3 py-2 border-b border-slate-100 text-xs cursor-pointer hover:bg-slate-50"><input type="checkbox" checked={customSymbols.includes(instrument.symbol)} onChange={() => toggleSymbol(instrument.symbol)} /><span className="font-mono font-bold text-indigo-700 w-24">{instrument.symbol}</span><span className="flex-1 text-slate-700">{instrument.company_name}</span><span className="text-slate-400">{instrument.industry ?? "—"}</span></label>)}
+                {instruments.length === 0 && <p className="p-3 text-xs text-slate-500">No local Nifty 500 list yet. Use “Refresh Nifty 500 list” to download the official catalogue.</p>}
+              </div>
+              {customSymbols.length > 0 && <p className="text-xs text-slate-600 mt-2">Selected: <strong>{customSymbols.join(", ")}</strong></p>}
+              <p className="text-xs text-slate-500 mt-2">The catalogue is local after refresh. Searches do not repeatedly call NSE. Select only the stocks you want to import and backtest.</p>
             </>}
+            {preset === "nifty500" && <p className="text-xs text-slate-500">Refresh the catalogue once under “My NSE symbols” before selecting this option. The importer will then use the locally stored Nifty 500 constituent list.</p>}
           </div>
 
           <div className="flex gap-3 flex-wrap">

@@ -2,19 +2,24 @@
 
 from __future__ import annotations
 
+import csv
+import io
 from dataclasses import asdict
 from datetime import datetime
 from typing import Annotated, Any
 from uuid import uuid4
 
 import pandas as pd
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Response, status
 
 from quant_research.api.schemas import (
     CacheStatusResponse,
+    CatalogueRefreshResponse,
     CustomBacktestRequest,
     HealthResponse,
     HypothesisRequest,
+    InstrumentResponse,
+    MarketAvailabilityResponse,
     MarketDataResponse,
     NseImportCoverageItem,
     NseImportJobResponse,
@@ -38,6 +43,7 @@ from quant_research.domain.validity.auditor import audit_validity
 from quant_research.llm.ollama import OllamaError
 from quant_research.repositories.market_cache import SqliteMarketCache
 from quant_research.services.hypotheses import HypothesisAnalysis, HypothesisCommand, HypothesisService
+from quant_research.services.nifty500_catalogue import Nifty500CatalogueError, Nifty500CatalogueImporter
 from quant_research.services.nse_import import (
     BANKING_STARTER,
     SECTOR_ETF_STARTER,
@@ -58,6 +64,7 @@ def create_api_router(
     hypotheses: HypothesisService,
     nse_importer: NseBhavcopyImporter | None = None,
     market_cache: SqliteMarketCache | None = None,
+    nifty500_catalogue: Nifty500CatalogueImporter | None = None,
 ) -> APIRouter:
     """Build routes bound to one fully configured application service."""
     router = APIRouter(prefix="/api/v1")
@@ -66,6 +73,10 @@ def create_api_router(
     def selected_symbols(payload: NseImportRequest) -> list[str]:
         if payload.preset == "custom":
             return payload.symbols
+        if payload.preset == "nifty500":
+            if market_cache is None:
+                return []
+            return market_cache.universe_symbols("nifty500")
         return sorted(set(SENSEX_NSE_STARTER + BANKING_STARTER + SECTOR_ETF_STARTER))
 
     def run_import(job_id: str, symbols: list[str], payload: NseImportRequest) -> None:
@@ -122,6 +133,43 @@ def create_api_router(
         if market_cache is None:
             return CacheStatusResponse(symbols=0, bars=0, earliest=None, latest=None)
         return CacheStatusResponse(**asdict(market_cache.summary()))
+
+    @router.get("/data/availability", response_model=MarketAvailabilityResponse, tags=["market data"])
+    def data_availability(symbol: Annotated[str, Query(min_length=1, max_length=50)]) -> MarketAvailabilityResponse:
+        if market_cache is None:
+            return MarketAvailabilityResponse(symbol=symbol.upper(), timeframe="1day", bars=0, earliest=None, latest=None, latest_close=None)
+        return MarketAvailabilityResponse(**asdict(market_cache.market_availability(symbol, "1day")))
+
+    @router.get("/data/instruments", response_model=list[InstrumentResponse], tags=["market data"])
+    def instruments(query: str = "", limit: int = Query(default=50, ge=1, le=100)) -> list[InstrumentResponse]:
+        if market_cache is None:
+            return []
+        return [InstrumentResponse(**asdict(item)) for item in market_cache.search_instruments(query=query, limit=limit)]
+
+    @router.get("/data/instruments/export", tags=["market data"])
+    def export_instruments() -> Response:
+        if market_cache is None:
+            instruments = []
+        else:
+            instruments = market_cache.search_instruments(query="", limit=10_000)
+        stream = io.StringIO()
+        writer = csv.writer(stream)
+        writer.writerow(["Symbol", "Company Name", "Industry", "Series", "ISIN"])
+        writer.writerows([[item.symbol, item.company_name, item.industry or "", item.series or "", item.isin or ""] for item in instruments])
+        return Response(
+            content=stream.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=nifty500_constituents.csv"},
+        )
+
+    @router.post("/data/nifty500/refresh", response_model=CatalogueRefreshResponse, tags=["market data"])
+    def refresh_nifty500_catalogue() -> CatalogueRefreshResponse:
+        if nifty500_catalogue is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Nifty 500 catalogue importer is not configured.")
+        try:
+            return CatalogueRefreshResponse(**asdict(nifty500_catalogue.refresh()))
+        except Nifty500CatalogueError as exc:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
     @router.post("/data/nse-import", response_model=NseImportJobResponse, status_code=status.HTTP_202_ACCEPTED, tags=["market data"])
     def start_nse_import(payload: NseImportRequest, background_tasks: BackgroundTasks) -> NseImportJobResponse:

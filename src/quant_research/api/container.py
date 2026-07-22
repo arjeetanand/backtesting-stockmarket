@@ -11,6 +11,7 @@ from quant_research.llm.ollama import OllamaClient
 from quant_research.repositories.backtests import InMemoryBacktestRepository
 from quant_research.repositories.market_cache import SqliteMarketCache
 from quant_research.services.hypotheses import HypothesisService, JsonLlmClient
+from quant_research.services.nifty500_catalogue import Nifty500CatalogueImporter
 from quant_research.services.nse_import import NseBhavcopyImporter
 from quant_research.services.research import ResearchService
 
@@ -22,6 +23,7 @@ class ApplicationContainer:
     hypotheses: HypothesisService
     market_cache: SqliteMarketCache
     nse_importer: NseBhavcopyImporter
+    nifty500_catalogue: Nifty500CatalogueImporter
 
 
 def create_container(
@@ -37,4 +39,5 @@ def create_container(
         hypotheses=HypothesisService(configured_llm),
         market_cache=market_cache,
         nse_importer=NseBhavcopyImporter(market_cache),
+        nifty500_catalogue=Nifty500CatalogueImporter(market_cache),
     )

@@ -31,10 +31,19 @@ class CacheStatusResponse(BaseModel):
     latest: datetime | None
 
 
+class MarketAvailabilityResponse(BaseModel):
+    symbol: str
+    timeframe: str
+    bars: int
+    earliest: datetime | None
+    latest: datetime | None
+    latest_close: float | None
+
+
 class NseImportRequest(BaseModel):
     start: date
     end: date
-    preset: str = Field(default="sensex_banks_sector_etfs", pattern="^(sensex_banks_sector_etfs|custom)$")
+    preset: str = Field(default="sensex_banks_sector_etfs", pattern="^(sensex_banks_sector_etfs|nifty500|custom)$")
     symbols: list[str] = Field(default_factory=list, max_length=200)
 
 
@@ -57,6 +66,19 @@ class NseImportPreviewResponse(BaseModel):
     fully_available: bool
     message: str
     coverage: list[NseImportCoverageItem]
+
+
+class InstrumentResponse(BaseModel):
+    symbol: str
+    company_name: str
+    industry: str | None
+    series: str | None
+    isin: str | None
+
+
+class CatalogueRefreshResponse(BaseModel):
+    instruments: int
+    source: str
 
 
 class NseImportStatusResponse(BaseModel):
