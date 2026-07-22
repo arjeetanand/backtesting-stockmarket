@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from "./api";
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
 export type LiveBacktestResult = {
@@ -21,6 +23,7 @@ export type LiveBacktestResult = {
 export type StrategyBacktestInput = {
   symbol: string;
   strategyId?: string;
+  timeframe?: "1day" | "1week" | "1month";
   start: string;
   end: string;
   initialCapital: number;
@@ -51,13 +54,13 @@ export async function runLocalBacktest(input: { symbol: string; start: string; e
 }
 
 export async function runStrategyBacktest(input: StrategyBacktestInput): Promise<LiveBacktestResult> {
-  const response = await fetch(`${API_BASE_URL}/backtests/custom`, {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/backtests/custom`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       symbol: input.symbol,
       strategy_id: input.strategyId ?? "rsi_ema",
-      timeframe: "1day",
+      timeframe: input.timeframe ?? "1day",
       start: `${input.start}T00:00:00`,
       end: `${input.end}T23:59:59`,
       initial_capital: input.initialCapital,

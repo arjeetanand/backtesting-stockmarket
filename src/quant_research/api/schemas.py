@@ -235,3 +235,11 @@ class HypothesisRequest(BaseModel):
     symbol: str = Field(..., min_length=1, max_length=50, examples=["AAPL"])
     timeframe: str = Field(default="1day", examples=["1day"])
     strategy_id: str = Field(default="sma_crossover", min_length=1, max_length=80)
+
+
+class PatternStrategyRequest(BaseModel):
+    symbol: str = Field(..., min_length=1, max_length=50)
+    target_gain_pct: float = Field(default=20.0, ge=1.0, le=100.0)
+    rvol_threshold: float = Field(default=2.0, ge=0.5, le=10.0)
+    dist_52w_pct: float = Field(default=5.0, ge=0.0, le=50.0)
+    hold_days: int = Field(default=15, ge=2, le=60)

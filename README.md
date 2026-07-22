@@ -21,14 +21,10 @@ It does not connect to a broker, place real orders, execute trades, or require a
 ## Recommended trader workflow
 
 1. Open **Manage stock data**.
-2. Refresh the official NSE stock catalogue if a symbol is not searchable.
-3. Choose the stock and date range.
-4. Click **Check database** to see what is already saved.
-5. Import only missing dates. Overlapping complete imports are rejected.
-6. Open **Test a strategy**, **Build rules**, or **Use a YouTube strategy**.
-7. Review assumptions, fees, slippage, and extracted rules.
-8. Run the backtest and save/reopen the result from **My tests**.
-9. Use **Compare tests**, **Check reliability**, **Risk Engine**, and **Replay a chart** to challenge the result.
+2. Choose **All history**, **Last 4 years**, **Last 1 year**, a calendar year, or **Custom start and end dates**.
+3. Leave the backend running while the background import checks and loads the archives.
+4. Search a symbol on the same page to confirm its saved period and candle count.
+5. Open **Test a strategy**, **Replay a chart**, or another research page; they all use the same local database.
 
 ## Historical NSE data lifecycle
 
@@ -100,6 +96,23 @@ Open:
 - API documentation: `http://localhost:8000/docs`
 - Health: `http://localhost:8000/api/v1/health`
 
+### First-time historical data setup
+
+You do not need a broker account, Dhan credentials, a paid API, or a separate data download script.
+
+1. Open `http://localhost:3000/data`.
+2. In **Download NSE history once**, choose **All history · 2000 to today** for the complete dataset, or choose **Last 4 years** for a smaller first download.
+3. Click **Download all NSE history** once.
+4. Leave the backend running while the progress message shows the archive days being checked and loaded.
+
+That one action refreshes the official NSE equity list, checks the local SQLite database and archive folder, then queues the missing history in the background. Each NSE trading-day ZIP contains the full daily market file, so the importer downloads one archive per day and bulk-loads all supported equity/BE/ETF rows into SQLite. It also saves the original ZIP under `data/nse_archives/<year>/` for reuse.
+
+The import is incremental and safe to repeat. Existing database coverage and local ZIPs are reused; duplicate candles are not inserted. After it finishes, **Test a strategy**, **Replay a chart**, and the other research pages read the same local NSE database.
+
+To download only one year, choose that year in the same dropdown and click **Download YYYY**. To download an exact window, choose **Custom start and end dates**. The importer still checks existing data first and downloads only missing trading days. The full 2000-to-today import can take a long time because it covers many trading days and NSE equities; it is designed to run as a background job rather than blocking the browser.
+
+If a fresh clone has no `data/` files, that is expected. The application creates the SQLite database and archive folders automatically when the first import starts.
+
 ## Market data is downloaded on demand
 
 The SQLite database and NSE ZIP archives are intentionally excluded from Git. They can grow to several gigabytes and are local runtime data, not application source code.
@@ -108,9 +121,9 @@ After a fresh clone:
 
 1. Start the backend and frontend using the commands above.
 2. Open **Manage stock data**.
-3. Refresh the official NSE catalogue if needed.
-4. Select the date range and stock universe.
-5. Click **Check database**, then **Import missing data**.
+3. Leave **All history · 2000 to today** selected, choose a quick range, or enter custom dates.
+4. Click the matching download button.
+5. Search for a symbol to confirm that its local history is available.
 
 The importer creates `data/market_cache.sqlite3` and `data/nse_archives/<year>/` locally. It checks the SQLite coverage and local archive folder first, downloads only missing official NSE archive days, saves each original ZIP locally, and bulk-loads the archive rows into SQLite. Repeating the same request reuses the local archive/database coverage instead of downloading the day again.
 
@@ -156,7 +169,7 @@ The configured model can be changed with `OLLAMA_MODEL`.
 | `/research` | Test a strategy | Ollama hypothesis review, automatic NSE history preparation, cached session restore, SMA backtest handoff |
 | `/strategy` | Build rules | Visual strategy/rule configuration and backtest setup |
 | `/strategy-import` | Use a YouTube strategy | URL/transcript extraction into reviewable entry, exit, risk, and assumption sections |
-| `/data` | Manage stock data | Catalogue search, local inventory, exact coverage, preview, duplicate protection, one-click stock import, and progress |
+| `/data` | Manage stock data | One-click quick/custom date-range import, local stock search, saved period/candle count, and progress |
 | `/backtests` | My tests | List saved local backtest runs and open details |
 | `/backtests/[id]` | Backtest detail | Metrics, equity/drawdown/trade views, risk and validity information |
 | `/comparison` | Compare tests | Compare configured strategy runs using the local cache |

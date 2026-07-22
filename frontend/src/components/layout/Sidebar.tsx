@@ -16,10 +16,12 @@ import {
   TrendingUp,
   ShieldAlert,
   BrainCircuit,
+  Sparkles,
 } from "lucide-react";
 
 const mainNav = [
   { href: "/", label: "Home", icon: LayoutDashboard },
+  { href: "/pattern-finder", label: "Pattern Finder", icon: Sparkles },
   { href: "/research", label: "Test a strategy", icon: FlaskConical },
   { href: "/backtests", label: "My tests", icon: GitCompare },
   { href: "/comparison", label: "Compare tests", icon: BarChart3 },
@@ -29,7 +31,7 @@ const mainNav = [
 
 const secondaryNav = [
   { href: "/strategy", label: "Build rules", icon: Wrench },
-  { href: "/strategy-import", label: "Use a YouTube strategy", icon: Video },
+  { href: "/strategy-import", label: "Strategy library", icon: Video },
   { href: "/replay", label: "Replay a chart", icon: Play },
   { href: "/data", label: "Manage stock data", icon: Database },
   { href: "/robustness", label: "Check reliability", icon: ShieldAlert },

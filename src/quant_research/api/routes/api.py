@@ -28,6 +28,7 @@ from quant_research.api.schemas import (
     NseImportPreviewResponse,
     NseImportRequest,
     NseImportStatusResponse,
+    PatternStrategyRequest,
     ProviderStatus,
     ReplayOrderRequest,
     ReplaySessionRequest,
@@ -708,5 +709,23 @@ def create_api_router(
         if not session:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Replay session not found.")
         return session
+
+    @router.post("/pattern-finder/test", tags=["pattern-finder"])
+    def test_pattern_strategy(payload: PatternStrategyRequest) -> dict[str, Any]:
+        """Run pattern finder historical trade scan with true vs false positive breakdown."""
+        from quant_research.services.pattern_strategy import analyze_symbol_pattern
+
+        db_path = market_cache.path if market_cache is not None else Path("data/market_cache.sqlite3")
+        try:
+            return analyze_symbol_pattern(
+                db_path=db_path,
+                symbol=payload.symbol,
+                target_gain_pct=payload.target_gain_pct,
+                rvol_threshold=payload.rvol_threshold,
+                dist_52w_pct=payload.dist_52w_pct,
+                hold_days=payload.hold_days,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
 
     return router

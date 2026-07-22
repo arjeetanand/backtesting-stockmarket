@@ -11,7 +11,7 @@ const pageTitles: Record<string, { title: string; category: string }> = {
   "/ml-lab": { title: "ML Lab", category: "" },
   "/robustness": { title: "Check reliability", category: "" },
   "/bias-validity": { title: "Risk check", category: "" },
-  "/strategy-import": { title: "Use a YouTube strategy", category: "" },
+  "/strategy-import": { title: "Strategy library", category: "" },
   "/options": { title: "Learning centre", category: "" },
   "/data": { title: "Manage stock data", category: "" },
   "/settings": { title: "Settings", category: "" },
