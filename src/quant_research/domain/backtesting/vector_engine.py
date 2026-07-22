@@ -1,0 +1,178 @@
+"""Vectorized Backtesting Engine."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import pandas as pd
+
+from quant_research.domain.analytics.calculator import QuantitativeMetrics, compute_metrics
+from quant_research.domain.indicators.calculator import (
+    compute_ema,
+    compute_rsi,
+)
+
+
+@dataclass
+class TradeRecord:
+    """Individual trade execution record."""
+
+    trade_id: int
+    symbol: str
+    entry_date: str
+    exit_date: str
+    entry_price: float
+    exit_price: float
+    position: str  # "LONG" or "SHORT"
+    pnl: float
+    return_pct: float
+    holding_days: int
+
+
+@dataclass
+class VectorBacktestResult:
+    """Complete result container for a vectorized backtest run."""
+
+    run_id: str
+    symbol: str
+    timeframe: str
+    initial_capital: float
+    final_equity: float
+    metrics: QuantitativeMetrics
+    equity_curve: list[dict[str, float | str]]
+    drawdown_curve: list[dict[str, float | str]]
+    trades: list[TradeRecord]
+
+
+def run_rule_backtest(
+    df: pd.DataFrame,
+    symbol: str = "NIFTY 50",
+    timeframe: str = "1day",
+    rsi_period: int = 14,
+    rsi_oversold: float = 30.0,
+    rsi_overbought: float = 70.0,
+    fast_ema: int = 20,
+    slow_ema: int = 50,
+    initial_capital: float = 100000.0,
+    commission_pct: float = 0.001,  # 0.1% = 10 bps
+    slippage_pct: float = 0.0005,  # 0.05% = 5 bps
+) -> VectorBacktestResult:
+    """Run a deterministic vectorized backtest on OHLCV market data.
+
+    Enforces Strict No-Lookahead Execution:
+    - Indicators and signals are calculated on Close of Bar T.
+    - Orders are executed on Open of Bar T+1 with slippage and commission applied.
+    """
+    if df.empty or len(df) < max(slow_ema, rsi_period) + 5:
+        raise ValueError("Insufficient historical market data bars to compute indicators.")
+
+    df = df.copy()
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"])
+        df.set_index("date", inplace=True)
+    df.sort_index(inplace=True)
+
+    close = df["close"]
+    open_p = df["open"]
+
+    # 1. Compute Indicators on Bar T
+    rsi = compute_rsi(close, rsi_period)
+    ema_fast = compute_ema(close, fast_ema)
+    ema_slow = compute_ema(close, slow_ema)
+
+    # 2. Compute Entry/Exit Signals on Close T
+    # Long Entry: RSI oversold AND Fast EMA > Slow EMA
+    entry_signal = (rsi < rsi_oversold) & (ema_fast > ema_slow)
+    # Long Exit: RSI overbought OR Fast EMA < Slow EMA
+    exit_signal = (rsi > rsi_overbought) | (ema_fast < ema_slow)
+
+    # 3. Shift signals by 1 bar for execution on Open T+1 (Strict No-Lookahead)
+    execute_entry = entry_signal.shift(1).fillna(False)
+    execute_exit = exit_signal.shift(1).fillna(False)
+
+    # 4. Simulate Trade Execution & Equity Curve
+    cash = initial_capital
+    position = 0.0
+    entry_price = 0.0
+    entry_idx = 0
+
+    equity_points: list[dict[str, float | str]] = []
+    drawdown_points: list[dict[str, float | str]] = []
+    trades: list[TradeRecord] = []
+    trades_pnl: list[float] = []
+    trade_counter = 1
+
+    dates = df.index
+    peak_equity = initial_capital
+
+    for i in range(len(df)):
+        dt_str = str(dates[i].strftime("%Y-%m-%d") if hasattr(dates[i], "strftime") else dates[i])
+        curr_open = float(open_p.iloc[i])
+        curr_close = float(close.iloc[i])
+
+        # Check Exit Execution
+        if position > 0 and execute_exit.iloc[i]:
+            fill_exit_price = curr_open * (1.0 - slippage_pct)
+            gross_pnl = (fill_exit_price - entry_price) * position
+            exit_comm = fill_exit_price * position * commission_pct
+            net_pnl = gross_pnl - exit_comm
+
+            cash += (fill_exit_price * position) - exit_comm
+            ret_pct = (fill_exit_price / entry_price) - 1.0
+
+            trades.append(
+                TradeRecord(
+                    trade_id=trade_counter,
+                    symbol=symbol,
+                    entry_date=str(dates[entry_idx].strftime("%Y-%m-%d") if hasattr(dates[entry_idx], "strftime") else dates[entry_idx]),
+                    exit_date=dt_str,
+                    entry_price=round(entry_price, 2),
+                    exit_price=round(fill_exit_price, 2),
+                    position="LONG",
+                    pnl=round(net_pnl, 2),
+                    return_pct=round(ret_pct * 100.0, 2),
+                    holding_days=i - entry_idx,
+                )
+            )
+            trades_pnl.append(net_pnl)
+            trade_counter += 1
+
+            position = 0.0
+            entry_price = 0.0
+
+        # Check Entry Execution
+        if position == 0 and execute_entry.iloc[i]:
+            fill_entry_price = curr_open * (1.0 + slippage_pct)
+            entry_comm = cash * commission_pct
+            capital_to_invest = cash - entry_comm
+            position = capital_to_invest / fill_entry_price
+            cash = 0.0
+            entry_price = fill_entry_price
+            entry_idx = i
+
+        # Calculate Portfolio Equity at Close of Bar i
+        curr_equity = cash + (position * curr_close if position > 0 else 0.0)
+        peak_equity = max(peak_equity, curr_equity)
+        dd_pct = (curr_equity - peak_equity) / peak_equity if peak_equity > 0 else 0.0
+
+        equity_points.append({"date": dt_str, "equity": round(curr_equity, 2)})
+        drawdown_points.append({"date": dt_str, "drawdown": round(dd_pct * 100.0, 2)})
+
+    # Convert equity curve to series for metric calculations
+    equity_series = pd.Series([p["equity"] for p in equity_points], dtype=float)
+    metrics = compute_metrics(equity_series, trades_pnl)
+
+    import uuid
+    run_id = f"bt_{uuid.uuid4().hex[:8]}"
+
+    return VectorBacktestResult(
+        run_id=run_id,
+        symbol=symbol,
+        timeframe=timeframe,
+        initial_capital=initial_capital,
+        final_equity=round(float(equity_series.iloc[-1]), 2),
+        metrics=metrics,
+        equity_curve=equity_points,
+        drawdown_curve=drawdown_points,
+        trades=trades,
+    )
