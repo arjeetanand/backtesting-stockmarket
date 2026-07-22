@@ -1,49 +1,88 @@
-# Backtrack: page-by-page guide and real-data migration
+# Backtrack page-by-page guide
 
-Backtrack is a research-only Indian-market backtesting application. It does not connect to a broker, place orders, or claim a live execution result. Its first real-data source is the local cache populated from official NSE daily Common Bhavcopy archives.
+Backtrack is a local, research-only Indian-market backtesting application. The current market-data path is the official NSE daily archive imported into SQLite. No page places real orders.
 
-## Recommended workflow
+## First-use workflow
 
-1. Open **Data & Providers** and check coverage for the symbols and dates you need.
-2. Import only the missing official NSE daily data. A full overlap is blocked, and an exact archive/symbol day already processed is skipped.
-3. Open **Research** or **Strategy Lab** to define a hypothesis or rules.
-4. Run the backtest on the imported date range.
-5. Inspect the result, then validate it in **Robustness Suite**, **Risk Engine**, and **Chart Replay** before trusting it.
+1. **Manage stock data**: search the NSE catalogue, choose dates, check coverage, and import missing archives.
+2. **Test a strategy**: write a hypothesis, review the local Ollama proposal, and run the historical test.
+3. **My tests**: reopen saved results and inspect performance.
+4. **Check reliability / Risk Engine**: inspect robustness and validity before trusting a result.
+5. **Replay a chart**: step through the same local history with simulated orders.
 
 ## Pages
 
-| Page | What it is for | How to use it today | Data status |
-| --- | --- | --- | --- |
-| Dashboard | At-a-glance research workspace | Use it to navigate to a task. | Presentation/seeded metrics; scheduled for API migration. |
-| Chart Replay | Step through historic candles without seeing future bars | Select an imported NSE symbol and date range, then move the replay forward and simulate research orders. | Real backend flow; now local-cache only. |
-| Research | Turn a written trading idea into a structured hypothesis | Enter your idea, symbol, and timeframe; review the extracted assumptions before continuing. | API-backed hypothesis extraction; visual examples still need data migration. |
-| Strategy Lab | Configure a rule-based strategy | Choose instruments, indicators, entries, exits, position size, and costs. | Builder UI; next to wire directly to stored strategies and imported-symbol picker. |
-| Backtest Runs | Find and compare completed backtests | Filter runs, open one, and inspect return, drawdown, trades, and bias checks. | Current list/detail screens still use demo records; next migration target. |
-| Experiment Matrix | Compare several strategies or parameter variants | Select runs and compare metrics side by side. | Demo presentation; waits for durable backtest-run storage. |
-| Robustness Suite | Check parameter sensitivity and stress results | Run sensitivity, Monte Carlo, and walk-forward checks after a base result. | Backend analysis endpoint exists; UI data wiring remains. |
-| Risk Engine | Review bias and validity risks | Use it after a backtest to identify look-ahead, overfitting, and data-quality risks. | Backend audit endpoint exists; UI data wiring remains. |
-| YouTube Import | Convert a video/transcript into a reviewable strategy draft | Paste a public YouTube URL and transcript, then review every extracted rule manually. | API-backed extraction; it never runs a strategy automatically. |
-| Options Lab | Learn option payoff and loss limits | Adjust the educational contract inputs and read the payoff illustration. | Calculator/education only; no options-chain import or execution. |
-| Data & Providers | Manage local daily NSE history | Refresh the official Nifty 500 catalogue, search/select stocks, optionally download its CSV for Excel, set dates, click **Check availability**, then **Import missing data** only when required. | Real SQLite cache + official NSE archive import. |
-| Settings | View research configuration | Confirm local-data-only mode and local AI settings. | Configuration display; no paid market-data credential required. |
+| Page | User task | Current implementation |
+| --- | --- | --- |
+| Home | Choose a stock/date range and start a workflow | Local stock selector, date controls, links to Research, YouTube Import, and Replay |
+| Test a strategy | Turn an idea into a test | Local Ollama proposal, reviewable assumptions, automatic NSE history preparation, saved session restore |
+| Build rules | Configure indicators and entry/exit rules | Strategy Lab form and rule configuration |
+| Use a YouTube strategy | Bring in a strategy found online | URL/caption/transcript extraction into a draft requiring human review |
+| Manage stock data | Import and inspect history | Official catalogue, database inventory, coverage preview, duplicate protection, one-click stock import, progress, archive reuse |
+| My tests | Find completed backtests | Persisted SQLite backtest runs and detail links |
+| Compare tests | Compare runs/configurations | Local-data comparison workflow |
+| Check reliability | Challenge parameter stability | Robustness API and report views |
+| Risk Engine | Review validity and bias | Look-ahead, data quality, and overfitting audit views |
+| Replay a chart | Learn what happened candle by candle | Persisted historical replay sessions and simulated orders/journal |
+| Learn | Understand options concepts | Educational call/put payoff and breakeven calculator |
+| Analytics | Inspect performance and trade quality | Analytics views over available local run data |
+| Settings | Inspect configuration | Local NSE/Ollama/application status; no paid credential flow |
 
-## Current local data
+## Data behavior in the UI
 
-At the time this guide was created, `data/market_cache.sqlite3` contains 27,997 daily official-NSE OHLCV bars for 47 instruments from 2024-01-01 through 2026-06-30. The starter set contains Sensex constituents, major banks, and sector ETFs. Some newer listings naturally have shorter histories.
+The Data page shows three separate concepts:
 
-## Five ownership tracks
+- **Stock database**: saved candles and exact archive-day coverage for searchable symbols.
+- **Import configuration**: date range, stock universe, and custom symbol selection.
+- **Import plan**: cached days, missing days, estimated rows, and the no-duplicate decision before a job starts.
 
-1. **Data foundation** — official NSE import, cache coverage, duplicate prevention, custom symbols, cache-only reads. This is implemented first.
-2. **Backtest runs** — replace demo list/detail results with saved API runs and stored equity/trade series.
-3. **Strategy and research** — use the cache symbol catalogue in Research and Strategy Lab; save reviewed strategies.
-4. **Validation tools** — connect robustness, bias, comparison, and analytics pages to the same saved run IDs.
-5. **UX and QA** — empty/loading/error states, all buttons wired, page-level tests, and user-facing help.
+When importing:
+
+- `Downloading missing NSE archives` means a weekday ZIP was not found locally and is being fetched from NSE.
+- `Loading saved NSE archive` means the original ZIP already exists locally and is being reused.
+- `Saving complete NSE archive to SQLite` stores every raw row and all supported equity/ETF OHLCV rows.
+- A second stock request for an already saved archive day does not download the archive again.
+
+## Where to change a page
+
+```text
+frontend/src/app/<route>/page.tsx        # page behavior and API calls
+frontend/src/app/globals.css             # shared layout and visual system
+frontend/src/components/layout/         # sidebar/topbar
+frontend/src/components/charts/          # chart rendering
+frontend/src/components/ui/              # buttons/cards/badges
+frontend/src/lib/                        # typed API clients and local swarm
+```
+
+## Where to change backend behavior
+
+```text
+src/quant_research/api/routes/api.py    # HTTP route behavior
+src/quant_research/api/schemas.py       # request/response contracts
+src/quant_research/api/container.py     # dependency wiring
+src/quant_research/services/            # workflows and orchestration
+src/quant_research/repositories/        # SQLite persistence
+src/quant_research/domain/              # calculations, validation, DSL, metrics
+```
 
 ## Data rules
 
-- Only exchange-traded NSE equities and ETFs are imported in the first implementation; mutual-fund NAVs and intraday bars are outside this source.
-- The Nifty 500 constituent catalogue is fetched from the official NSE product page's linked archive, saved in SQLite, searchable by symbol/company/industry, and downloadable as an Excel-compatible CSV. Custom selections use this catalogue.
-- The cache key is `(symbol, timeframe, timestamp)`, so a candle cannot be duplicated.
-- A cache coverage preview blocks a full date-range overlap before it creates an import job.
-- The importer records successfully processed archive/symbol days, so retrying the same request skips them even when the archive had no bar (for example, a holiday or pre-listing day).
-- If a requested local range has no data, backtesting stops with a clear instruction to import the missing range. It never silently falls back to Yahoo Finance.
+- One official NSE Common Bhavcopy ZIP is downloaded per weekday at most.
+- Original ZIPs are stored in `data/nse_archives/` and excluded from Git.
+- Every raw archive row is retained in SQLite for future fields/research.
+- Supported EQ/BE/ETF rows are normalized into `ohlcv_bars`.
+- Full overlaps are rejected before import with a clear UI message.
+- OHLCV upserts use `(symbol, timeframe, timestamp)` and do not create duplicate candles.
+- Missing history stops a backtest with an import instruction; it is not silently replaced with fabricated data.
+- Replay orders are simulated only.
+
+## Persistence
+
+The default SQLite file is `data/market_cache.sqlite3`. It stores market data, catalogue metadata, archive coverage, raw archive rows, backtest runs, research artifacts, import jobs, and replay sessions. The browser also keeps the active Research session and Replay session ID in localStorage.
+
+## Handoff references
+
+- [README.md](README.md): setup, product behavior, routes, repository map, and limitations.
+- [handover.md](handover.md): engineering ownership, persistence contract, API source of truth, and release checks.
+- [TESTING.md](TESTING.md): automated commands and QA expectations.
+- [REPLAY_IMPLEMENTATION_PLAN.md](REPLAY_IMPLEMENTATION_PLAN.md): replay design notes.

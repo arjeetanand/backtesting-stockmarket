@@ -112,7 +112,16 @@ def create_api_router(
 
             save_import_job(job_id, {**(get_import_job(job_id) or {}), "status": "running", "stage": "Preparing import", "message": "Validating local NSE cache."})
             result = nse_importer.import_daily_universe(symbols, payload.start, payload.end, progress=progress)
-            save_import_job(job_id, {**(get_import_job(job_id) or {}), "status": "complete", "stage": "Ready", "message": "Official NSE data is ready for backtesting.", **asdict(result)})
+            summary = (
+                f"Import finished: {result.downloaded_days} archives downloaded, "
+                f"{result.reused_archive_days} saved archives reused, "
+                f"{result.already_available_days} archive-days already complete, "
+                f"{result.skipped_days} archive-days skipped, "
+                f"{result.stored_bars} candles stored, and {result.archive_rows} raw rows saved."
+            )
+            if result.skipped_days:
+                summary += " No official NSE archive was available for the skipped dates."
+            save_import_job(job_id, {**(get_import_job(job_id) or {}), "status": "complete", "stage": "Complete", "message": summary, **asdict(result)})
         except RuntimeError as exc:
             save_import_job(job_id, {**(get_import_job(job_id) or {}), "status": "failed", "stage": "Import failed", "message": str(exc)})
 
@@ -360,6 +369,7 @@ def create_api_router(
                     hypothesis=payload.hypothesis,
                     symbol=payload.symbol,
                     timeframe=payload.timeframe,
+                    strategy_id=payload.strategy_id,
                 )
             )
             if artifacts is not None:
@@ -464,6 +474,7 @@ def create_api_router(
             stop_loss_pct=payload.stop_loss_pct,
             take_profit_pct=payload.take_profit_pct,
             position_size_pct=payload.position_size_pct,
+            position_size_amount=payload.position_size_amount,
         )
         result = asdict(res)
         if artifacts is not None:

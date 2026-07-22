@@ -69,6 +69,8 @@ def test_vector_backtest_execution(mock_ohlcv_data: pd.DataFrame) -> None:
     assert result.final_equity > 0.0
     assert len(result.equity_curve) == len(mock_ohlcv_data)
     assert len(result.drawdown_curve) == len(mock_ohlcv_data)
+    assert len(result.candles) == len(mock_ohlcv_data)
+    assert "EMA 10" in result.indicators
 
     # Metrics validation
     m = result.metrics
@@ -83,6 +85,25 @@ def test_strategy_library_variants_execute(mock_ohlcv_data: pd.DataFrame, strate
 
     assert result.final_equity > 0.0
     assert len(result.equity_curve) == len(mock_ohlcv_data)
+
+
+def test_fixed_trade_amount_and_chart_signals(mock_ohlcv_data: pd.DataFrame) -> None:
+    result = run_rule_backtest(
+        df=mock_ohlcv_data,
+        symbol="RELIANCE",
+        strategy_id="sma_crossover",
+        fast_ema=10,
+        slow_ema=30,
+        initial_capital=100000.0,
+        position_size_amount=5000.0,
+        stop_loss_pct=0.02,
+        take_profit_pct=0.04,
+    )
+
+    assert len(result.candles) == len(mock_ohlcv_data)
+    assert "SMA 10" in result.indicators
+    assert "SMA 30" in result.indicators
+    assert all(signal["type"] in {"entry", "exit"} for signal in result.signals)
 
 
 def test_robustness_diagnostics(mock_ohlcv_data: pd.DataFrame) -> None:

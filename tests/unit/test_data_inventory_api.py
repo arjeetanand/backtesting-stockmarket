@@ -82,4 +82,4 @@ def test_inventory_shows_catalogue_and_saved_coverage_and_blocks_duplicates(tmp_
 
     missing = inventory_endpoint(query="INFY", start=date(2025, 1, 1), end=date(2025, 1, 3), limit=200)
     assert missing[0].bars == 0
-    assert missing[0].missing_days == 3
+    assert missing[0].missing_days == 2

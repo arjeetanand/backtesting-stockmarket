@@ -15,6 +15,7 @@ class Settings:
     ollama_base_url: str
     ollama_model: str
     market_cache_path: Path
+    nse_archive_path: Path
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -25,4 +26,5 @@ class Settings:
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
             ollama_model=os.getenv("OLLAMA_MODEL", "qwen3:4b"),
             market_cache_path=Path(os.getenv("MARKET_CACHE_PATH", "data/market_cache.sqlite3")),
+            nse_archive_path=Path(os.getenv("NSE_ARCHIVE_PATH", "data/nse_archives")),
         )

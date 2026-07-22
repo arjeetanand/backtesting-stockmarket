@@ -122,6 +122,8 @@ class NseImportStatusResponse(BaseModel):
     skipped_days: int | None = None
     stored_bars: int | None = None
     already_available_days: int | None = None
+    reused_archive_days: int | None = None
+    archive_rows: int | None = None
     stage: str | None = None
     completed_days: int | None = None
     total_days: int | None = None
@@ -168,6 +170,7 @@ class CustomBacktestRequest(BaseModel):
     stop_loss_pct: float = Field(default=0.0, ge=0.0, le=0.99)
     take_profit_pct: float = Field(default=0.0, ge=0.0, le=10.0)
     position_size_pct: float = Field(default=100.0, gt=0.0, le=100.0)
+    position_size_amount: float | None = Field(default=None, gt=0.0, le=10_000_000_000.0)
     max_positions: int = Field(default=1, ge=1, le=1)
 
 
@@ -208,3 +211,4 @@ class HypothesisRequest(BaseModel):
     hypothesis: str = Field(..., min_length=10, max_length=2_000)
     symbol: str = Field(..., min_length=1, max_length=50, examples=["AAPL"])
     timeframe: str = Field(default="1day", examples=["1day"])
+    strategy_id: str = Field(default="sma_crossover", min_length=1, max_length=80)

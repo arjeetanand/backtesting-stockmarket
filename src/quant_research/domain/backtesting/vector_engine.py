@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import pandas as pd
 
@@ -46,6 +46,9 @@ class VectorBacktestResult:
     equity_curve: list[dict[str, float | str]]
     drawdown_curve: list[dict[str, float | str]]
     trades: list[TradeRecord]
+    candles: list[dict[str, float | str]] = field(default_factory=list)
+    indicators: dict[str, list[dict[str, float | str | None]]] = field(default_factory=dict)
+    signals: list[dict[str, float | str]] = field(default_factory=list)
 
 
 def run_rule_backtest(
@@ -64,6 +67,7 @@ def run_rule_backtest(
     stop_loss_pct: float = 0.0,
     take_profit_pct: float = 0.0,
     position_size_pct: float = 100.0,
+    position_size_amount: float | None = None,
 ) -> VectorBacktestResult:
     """Run a deterministic vectorized backtest on OHLCV market data.
 
@@ -121,6 +125,24 @@ def run_rule_backtest(
         exit_signal = momentum < 0.0
     else:
         raise ValueError(f"Unsupported strategy '{strategy_id}'.")
+
+    indicator_series: dict[str, pd.Series[float]] = {}
+    if strategy_id == "sma_crossover":
+        indicator_series = {f"SMA {fast_ema}": compute_sma(close, fast_ema), f"SMA {slow_ema}": compute_sma(close, slow_ema)}
+    elif strategy_id == "ema_crossover" or strategy_id == "rsi_ema":
+        indicator_series = {f"EMA {fast_ema}": ema_fast, f"EMA {slow_ema}": ema_slow}
+    elif strategy_id == "rsi_mean_reversion":
+        indicator_series = {f"RSI {rsi_period}": rsi}
+    elif strategy_id == "bollinger_mean_reversion":
+        middle, upper, lower = compute_bollinger_bands(close, fast_ema)
+        indicator_series = {f"BB middle {fast_ema}": middle, f"BB upper {fast_ema}": upper, f"BB lower {fast_ema}": lower}
+    elif strategy_id == "macd_crossover":
+        macd_line, signal_line, _ = compute_macd(close, fast=12, slow=slow_ema, signal=9)
+        indicator_series = {"MACD": macd_line, "MACD signal": signal_line}
+    elif strategy_id == "donchian_breakout":
+        indicator_series = {f"Donchian high {slow_ema}": df["high"].shift(1).rolling(slow_ema, min_periods=slow_ema).max(), f"Donchian low {slow_ema}": df["low"].shift(1).rolling(slow_ema, min_periods=slow_ema).min()}
+    elif strategy_id == "momentum":
+        indicator_series = {f"Momentum {fast_ema}": close.pct_change(fast_ema)}
 
     # 3. Shift signals by 1 bar for execution on Open T+1 (Strict No-Lookahead)
     execute_entry = entry_signal.shift(1).fillna(False)
@@ -181,8 +203,12 @@ def run_rule_backtest(
         # Check Entry Execution
         if position == 0 and execute_entry.iloc[i]:
             fill_entry_price = curr_open * (1.0 + slippage_pct)
-            entry_comm = cash * commission_pct
-            capital_to_invest = (cash - entry_comm) * (position_size_pct / 100.0)
+            available_cash = max(cash, 0.0)
+            requested_capital = position_size_amount if position_size_amount is not None else available_cash * (position_size_pct / 100.0)
+            capital_to_invest = min(requested_capital, available_cash / (1.0 + commission_pct))
+            entry_comm = capital_to_invest * commission_pct
+            if capital_to_invest <= 0:
+                continue
             position = capital_to_invest / fill_entry_price
             cash = cash - entry_comm - capital_to_invest
             entry_price = fill_entry_price
@@ -203,6 +229,22 @@ def run_rule_backtest(
     import uuid
     run_id = f"bt_{uuid.uuid4().hex[:8]}"
 
+    chart_candles = [
+        {"date": str(index.strftime("%Y-%m-%d") if hasattr(index, "strftime") else index), "open": float(open_p.iloc[i]), "high": float(df["high"].iloc[i]), "low": float(df["low"].iloc[i]), "close": float(close.iloc[i])}
+        for i, index in enumerate(dates)
+    ]
+    chart_indicators = {
+        label: [{"date": chart_candles[i]["date"], "value": None if pd.isna(value) else float(value)} for i, value in enumerate(series)]
+        for label, series in indicator_series.items()
+    }
+    chart_signals = [
+        {"date": trade.entry_date, "type": "entry", "price": trade.entry_price}
+        for trade in trades
+    ] + [
+        {"date": trade.exit_date, "type": "exit", "price": trade.exit_price}
+        for trade in trades
+    ]
+
     return VectorBacktestResult(
         run_id=run_id,
         symbol=symbol,
@@ -214,4 +256,7 @@ def run_rule_backtest(
         equity_curve=equity_points,
         drawdown_curve=drawdown_points,
         trades=trades,
+        candles=chart_candles,
+        indicators=chart_indicators,
+        signals=chart_signals,
     )

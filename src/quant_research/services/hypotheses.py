@@ -23,6 +23,8 @@ class SuggestedSmaBacktest(BaseModel):
 
 
 class HypothesisAnalysis(BaseModel):
+    generated_by: str = "local Ollama"
+    model: str = "unknown"
     summary: str = Field(min_length=1, max_length=2_000)
     assumptions: list[str] = Field(default_factory=list, max_length=8)
     risks: list[str] = Field(default_factory=list, max_length=8)
@@ -34,10 +36,22 @@ class HypothesisCommand:
     hypothesis: str
     symbol: str
     timeframe: str
+    strategy_id: str = "sma_crossover"
 
 
 class HypothesisService:
     """Generate a constrained, human-reviewable backtest suggestion."""
+
+    STRATEGY_LABELS = {
+        "sma_crossover": "SMA crossover",
+        "ema_crossover": "EMA crossover",
+        "rsi_ema": "RSI plus EMA filter",
+        "rsi_mean_reversion": "RSI mean reversion",
+        "bollinger_mean_reversion": "Bollinger Band mean reversion",
+        "macd_crossover": "MACD crossover",
+        "donchian_breakout": "Donchian breakout",
+        "momentum": "price momentum",
+    }
 
     def __init__(self, client: JsonLlmClient) -> None:
         self._client = client
@@ -50,15 +64,17 @@ class HypothesisService:
         clean_symbol = command.symbol.strip().upper()
         if not clean_symbol:
             raise ValueError("symbol must not be empty.")
-        system_prompt = """Return one compact JSON object only. You are a cautious quantitative-research assistant.
-Propose one long-only SMA crossover test. Do not claim profitability or give investment advice.
+        strategy_label = self.STRATEGY_LABELS.get(command.strategy_id, command.strategy_id.replace("_", " "))
+        system_prompt = f"""Return one compact JSON object only. You are a cautious quantitative-research assistant.
+Interpret the hypothesis for the selected {strategy_label} strategy and prepare a long-only historical test proposal. Do not claim profitability or give investment advice.
 Use the provided symbol and timeframe exactly. fast_window must be at least 2 and less than slow_window.
 Use no more than 3 short assumptions and 3 short risks. Keep the summary and rationale to one sentence each.
-Required JSON: {"summary": string, "assumptions": [string], "risks": [string], "suggested_backtest": {"symbol": string, "timeframe": string, "fast_window": integer, "slow_window": integer, "rationale": string}}."""
+Required JSON: {{"summary": string, "assumptions": [string], "risks": [string], "suggested_backtest": {{"symbol": string, "timeframe": string, "fast_window": integer, "slow_window": integer, "rationale": string}}}}."""
         user_prompt = (
             f"Hypothesis: {command.hypothesis}\n"
             f"Symbol: {clean_symbol}\n"
             f"Timeframe: {command.timeframe}\n"
+            f"Selected strategy: {strategy_label} ({command.strategy_id})\n"
             "Produce a concise proposal that a user must review before running."
         )
         raw = self._client.generate_json(system_prompt, user_prompt)
@@ -74,9 +90,11 @@ Required JSON: {"summary": string, "assumptions": [string], "risks": [string], "
             slow_window = min(max(fast_window * 2, fast_window + 1), 1_000)
 
         return HypothesisAnalysis(
+            generated_by="local Ollama",
+            model=self.model,
             summary=self._text(
                 raw.get("summary") or raw.get("analysis"),
-                "The local model reviewed the hypothesis and prepared a cautious SMA-crossover test proposal.",
+                f"The local model reviewed the hypothesis and prepared a cautious {strategy_label} test proposal.",
                 maximum=2_000,
             ),
             assumptions=self._text_list(raw.get("assumptions")),
@@ -89,7 +107,7 @@ Required JSON: {"summary": string, "assumptions": [string], "risks": [string], "
                 slow_window=slow_window,
                 rationale=self._text(
                     proposed.get("rationale") or raw.get("rationale"),
-                    "Test a short and long moving-average crossover against the requested historical data.",
+                    f"Test the selected {strategy_label} rules against the requested historical data.",
                     maximum=1_000,
                 ),
             ),

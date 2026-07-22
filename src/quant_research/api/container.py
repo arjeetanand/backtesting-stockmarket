@@ -41,7 +41,7 @@ def create_container(
         research=ResearchService(configured_provider, repository),
         hypotheses=HypothesisService(configured_llm),
         market_cache=market_cache,
-        nse_importer=NseBhavcopyImporter(market_cache),
+        nse_importer=NseBhavcopyImporter(market_cache, archive_path=settings.nse_archive_path),
         nifty500_catalogue=Nifty500CatalogueImporter(market_cache),
         artifacts=artifacts,
     )

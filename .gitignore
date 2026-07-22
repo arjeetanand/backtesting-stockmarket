@@ -7,5 +7,9 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 *.egg-info/
-data/*.sqlite3
+
 data/*.sqlite3-*
+data/*.bak
+data/nse_archives/
+.DS_Store
+data/.DS_Store

@@ -1,257 +1,308 @@
-# Backtrack end-to-end handover
+# Backtrack engineering handover
 
 Last reviewed: 2026-07-22
 
-This is the operational handoff for the Backtrack research and backtesting workspace. Read this document before changing provider logic, strategy execution, trader-facing risk language, or release checks.
-
-For a complete webpage-by-webpage frontend code reference, see [FRONTEND_CODEBASE_SUMMARY.md](file:///Users/arjeetanand/Library/CloudStorage/OneDrive-OracleCorporation/projects/backtrack/FRONTEND_CODEBASE_SUMMARY.md).
+This is the current engineering source of truth for the Backtrack repository. Read it before changing data imports, provider behavior, backtesting, persistence, replay, research, or trader-facing claims.
 
 ## 1. Product boundary
 
-Backtrack is a research and paper-simulation product. It is designed to answer:
+Backtrack answers:
 
-> “If I had applied this defined strategy to this instrument, timeframe, capital, and date range, what would the simulated result have been?”
+> If a defined strategy had been applied to this stock, timeframe, capital, and date range, what would the historical simulation have produced?
 
-It is not a broker terminal. The repository currently has no order-placement, account, portfolio-sync, or live-trading code. Do not add live execution as a side effect of a backtest feature. Live trading would require a separate authorization, approval, audit, kill-switch, and compliance design.
+The application is research-only. It has no broker order endpoint, account sync, live quote stream, Dhan execution, paid data dependency, or real-order side effect. Replay orders are simulated inside the application.
 
-## 2. End-to-end architecture
+## 2. Current runtime architecture
 
 ```text
-Browser / Next.js UI
-  ├─ Dashboard and local five-module swarm demo
-  ├─ Strategy and YouTube review surfaces
-  ├─ Options education/calculator
-  └─ Data, analytics, risk, settings pages
-          │ HTTP / JSON
+Next.js browser UI
+  ├─ Home and trader navigation
+  ├─ Research / Strategy Lab / YouTube strategy draft
+  ├─ Data catalogue, archive import, coverage, and inventory
+  ├─ Persisted backtest history and detail reports
+  ├─ Comparison, robustness, validity, analytics, and options education
+  └─ Historical chart replay with simulated orders
+          │ HTTP JSON /api/v1
           ▼
-FastAPI /api/v1
-  ├─ Settings + dependency container
-  ├─ Provider routes: health, providers, market-data
-  ├─ Research routes: hypothesis, YouTube strategy
-  └─ Backtest routes: SMA crossover, list/read in-memory runs
+FastAPI application
+  ├─ Settings and dependency container
+  ├─ Market data and NSE import routes
+  ├─ Research, YouTube, and artifact routes
+  ├─ Backtest, robustness, and validity routes
+  └─ Replay session/order routes
           │
           ▼
-Application services
-  ├─ ResearchService
-  ├─ SMA backtest engine
-  ├─ MarketDataValidator
-  ├─ HypothesisService + Ollama adapter
-  └─ YouTube extraction service
+Application services and domain
+  ├─ NseBhavcopyImporter
+  ├─ Nifty500CatalogueImporter
+  ├─ LocalNseCacheProvider
+  ├─ ResearchService and SMA service
+  ├─ HypothesisService + OllamaClient
+  ├─ YouTube strategy extraction
+  ├─ Replay engine
+  ├─ Vector backtest engine and DSL compiler
+  ├─ Data validator and analytics/metrics
+  └─ Robustness and validity diagnostics
           │
           ▼
-Provider adapters / repositories
-  ├─ YahooFinanceClient: keyless historical OHLCV for research
-  └─ InMemoryBacktestRepository: local-session run storage
+SQLite and local archive files
+  ├─ data/market_cache.sqlite3
+  └─ data/nse_archives/*.csv.zip
 ```
 
-### Important implementation distinction
+The default container wires `LocalNseCacheProvider` as the research provider. `yahoo_finance.py` remains an adapter/test surface, but it is not the configured provider for the current local NSE workflow.
 
-The five swarm agents in `frontend/src/lib/agents/` are composable in-process modules used to make the dashboard workflow auditable and understandable. They are not five independent Python workers or five remote LLM agents. This is the correct local-development shape: deterministic, fast, and easy to test. A production job queue can later move these responsibilities into separately observable workers without changing the user-facing contract.
+## 3. Historical data contract
 
-## 3. Five-agent ownership
+### Import lifecycle
 
-### Agent 1 — Product surfaces
+`NseBhavcopyImporter` operates once per weekday archive:
 
-Owns:
+1. Normalize requested symbols and date range.
+2. Check archive-day coverage in SQLite.
+3. If the original ZIP already exists in `NSE_ARCHIVE_PATH`, load it locally.
+4. Otherwise download one official NSE Common Bhavcopy ZIP.
+5. Save the exact ZIP as `<NSE_ARCHIVE_PATH>/<year>/nse_bhavcopy_YYYY-MM-DD.csv.zip`.
+6. Parse every CSV row before saving the archive.
+7. Atomically persist every raw CSV row in `nse_bhavcopy_rows`, supported `EQ`, `BE`, and `ETF` rows in `ohlcv_bars`, archive metadata, and requested-symbol coverage in one SQLite transaction.
+8. Only after that transaction succeeds is the archive day marked complete.
+9. Report downloaded days, reused local archives, raw rows, stored candles, skipped days, and already-covered days.
 
-- `frontend/src/app/`
-- `frontend/src/components/layout/`
-- `frontend/src/components/ui/`
-- shared trader styles in `frontend/src/app/globals.css`
+The importer does not download or commit one file per stock. Each weekday is one bulk batch containing all rows in that NSE archive; SQLite uses bulk `executemany` writes inside one day-level transaction. A subsequent request for another symbol on an already imported day sees the complete archive-day marker and does not call NSE again.
 
-Responsibilities:
+Dates before 2024 use NSE's legacy historical equity archive path (`content/historical/EQUITIES/<year>/<MONTH>/cmDDMMMYYYYbhav.csv.zip`) and legacy fields such as `OPEN_PRICE`, `CLOSE_PRICE`, and `TTL_TRD_QNTY`. Dates from 2024 onward use the current Common Bhavcopy path and UDiFF/modern field aliases. All raw columns are retained in JSON while compatible equity/BE/ETF price fields are normalized for backtesting.
 
-- Complete each route with an obvious trader task.
-- Preserve loading, empty, error, and success states.
-- Keep provider credentials out of browser code.
-- Verify desktop and approximately 390px mobile layouts.
+### SQLite tables
 
-Handoff output: route changes, screenshots/observations, lint/build evidence, and any new API fields required.
+`SqliteMarketCache` creates and owns:
 
-### Agent 2 — Market-data backend
-
-Owns:
-
-- `src/quant_research/data_providers/`
-- `src/quant_research/api/config.py`
-- `src/quant_research/api/container.py`
-- `src/quant_research/api/routes/api.py`
-- provider-related schemas and tests
-
-Responsibilities:
-
-- Keep the historical-data path keyless and broker-free.
-- Normalize external payloads into project models.
-- Reject invalid, empty, unsorted, or ambiguous data.
-- Add providers behind the provider protocol.
-- Document rate limits, symbol identifiers, timeframe semantics, and response changes.
-
-Current priority: keep the Yahoo Finance historical adapter reliable, transparent about its limits, and strictly separated from broker execution or real-time market feeds.
-
-### Agent 3 — Test and release steward
-
-Owns:
-
-- `TESTING.md`
-- `tests/`
-- regression and smoke evidence
-- release notes in this file
-
-Responsibilities:
-
-- Run the backend and frontend gates before handoff.
-- Add a regression test for every provider, calculation, or route bug.
-- Record environment assumptions and known limitations.
-- Never store real tokens, account information, or unredacted provider payloads in test fixtures.
-
-### Agent 4 — Strategy research and import
-
-Owns:
-
-- `src/quant_research/services/youtube_strategy.py`
-- `frontend/src/app/strategy-import/page.tsx`
-- future strategy DSL/compiler integration
-
-Responsibilities:
-
-- Convert a URL/transcript into a structured draft, not an executable order.
-- Keep detected entry, exit, risk rules, assumptions, source URL, and confidence visible.
-- Require human review before compiling imported rules into a backtest.
-- Treat captions and creator claims as untrusted research input.
-
-Current limitation: the importer uses an optional `yt-dlp` import for metadata and relies on pasted transcript text for deterministic extraction. It does not perform audio transcription.
-
-### Agent 5 — Trader education and risk UX
-
-Owns:
-
-- `frontend/src/app/options/page.tsx`
-- `frontend/src/app/analytics/page.tsx`
-- `frontend/src/app/bias-validity/page.tsx`
-- risk wording and assumptions across the UI
-
-Responsibilities:
-
-- Explain option payoff, premium, strike, breakeven, max loss, expiry, lot size, and margin concepts.
-- Show the difference between backtest metrics and future performance.
-- Keep uncertainty and execution assumptions next to the result.
-- Never turn educational output into a recommendation.
-
-### Replay Product Agent — Cross-cutting implementation role
-
-Owns the proposed replay vertical slice described in [REPLAY_IMPLEMENTATION_PLAN.md](REPLAY_IMPLEMENTATION_PLAN.md).
-
-Responsibilities:
-
-- Translate trader-casa/replay-style workflows into Backtrack requirements.
-- Keep manual replay and automated backtesting as separate, clearly labeled modes.
-- Coordinate chart, server-authoritative cursor, simulated order matching, journal, analytics, and paper-mode boundaries.
-- Never allow future candles or client-supplied timestamps to advance a secure replay session.
-
-This is currently a documented product/engineering role, not a separately deployed remote worker. The first implementation should be owned by one engineer/agent across frontend and backend until the replay contract is stable.
-
-## 4. Source-of-truth file map
-
-| Concern | Source of truth |
+| Table | Purpose |
 | --- | --- |
-| Runtime settings | `src/quant_research/api/config.py` |
-| Dependency selection | `src/quant_research/api/container.py` |
-| API contracts | `src/quant_research/api/schemas.py` and `src/quant_research/api/routes/api.py` |
-| Provider interface | `src/quant_research/data_providers/base.py` |
-| Historical-data integration | `src/quant_research/data_providers/yahoo_finance.py` |
-| Data validation | `src/quant_research/domain/data/validator.py` |
-| Backtest service | `src/quant_research/services/research.py` |
-| SMA execution | `src/quant_research/services/sma_backtest.py` |
-| Result models | `src/quant_research/domain/backtesting/models.py` |
-| YouTube extraction | `src/quant_research/services/youtube_strategy.py` |
-| Local swarm | `frontend/src/lib/agents/orchestrator.ts` |
-| UI routes | `frontend/src/app/*/page.tsx` |
-| Verification contract | `TESTING.md` |
-| Chart replay roadmap | `REPLAY_IMPLEMENTATION_PLAN.md` |
+| `ohlcv_bars` | Normalized candles; primary key is `(symbol, timeframe, timestamp)` |
+| `instruments` | Official NSE catalogue metadata and searchable company/industry fields |
+| `nse_import_coverage` | Symbol/timeframe/day coverage markers and backward-compatible import tracking |
+| `nse_archive_days` | One row per complete processed archive day, including ZIP path/source/row count |
+| `nse_bhavcopy_rows` | Every imported raw CSV row as JSON, including fields not yet used by the backtest engine |
 
-## 5. Environment and provider handoff
+`data/` is runtime state and is ignored by Git. Original ZIPs are stored under `data/nse_archives/<year>/`; older flat ZIPs are moved there when the importer starts. Existing historical data remains usable; when a future request needs a stock/day without a complete archive marker, the importer downloads the day once and upgrades the local cache with the full archive.
 
-Copy `.env.example` to `.env` at the repository root:
+### Coverage and duplicate rules
+
+- The preview endpoint calculates weekday coverage and missing days before queuing work.
+- A complete overlap for all selected symbols returns HTTP `409` and does not create a job.
+- Archive-day coverage is global because one complete NSE archive contains the exchange universe.
+- Candle writes use SQLite conflict-safe upserts keyed by symbol/timeframe/timestamp.
+- A saved ZIP is parsed locally and never downloaded again for the same date.
+- A 404 archive (holiday, unavailable date, or pre-archive period) is skipped and reported.
+- The API background task is process-local, not a durable worker. If the server restarts, repeat the same import; committed days and saved ZIPs are reused safely.
+
+## 4. Dependency and persistence wiring
+
+`src/quant_research/api/container.py` creates:
+
+- `SqliteMarketCache(settings.market_cache_path)`
+- `SqliteBacktestRepository(settings.market_cache_path)`
+- `SqliteArtifactStore(settings.market_cache_path)`
+- `LocalNseCacheProvider(market_cache)`
+- `NseBhavcopyImporter(market_cache, archive_path=settings.nse_archive_path)`
+- `Nifty500CatalogueImporter(market_cache)`
+- `HypothesisService(OllamaClient(...))`
+
+Persisted state includes:
+
+- Completed backtest results and deterministic cache keys.
+- Cached hypothesis, custom backtest, robustness, YouTube, import-job, and replay artifacts.
+- Replay sessions, orders, events, cursor, and revealed bars.
+- Research page state in `backtrack:research-session` localStorage.
+- Replay session ID in `backtrack:replay-session` localStorage.
+
+Persistence is local single-user SQLite. There is no authentication, multi-user isolation, job queue, backup policy, or distributed locking.
+
+## 5. Frontend page ownership
+
+| Page | File | Responsibility |
+| --- | --- | --- |
+| Home | `frontend/src/app/page.tsx` | Stock/date selection and clear entry points into testing, YouTube import, and replay |
+| Research | `frontend/src/app/research/page.tsx` | Hypothesis prompt, Ollama proposal, NSE data preparation, backtest handoff, saved-session restore |
+| Strategy Lab | `frontend/src/app/strategy/page.tsx` | Rule/indicator strategy configuration |
+| YouTube Import | `frontend/src/app/strategy-import/page.tsx` | URL/transcript extraction and human-review draft |
+| Manage Stock Data | `frontend/src/app/data/page.tsx` | Catalogue refresh, inventory search, coverage preview, one-click import, progress, and cache status |
+| My Tests | `frontend/src/app/backtests/page.tsx` | Saved run list and filters |
+| Backtest Detail | `frontend/src/app/backtests/[id]/page.tsx` | Metrics, curves, trades, bias/validity details |
+| Compare Tests | `frontend/src/app/comparison/page.tsx` | Compare selected strategy configurations/results |
+| Robustness | `frontend/src/app/robustness/page.tsx` | Sensitivity, Monte Carlo, walk-forward, and stress views |
+| Risk Engine | `frontend/src/app/bias-validity/page.tsx` | Validity and bias diagnostics |
+| Chart Replay | `frontend/src/app/replay/page.tsx` | Candle replay, simulated ticket, positions, journal, and session persistence |
+| Options Learn | `frontend/src/app/options/page.tsx` | Educational payoff and breakeven calculator |
+| Analytics | `frontend/src/app/analytics/page.tsx` | Performance and trade-quality analysis |
+| Settings | `frontend/src/app/settings/page.tsx` | Local configuration and provider status |
+
+Shared frontend infrastructure:
+
+- `frontend/src/components/layout/`: sidebar and top navigation.
+- `frontend/src/components/charts/`: chart primitives.
+- `frontend/src/components/ui/`: buttons, cards, and badges.
+- `frontend/src/lib/backtest-api.ts`: backtest API client.
+- `frontend/src/lib/market-data.ts`: market-data client.
+- `frontend/src/lib/replay/`: replay API client and types.
+- `frontend/src/lib/robustness-api.ts`: robustness API client.
+- `frontend/src/lib/agents/`: five in-process TypeScript swarm modules.
+- `frontend/src/app/globals.css`: shared design tokens, layout, responsive rules, and page-specific styles.
+
+## 6. Five-agent local swarm
+
+The swarm is an in-process TypeScript orchestration model, not five remote workers or paid LLM agents.
+
+| Module | Responsibility |
+| --- | --- |
+| `market-data-agent.ts` | Prepare/validate the market-data input state |
+| `signal-engine-agent.ts` | Interpret configured signal/rule state |
+| `backtest-runner-agent.ts` | Coordinate the simulation result state |
+| `risk-analyst-agent.ts` | Explain drawdown, validity, and risk checks |
+| `ux-narrator-agent.ts` | Turn technical results into trader-readable status/copy |
+| `orchestrator.ts` | Execute the sequence and expose agent progress |
+
+Keep the modules deterministic and UI-auditable. A future production job system may split them into workers, but that requires a separate persistence/queue/security design.
+
+## 7. API source of truth
+
+API schemas live in `src/quant_research/api/schemas.py`; route behavior lives in `src/quant_research/api/routes/api.py`.
+
+### Market data
+
+- `GET /health`
+- `GET /providers`
+- `GET /data/cache`
+- `GET /data/availability`
+- `GET /data/instruments`
+- `GET /data/inventory`
+- `GET /data/instruments/export`
+- `POST /data/instruments/refresh`
+- `POST /data/nifty500/refresh` (deprecated compatibility alias)
+- `POST /data/nse-import/preview`
+- `POST /data/nse-import`
+- `GET /data/nse-import/{job_id}`
+- `GET /market-data`
+
+### Research and runs
+
+- `POST /research/ensure-data`
+- `POST /research/hypothesis`
+- `GET /research/artifacts/{kind}`
+- `POST /strategy/youtube`
+- `POST /backtests/sma-crossover`
+- `POST /backtests/custom`
+- `GET /backtests`
+- `GET /backtests/{run_id}`
+- `POST /robustness/analyze`
+- `POST /bias-validity/audit`
+
+### Replay
+
+- `POST /replay/sessions`
+- `GET /replay/sessions/{session_id}`
+- `POST /replay/sessions/{session_id}/step`
+- `POST /replay/sessions/{session_id}/orders`
+- `POST /replay/sessions/{session_id}/orders/{order_id}/close`
+- `POST /replay/sessions/{session_id}/finish`
+
+Error conventions:
+
+- `422`: invalid request, date range, symbol, or strategy parameters.
+- `404`: missing run/session/job.
+- `409`: requested NSE range is already fully available.
+- `502`: upstream NSE/archive, YouTube, or Ollama failure.
+- `503`: required local service/provider is unavailable.
+
+## 8. Codebase map
+
+```text
+backtrack/
+├── README.md
+├── handover.md
+├── TESTING.md
+├── PROJECT_GUIDE.md
+├── FRONTEND_CODEBASE_SUMMARY.md
+├── REPLAY_IMPLEMENTATION_PLAN.md
+├── pyproject.toml
+├── .env.example
+├── src/quant_research/
+│   ├── api/                 # App factory, settings, schemas, HTTP routes
+│   ├── data_providers/     # Local NSE, cache wrapper, Yahoo adapter/test surface
+│   ├── domain/             # Data, indicators, DSL, engine, analytics, robustness, validity
+│   ├── llm/                # Ollama HTTP client and JSON handling
+│   ├── repositories/       # SQLite market/run/artifact stores
+│   └── services/           # NSE/catalogue import, research, replay, YouTube, SMA
+├── frontend/
+│   ├── src/app/             # App Router pages
+│   ├── src/components/     # Shared layout, charts, and UI primitives
+│   └── src/lib/            # API clients, replay types, helpers, swarm modules
+├── data/                   # Runtime state, ignored by Git
+│   ├── market_cache.sqlite3
+│   └── nse_archives/*.csv.zip
+└── tests/                  # Unit, persistence, import, API, replay, and engine tests
+```
+
+## 9. Environment handoff
+
+Copy `.env.example` to `.env`:
 
 ```dotenv
-CORS_ORIGINS=http://localhost:3000
+CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=qwen3:4b
+MARKET_CACHE_PATH=data/market_cache.sqlite3
+NSE_ARCHIVE_PATH=data/nse_archives
 ```
 
-Yahoo Finance historical data is the only configured backtest provider. It does not need credentials. The adapter maps common Indian symbols to Yahoo tickers (`RELIANCE → RELIANCE.NS`, `NIFTY 50 → ^NSEI`); add mappings only when they are verified against returned historical bars.
+Do not commit `.env`, SQLite files, raw NSE ZIPs, tokens, account data, or provider payloads containing private information.
 
-The frontend reads `NEXT_PUBLIC_API_BASE_URL` only from frontend build-time environment. Put that variable in `frontend/.env.local` when overriding the default backend URL. It must contain a URL, never a secret.
+## 10. Required release checks
 
-## 6. API handoff contract
+From the repository root:
 
-All routes are under `/api/v1`:
+```bash
+env UV_CACHE_DIR=/tmp/backtrack-uv-cache uv run ruff check src tests
+env UV_CACHE_DIR=/tmp/backtrack-uv-cache uv run mypy src
+env UV_CACHE_DIR=/tmp/backtrack-uv-cache uv run pytest -q
+git diff --check
+npm --prefix frontend run build -- --webpack
+```
 
-| Method and path | Purpose | Provider required |
-| --- | --- | --- |
-| `GET /health` | Service/provider configuration status without secrets | No |
-| `GET /providers` | Provider capabilities and configuration state | No |
-| `GET /market-data` | Validated historical OHLCV bars | Keyless Yahoo Finance |
-| `POST /backtests/sma-crossover` | Long-only SMA crossover simulation | Yes |
-| `GET /backtests` | Runs from current server session | No |
-| `GET /backtests/{run_id}` | One run from current server session | No |
-| `POST /research/hypothesis` | Ollama reviewable suggestion | Ollama for a useful result |
-| `POST /strategy/youtube` | Reviewable rules from URL/transcript | No when transcript is supplied |
+For a frontend change, also manually check:
 
-Expected error semantics:
+- the intended route loads with meaningful content;
+- no framework error overlay appears;
+- the primary control changes visible state;
+- loading, empty, error, and completed states are understandable;
+- desktop and approximately 390px mobile layouts do not overflow;
+- API failures do not appear as successful data;
+- no paid provider or broker credential is requested.
 
-- `422`: invalid request or research parameters.
-- `404`: unknown in-memory run ID.
-- `502`: upstream provider/LLM failure.
-- `503`: free historical source is temporarily unavailable.
+The repository test suite uses fake openers/providers and does not require NSE, YouTube, or Ollama network access. The archive regression test verifies local ZIP reuse, complete raw-row persistence, and full eligible OHLCV ingestion.
 
-## 7. Delivery sequence
+## 11. Known limitations and next work
 
-1. Agent 2 adds or changes provider contracts and fake-opener/provider tests.
-2. Agent 4 adds extraction/strategy changes with fixture-based transcript tests.
-3. Agent 1 connects approved API contracts to loading/error/success UI states.
-4. Agent 5 reviews every new metric and educational claim for risk clarity.
-5. Agent 3 runs the complete `TESTING.md` checklist and records evidence.
-6. The release owner reviews security, secrets, provider limits, and known limitations.
+- No real-time market feed or live order execution.
+- Daily NSE archive ingestion only; intraday and derivatives are not normalized for backtesting.
+- Raw derivative/other archive rows are retained, but the current strategy engine uses normalized EQ/BE/ETF OHLCV bars.
+- YouTube extraction remains a reviewable draft and has no speech-to-text guarantee.
+- Ollama is optional and must be running locally for research hypothesis generation.
+- Options Lab does not fully model IV, Greeks, margin, taxes, brokerage, spreads, or settlement.
+- Multi-user auth, job queues, distributed locking, monitoring, backup, and production deployment controls are not implemented.
+- Results are historical simulations, not forecasts or financial advice.
 
-Do not merge a UI page that implies exchange-grade live data. Do not merge imported strategy execution without a human-review state and explicit assumptions.
+## 12. Handoff record template
 
-## 8. Release checklist
-
-- [ ] `.env` is not committed and all logs/screenshots are redacted.
-- [ ] Yahoo symbol mappings and timeframe limitations are verified.
-- [ ] `venv/bin/pytest -q` passes.
-- [ ] `venv/bin/ruff check src tests` passes.
-- [ ] `venv/bin/mypy src` passes.
-- [ ] `npm run lint` passes with no new warnings.
-- [ ] `npm run build -- --webpack` passes.
-- [ ] `/health` and `/providers` return expected configuration state.
-- [ ] Free-data outages return an explicit error rather than fabricated data.
-- [ ] Backtest output shows execution, commission, slippage, and risk assumptions.
-- [ ] Dashboard interaction, YouTube import, options calculator, settings, analytics, and mobile layout are manually checked.
-- [ ] Backtest results are described as simulations, not recommendations.
-- [ ] Deployment has a durable repository, job model, monitoring, and backup plan before multi-user use.
-
-## 9. Known limitations and next work
-
-- Backtest persistence is in-memory and resets on restart.
-- The current public backtest endpoint exposes SMA crossover; imported YouTube rules are not yet compiled into the strategy DSL automatically.
-- The frontend swarm is local/deterministic; production orchestration needs queued jobs and persisted agent events.
-- Free historical data is not an exchange-grade or real-time feed; availability and intraday coverage can change.
-- Options Lab does not yet model IV, Greeks, taxes, brokerage, margin, spreads, slippage, or expiry settlement in full.
-- YouTube extraction does not perform speech-to-text and cannot verify creator claims.
-- A production deployment needs authentication, authorization, rate limiting, audit logs, secret management, durable storage, observability, and a clear market-data licensing review.
-
-## 10. Handoff record template
-
-Every agent should append a short record to the next change request:
+Append this to a change request when handing work to another agent:
 
 ```text
 Date:
-Agent:
+Owner/agent:
 Changed files:
 User-visible behavior:
-API/provider changes:
+API/schema changes:
+Persistence/data migration:
 Commands run:
 Test evidence:
 Known limitations:
