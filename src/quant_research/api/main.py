@@ -32,7 +32,7 @@ def create_app(
         CORSMiddleware,
         allow_origins=list(container.settings.cors_origins),
         allow_credentials=False,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["*"],
     )
     app.include_router(create_api_router(container.research, container.hypotheses, container.nse_importer, container.market_cache, container.nifty500_catalogue, container.artifacts, container.ml_research))

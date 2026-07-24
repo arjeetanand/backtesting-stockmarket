@@ -75,6 +75,7 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 - [handover.md](handover.md) — engineering ownership, persistence contract, architecture, and handoff notes.
 - [TESTING.md](TESTING.md) — automated tests, UI smoke checks, data checks, and release checklist.
 - [AGENTS.md](AGENTS.md) — instructions for coding agents working in the repository.
+- [AI_ML_INTERVIEW_GUIDE.md](AI_ML_INTERVIEW_GUIDE.md) — AI/ML interview preparation using the Backtrack implementation.
 
 ## Main pages
 

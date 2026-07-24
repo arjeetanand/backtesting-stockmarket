@@ -73,17 +73,23 @@ class WatchlistService:
                 latest_bar = bars[-1]
                 current_price = latest_bar.close
 
-                # Evaluate performance status against OHLCV
-                # Check all bars since entry
-                high_since = max(b.high for b in bars)
-                low_since = min(b.low for b in bars)
+                # Evaluate performance only on bars at or after the setup's
+                # entry date.  Looking at the full symbol history can mark a
+                # newly bookmarked setup as already completed because an old
+                # high or low happened before the setup existed.
+                bars_since_entry = [
+                    bar for bar in bars if bar.timestamp.date().isoformat() >= item.entry_date
+                ]
+                if bars_since_entry:
+                    high_since = max(b.high for b in bars_since_entry)
+                    low_since = min(b.low for b in bars_since_entry)
 
-                if high_since >= item.target_price:
-                    status = "target_hit"
-                elif low_since <= item.stop_loss_price:
-                    status = "stop_loss_hit"
-                else:
-                    status = "active"
+                    if high_since >= item.target_price:
+                        status = "target_hit"
+                    elif low_since <= item.stop_loss_price:
+                        status = "stop_loss_hit"
+                    else:
+                        status = "active"
 
                 if status != item.status:
                     self._cache.update_watchlist_status(item.id, status)

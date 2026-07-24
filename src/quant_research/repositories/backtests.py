@@ -105,4 +105,6 @@ class SqliteBacktestRepository:
         return cursor.rowcount
 
     def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.path)
+        connection = sqlite3.connect(self.path, timeout=30.0)
+        connection.execute("PRAGMA busy_timeout = 30000")
+        return connection

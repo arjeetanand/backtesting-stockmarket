@@ -414,6 +414,14 @@ export default function MlLabPage() {
             </div>
           </div>
 
+          <div className={`ml-readiness-card${result ? " is-ready" : loading ? " is-loading" : ""}`}>
+            <div>
+              <span className="bt-field-label">Model readiness</span>
+              <strong>{result ? "Experiment available" : loading ? "Building features…" : "Awaiting local history"}</strong>
+            </div>
+            <small>{result ? `${result.data.usable_rows.toLocaleString("en-IN")} usable rows · ${result.data.feature_count} features` : "Run a past-only experiment to unlock diagnostics."}</small>
+          </div>
+
           {/* Advanced Collapsible Settings */}
           <div className="ml-advanced-toggle-row">
             <button

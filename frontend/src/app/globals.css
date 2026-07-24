@@ -3469,3 +3469,120 @@ body {
 @media (max-width: 980px) {
   .watchlist-stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* Stitch-aligned scanner workspace: the heatmap route now leads with a
+   narrow criteria rail and evidence cards. The original detailed table is
+   retained below for traceability but kept out of the primary composition. */
+.bt-scanner-page .scanner-reference-layout { display: grid; grid-template-columns: 208px minmax(0, 1fr); gap: 10px; align-items: start; }
+.bt-scanner-page .scanner-filter-rail { min-width: 0; padding: 14px; border-radius: 8px; box-shadow: none; }
+.scanner-rail-heading { padding-bottom: 12px; border-bottom: 1px solid var(--stitch-border-soft); }
+.scanner-rail-heading h2 { margin-top: 5px; color: var(--stitch-ink); font-size: 14px; line-height: 18px; }
+.scanner-rail-heading p { margin-top: 5px; color: var(--stitch-ink-muted); font-size: 10px; line-height: 1.45; }
+.scanner-rail-field { display: grid; gap: 5px; margin-top: 13px; }
+.scanner-rail-field > span, .scanner-rail-rule > span { color: var(--stitch-label); font: 800 8px/12px var(--font-jetbrains); letter-spacing: .06em; text-transform: uppercase; }
+.scanner-rail-field .bt-field-input { min-height: 32px; padding: 7px 8px; font-size: 10px; }
+.scanner-rail-rule { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 13px; padding: 9px 0; border-top: 1px solid var(--stitch-border-soft); border-bottom: 1px solid var(--stitch-border-soft); }
+.scanner-rail-rule strong { color: var(--stitch-ink); font: 800 10px var(--font-jetbrains); text-align: right; }
+.scanner-rail-run { width: 100%; min-height: 32px; justify-content: center; margin-top: 12px; padding: 7px 10px; font-size: 10px; }
+.scanner-saved-scans { display: grid; gap: 3px; margin-top: 18px; }
+.scanner-saved-heading { display: flex; align-items: center; gap: 5px; margin-bottom: 5px; color: var(--stitch-label); font: 800 8px var(--font-jetbrains); letter-spacing: .06em; }
+.scanner-saved-heading svg { color: var(--stitch-primary); }
+.scanner-saved-scans button { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 6px; align-items: start; padding: 7px 5px; color: var(--stitch-ink); background: transparent; border: 1px solid transparent; border-radius: 5px; text-align: left; cursor: pointer; }
+.scanner-saved-scans button:hover { background: var(--stitch-surface-low); border-color: var(--stitch-border-soft); }
+.scanner-saved-check { display: grid; place-items: center; width: 13px; height: 13px; color: white; background: var(--stitch-primary); border-radius: 3px; font: 800 9px var(--font-jetbrains); }
+.scanner-saved-scans strong, .scanner-saved-scans small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scanner-saved-scans strong { font-size: 10px; line-height: 13px; }
+.scanner-saved-scans small { margin-top: 2px; color: var(--stitch-label); font: 9px var(--font-jetbrains); }
+.scanner-rail-source { display: flex; gap: 6px; align-items: flex-start; margin-top: 18px; padding-top: 11px; border-top: 1px solid var(--stitch-border-soft); color: var(--stitch-label); font: 9px/14px var(--font-jetbrains); }
+.scanner-rail-source svg { flex: 0 0 auto; color: var(--stitch-success); }
+.scanner-results-workspace { display: grid; min-width: 0; gap: 10px; }
+.scanner-reference-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.scanner-reference-kpi { min-height: 78px; padding: 12px; background: var(--stitch-surface); border: 1px solid var(--stitch-border); border-radius: 8px; box-shadow: 0 1px 2px rgba(15,23,42,.025); }
+.scanner-reference-kpi span, .scanner-reference-kpi small { display: block; color: var(--stitch-label); font: 800 8px/12px var(--font-jetbrains); letter-spacing: .05em; text-transform: uppercase; }
+.scanner-reference-kpi strong { display: block; margin-top: 8px; color: var(--stitch-ink); font: 800 18px/20px var(--font-jetbrains); letter-spacing: -.03em; }
+.scanner-reference-kpi small { margin-top: 4px; color: var(--stitch-ink-muted); font-size: 9px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.scanner-reference-kpi.is-positive strong { color: var(--stitch-success); }
+.scanner-reference-alert { margin: 0; }
+.scanner-reference-empty { display: grid; justify-items: center; gap: 7px; min-height: 270px; padding: 34px 24px; color: var(--stitch-label); text-align: center; }
+.scanner-reference-empty svg { color: var(--stitch-primary); }
+.scanner-reference-empty strong { color: var(--stitch-ink); font-size: 14px; }
+.scanner-reference-empty > span { max-width: 360px; color: var(--stitch-ink-muted); font-size: 10px; line-height: 1.45; }
+.scanner-reference-empty .bt-secondary-btn { margin-top: 5px; text-decoration: none; }
+.scanner-stock-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.scanner-stock-card { min-width: 0; padding: 13px; background: var(--stitch-surface); border: 1px solid var(--stitch-border); border-radius: 8px; box-shadow: 0 1px 2px rgba(15,23,42,.025); }
+.scanner-stock-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.scanner-stock-head strong, .scanner-stock-head small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scanner-stock-head strong { color: var(--stitch-ink); font: 800 14px var(--font-jetbrains); }
+.scanner-stock-head small { max-width: 180px; margin-top: 3px; color: var(--stitch-ink-muted); font-size: 9px; }
+.scanner-stock-head > span { flex: 0 0 auto; font: 800 13px var(--font-jetbrains); }
+.scanner-stock-sector { margin-top: 8px; color: var(--stitch-label); font: 9px var(--font-jetbrains); }
+.scanner-stock-sector span { margin: 0 3px; color: var(--stitch-border); }
+.scanner-return-profile { display: grid; gap: 5px; margin-top: 13px; }
+.scanner-return-profile > div { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; gap: 6px; align-items: center; }
+.scanner-return-profile span { color: var(--stitch-label); font: 800 8px var(--font-jetbrains); text-transform: uppercase; }
+.scanner-return-profile i { display: block; height: 5px; background: var(--stitch-primary-container); border-radius: 999px; }
+.scanner-return-profile i.is-muted { background: #b8b7c6; }
+.scanner-return-profile i.is-negative { background: var(--stitch-danger); }
+.scanner-return-profile i.is-negative.is-muted { background: #d29aa7; }
+.scanner-return-profile b { color: var(--stitch-ink); font: 800 9px var(--font-jetbrains); text-align: right; }
+.scanner-stock-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin-top: 13px; padding-top: 9px; border-top: 1px solid var(--stitch-border-soft); }
+.scanner-stock-metrics span { color: var(--stitch-label); font: 8px var(--font-jetbrains); }
+.scanner-stock-metrics b { display: block; margin-top: 3px; color: var(--stitch-ink); font: 800 10px var(--font-jetbrains); }
+.scanner-reference-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 1px 2px; color: var(--stitch-label); font: 9px var(--font-jetbrains); }
+.scanner-reference-footer strong { color: var(--stitch-ink); }
+.bt-scanner-page .scanner-legacy-heatmap { display: none; }
+
+/* Stitch ML Lab: a deliberately narrow configuration rail and wide evidence
+   surface, with the same truthful empty state until an experiment runs. */
+.bt-ml-page .ml-preflight-grid { grid-template-columns: 304px minmax(0, 1fr); }
+.bt-ml-page .ml-control-panel { padding: 14px; }
+.bt-ml-page .ml-control-panel .bt-panel-head { display: block; }
+.bt-ml-page .ml-control-panel .bt-panel-head h2 { margin-top: 5px; font-size: 14px; line-height: 18px; }
+.bt-ml-page .ml-control-panel .bt-panel-note { display: block; margin-top: 4px; font-size: 9px; line-height: 13px; }
+.bt-ml-page .ml-control-grid { grid-template-columns: 1fr; gap: 8px; margin-top: 14px; }
+.bt-ml-page .ml-control-field { min-width: 0; }
+.bt-ml-page .ml-model-section { display: block; margin-top: 15px; padding-top: 13px; border-top: 1px solid var(--stitch-border-soft); }
+.bt-ml-page .ml-model-section .bt-field-help { margin-top: 4px; font-size: 9px; line-height: 1.4; }
+.bt-ml-page .ml-model-options { display: grid; grid-template-columns: 1fr; gap: 5px; margin-top: 9px; }
+.bt-ml-page .ml-model-option { min-height: 0; padding: 8px; border-radius: 6px; }
+.bt-ml-page .ml-model-option strong { font-size: 10px; }
+.bt-ml-page .ml-model-option small { margin-top: 2px; font-size: 8px; }
+.bt-ml-page .ml-readiness-card { display: grid; gap: 5px; margin-top: 13px; padding: 10px; background: var(--stitch-surface-low); border: 1px solid var(--stitch-border-soft); border-radius: 6px; }
+.bt-ml-page .ml-readiness-card > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.bt-ml-page .ml-readiness-card strong { color: var(--stitch-ink); font: 800 9px var(--font-jetbrains); text-align: right; }
+.bt-ml-page .ml-readiness-card small { color: var(--stitch-label); font-size: 9px; line-height: 1.35; }
+.bt-ml-page .ml-readiness-card.is-ready { background: #ecfdf5; border-color: #bbf7d0; }
+.bt-ml-page .ml-readiness-card.is-ready strong { color: var(--stitch-success); }
+.bt-ml-page .ml-readiness-card.is-loading { background: #eef2ff; border-color: #c7d2fe; }
+.bt-ml-page .ml-readiness-card.is-loading strong { color: var(--stitch-primary); }
+.bt-ml-page .ml-advanced-toggle-row { margin-top: 13px; padding-top: 11px; border-top: 1px solid var(--stitch-border-soft); }
+.bt-ml-page .ml-advanced-panel { margin-top: 8px; padding: 9px; border-radius: 6px; }
+.bt-ml-page .ml-advanced-grid { grid-template-columns: 1fr 1fr; gap: 7px; }
+.bt-ml-page .ml-action-row { display: grid; gap: 9px; margin-top: 13px; padding-top: 12px; }
+.bt-ml-page .ml-action-row .bt-primary { width: 100%; justify-content: center; }
+.bt-ml-page .ml-method-note { align-items: flex-start; font-size: 9px; line-height: 1.4; }
+.bt-ml-page .ml-diagnostics-empty { min-height: 100%; padding: 16px; }
+.bt-ml-page .ml-diagnostics-empty .bt-panel-head { align-items: flex-start; }
+.bt-ml-page .ml-diagnostics-empty .bt-panel-head h2 { font-size: 15px; }
+
+@media (max-width: 980px) {
+  .bt-scanner-page .scanner-reference-layout { grid-template-columns: 1fr; }
+  .bt-scanner-page .scanner-filter-rail { display: grid; grid-template-columns: minmax(0, 1.2fr) repeat(2, minmax(150px, .8fr)); gap: 9px 12px; align-items: end; }
+  .bt-scanner-page .scanner-rail-heading { grid-row: span 2; padding: 0; border: 0; }
+  .bt-scanner-page .scanner-rail-field { margin-top: 0; }
+  .bt-scanner-page .scanner-rail-rule, .bt-scanner-page .scanner-rail-run { margin-top: 0; }
+  .bt-scanner-page .scanner-saved-scans { grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 0; }
+  .bt-scanner-page .scanner-saved-heading { grid-column: 1 / -1; }
+  .bt-scanner-page .scanner-rail-source { grid-column: 1 / -1; margin-top: 0; }
+}
+
+@media (max-width: 767px) {
+  .bt-scanner-page .scanner-filter-rail { display: block; }
+  .bt-scanner-page .scanner-rail-field { margin-top: 11px; }
+  .bt-scanner-page .scanner-rail-rule, .bt-scanner-page .scanner-rail-run { margin-top: 11px; }
+  .bt-scanner-page .scanner-saved-scans { margin-top: 16px; }
+  .bt-scanner-page .scanner-reference-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .bt-scanner-page .scanner-stock-grid { grid-template-columns: 1fr; }
+  .bt-scanner-page .scanner-reference-footer { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .bt-ml-page .ml-preflight-grid { grid-template-columns: 1fr; }
+}

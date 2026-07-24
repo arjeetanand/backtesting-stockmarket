@@ -210,8 +210,8 @@ export default function DataPage() {
             <small>{cache ? "Indexed for high-speed retrieval" : "Waiting for local cache"}</small>
           </div>
           <div className="bt-data-kpi">
-            <span>Candles available</span>
-            <strong>{cache ? `${(cache.bars / Math.max(1, cache.symbols)).toFixed(1)}×` : "—"}</strong>
+            <span>Average candles / stock</span>
+            <strong>{cache ? Math.round(cache.bars / Math.max(1, cache.symbols)).toLocaleString("en-IN") : "—"}</strong>
             <small>Daily archive coverage per symbol</small>
           </div>
           <div className="bt-data-kpi is-health">

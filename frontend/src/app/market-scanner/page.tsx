@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   AlertCircle,
-  BarChart3,
   BookmarkCheck,
   Database,
   Flame,
@@ -12,7 +11,6 @@ import {
   Layers,
   Play,
   RefreshCw,
-  Search,
   ShieldCheck,
   Sparkles,
   TrendingUp,
@@ -67,6 +65,14 @@ function fmt(val: number | undefined, digits = 2): string {
   return Number.isFinite(val) ? Number(val).toFixed(digits) : "—";
 }
 
+function apiErrorMessage(error: unknown, timeoutMessage: string, fallback: string): string {
+  if (error instanceof DOMException && error.name === "AbortError") return timeoutMessage;
+  if (error instanceof TypeError && error.message === "Failed to fetch") {
+    return "Local Backtrack API is unavailable. Start the backend on port 8000, then retry.";
+  }
+  return error instanceof Error ? error.message : fallback;
+}
+
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 60_000): Promise<Response> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
@@ -105,7 +111,6 @@ export default function MarketScannerPage() {
   const [breakoutError, setBreakoutError] = useState<string | null>(null);
 
   const [scannerTimeSec, setScannerTimeSec] = useState<number | null>(null);
-  const [breakoutTimeSec, setBreakoutTimeSec] = useState<number | null>(null);
 
   const runUniverseScan = async () => {
     setLoadingScanner(true);
@@ -122,7 +127,7 @@ export default function MarketScannerPage() {
       setScannerResult(data);
       setScannerTimeSec(Number(((performance.now() - t0) / 1000).toFixed(1)));
     } catch (err) {
-      setScannerError(err instanceof DOMException && err.name === "AbortError" ? "The universe scan took too long. Try NIFTY 50 or a shorter local dataset." : err instanceof Error ? err.message : "Error running scanner.");
+      setScannerError(apiErrorMessage(err, "The universe scan took too long. Try NIFTY 50 or a shorter local dataset.", "Error running scanner."));
     } finally {
       setLoadingScanner(false);
     }
@@ -131,7 +136,6 @@ export default function MarketScannerPage() {
   const runBreakoutScan = async () => {
     setLoadingBreakout(true);
     setBreakoutError(null);
-    const t0 = performance.now();
     try {
       const res = await fetchWithTimeout(`${API_BASE_URL}/breakout-scanner/scan`, {
         method: "POST",
@@ -141,9 +145,8 @@ export default function MarketScannerPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail ?? "Failed to scan breakout setups.");
       setBreakoutResult(data);
-      setBreakoutTimeSec(Number(((performance.now() - t0) / 1000).toFixed(1)));
     } catch (err) {
-      setBreakoutError(err instanceof DOMException && err.name === "AbortError" ? "The breakout scan took too long. The scan is limited to the priority NSE universe; retry once the local cache is ready." : err instanceof Error ? err.message : "Error scanning setups.");
+      setBreakoutError(apiErrorMessage(err, "The breakout scan took too long. The scan is limited to the priority NSE universe; retry once the local cache is ready.", "Error scanning setups."));
     } finally {
       setLoadingBreakout(false);
     }
@@ -191,6 +194,15 @@ export default function MarketScannerPage() {
     return true;
   });
 
+  const visibleLeaderboard = scannerResult?.leaderboard.slice(0, 6) ?? [];
+  const averageStrategyReturn = visibleLeaderboard.length
+    ? visibleLeaderboard.reduce((sum, item) => sum + item.strategy_return, 0) / visibleLeaderboard.length
+    : null;
+  const averageBuyHoldReturn = visibleLeaderboard.length
+    ? visibleLeaderboard.reduce((sum, item) => sum + item.buy_hold_return, 0) / visibleLeaderboard.length
+    : null;
+  const universeLabel = universe === "nifty50" ? "NIFTY 50" : universe === "nifty500" ? "NIFTY 500" : "All imported";
+
   return (
     <div className="backtrack-page bt-scanner-page">
       <TopBar />
@@ -237,6 +249,107 @@ export default function MarketScannerPage() {
         {/* Tab 1: Universe Screener & Sector Heatmap */}
         {activeTab === "heatmap" && (
           <>
+            <section className="scanner-reference-layout" aria-label="Market scanner workspace">
+              <aside className="bt-panel scanner-filter-rail">
+                <div className="scanner-rail-heading">
+                  <span className="bt-eyebrow">TECHNICAL CRITERIA</span>
+                  <h2>Market filters</h2>
+                  <p>Run the same local NSE cache through a focused universe and strategy.</p>
+                </div>
+
+                <label className="scanner-rail-field">
+                  <span>Target universe</span>
+                  <select className="bt-field-input" value={universe} onChange={(event) => setUniverse(event.target.value)}>
+                    <option value="nifty50">NIFTY 50</option>
+                    <option value="nifty500">NIFTY 500</option>
+                    <option value="all">All imported stocks</option>
+                  </select>
+                </label>
+                <label className="scanner-rail-field">
+                  <span>Strategy template</span>
+                  <select className="bt-field-input" value={strategyType} onChange={(event) => setStrategyType(event.target.value)}>
+                    <option value="sma_crossover">SMA crossover</option>
+                    <option value="rsi_reversion">RSI mean reversion</option>
+                    <option value="breakout">52-week breakout</option>
+                  </select>
+                </label>
+
+                <div className="scanner-rail-rule">
+                  <span>Evaluation scope</span>
+                  <strong>{universeLabel}</strong>
+                </div>
+                <button type="button" className="bt-primary scanner-rail-run" onClick={() => void runUniverseScan()} disabled={loadingScanner}>
+                  {loadingScanner ? <RefreshCw size={13} className="spin" /> : <Play size={13} />}
+                  {loadingScanner ? "Scanning…" : "Run scan"}
+                </button>
+
+                <div className="scanner-saved-scans">
+                  <div className="scanner-saved-heading"><BookmarkCheck size={13} /><span>SAVED SCANS</span></div>
+                  <button type="button" onClick={() => { setUniverse("nifty50"); setStrategyType("sma_crossover"); }}>
+                    <span className="scanner-saved-check">{universe === "nifty50" && strategyType === "sma_crossover" ? "✓" : ""}</span>
+                    <span><strong>Bluechip crossover</strong><small>NIFTY 50 · SMA</small></span>
+                  </button>
+                  <button type="button" onClick={() => { setUniverse("nifty500"); setStrategyType("rsi_reversion"); }}>
+                    <span className="scanner-saved-check">{universe === "nifty500" && strategyType === "rsi_reversion" ? "✓" : ""}</span>
+                    <span><strong>Mean reversion</strong><small>NIFTY 500 · RSI</small></span>
+                  </button>
+                  <button type="button" onClick={() => { setUniverse("all"); setStrategyType("breakout"); }}>
+                    <span className="scanner-saved-check">{universe === "all" && strategyType === "breakout" ? "✓" : ""}</span>
+                    <span><strong>Breakout momentum</strong><small>Imported · 52W high</small></span>
+                  </button>
+                </div>
+
+                <div className="scanner-rail-source"><ShieldCheck size={13} /><span>Official NSE history<br />from the local cache</span></div>
+              </aside>
+
+              <div className="scanner-results-workspace">
+                <div className="scanner-reference-kpis" aria-label="Scanner summary">
+                  <div className="scanner-reference-kpi"><span>MATCHING RESULTS</span><strong>{scannerResult?.total_scanned?.toLocaleString("en-IN") ?? "—"}</strong><small>{universeLabel} symbols scanned</small></div>
+                  <div className="scanner-reference-kpi is-positive"><span>AVG STRATEGY RETURN</span><strong>{pct(averageStrategyReturn ?? undefined)}</strong><small>top returned instruments</small></div>
+                  <div className="scanner-reference-kpi"><span>SCANNED SECTORS</span><strong>{scannerResult?.sectors_count?.toLocaleString("en-IN") ?? "—"}</strong><small>groups in local cache</small></div>
+                  <div className="scanner-reference-kpi"><span>SCAN TIME</span><strong>{scannerTimeSec ? `${scannerTimeSec}s` : "—"}</strong><small>vectorized local run</small></div>
+                </div>
+
+                {scannerError && (
+                  <div className="bt-alert-error scanner-reference-alert" role="alert"><AlertCircle size={15} /> {scannerError}</div>
+                )}
+
+                {loadingScanner && (
+                  <div className="bt-panel scanner-reference-empty"><RefreshCw size={18} className="spin" /><strong>Evaluating the selected universe…</strong><span>Grouping strategy performance from official NSE history.</span></div>
+                )}
+
+                {!loadingScanner && scannerResult?.total_scanned === 0 && (
+                  <div className="bt-panel scanner-reference-empty"><Database size={21} /><strong>No imported symbols match this scan</strong><span>Import daily NSE archives before running the Market Scanner.</span><Link href="/data" className="bt-secondary-btn"><Database size={13} /> Manage stock data</Link></div>
+                )}
+
+                {!loadingScanner && scannerResult && scannerResult.total_scanned > 0 && (
+                  <>
+                    <div className="scanner-stock-grid">
+                      {visibleLeaderboard.map((item) => {
+                        const maxReturn = Math.max(Math.abs(item.strategy_return), Math.abs(item.buy_hold_return), 0.01);
+                        return (
+                          <article key={item.symbol} className="scanner-stock-card">
+                            <div className="scanner-stock-head">
+                              <div><strong>{item.symbol}</strong><small>{item.company_name}</small></div>
+                              <span className={item.strategy_return >= item.buy_hold_return ? "text-pos" : "text-neg"}>{pct(item.strategy_return)}</span>
+                            </div>
+                            <div className="scanner-stock-sector">{item.sector} <span>·</span> {item.bars.toLocaleString("en-IN")} bars</div>
+                            <div className="scanner-return-profile" aria-label={`${item.symbol} strategy and buy and hold returns`}>
+                              <div><span>Strategy</span><i className={item.strategy_return < 0 ? "is-negative" : ""} style={{ width: `${Math.max(8, Math.min(100, Math.abs(item.strategy_return) / maxReturn * 100))}%` }} /><b>{pct(item.strategy_return)}</b></div>
+                              <div><span>B&amp;H</span><i className={`${item.buy_hold_return < 0 ? "is-negative " : ""}is-muted`} style={{ width: `${Math.max(8, Math.min(100, Math.abs(item.buy_hold_return) / maxReturn * 100))}%` }} /><b>{pct(item.buy_hold_return)}</b></div>
+                            </div>
+                            <div className="scanner-stock-metrics"><span>Win rate <b>{pct(item.win_rate)}</b></span><span>Sharpe <b>{fmt(item.sharpe_ratio)}</b></span><span>Drawdown <b className="text-neg">{pct(item.max_drawdown)}</b></span></div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                    <div className="scanner-reference-footer"><span>Showing {visibleLeaderboard.length} of {scannerResult.leaderboard.length} instruments in the local leaderboard.</span><span>Avg B&amp;H: <strong>{pct(averageBuyHoldReturn ?? undefined)}</strong></span></div>
+                  </>
+                )}
+              </div>
+            </section>
+
+            <div className="scanner-legacy-heatmap" aria-hidden="true">
             <section className="bt-panel scanner-control-panel bt-scanner-filter-panel">
               <div className="bt-panel-head">
                 <div>
@@ -425,6 +538,7 @@ export default function MarketScannerPage() {
                 </section>
               </>
             )}
+            </div>
           </>
         )}
 

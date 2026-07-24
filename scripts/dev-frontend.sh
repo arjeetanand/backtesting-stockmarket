@@ -14,4 +14,8 @@ done
 
 api_base_url="${NEXT_PUBLIC_API_BASE_URL:-http://127.0.0.1:${backend_port}/api/v1}"
 next_dist_dir=".next-port-${frontend_port}"
-exec env NEXT_PUBLIC_API_BASE_URL="$api_base_url" NEXT_DIST_DIR="$next_dist_dir" npm --prefix frontend run dev -- --hostname 127.0.0.1 --port "$frontend_port"
+# Polling avoids exhausting the macOS file-watcher limit when several local
+# Backtrack instances (or large NSE data trees) are open at once. Callers can
+# opt out with WATCHPACK_POLLING=false if their environment has ample watchers.
+watchpack_polling="${WATCHPACK_POLLING:-true}"
+exec env NEXT_PUBLIC_API_BASE_URL="$api_base_url" NEXT_DIST_DIR="$next_dist_dir" WATCHPACK_POLLING="$watchpack_polling" npm --prefix frontend run dev -- --hostname 127.0.0.1 --port "$frontend_port"

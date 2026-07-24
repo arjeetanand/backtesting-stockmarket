@@ -23,6 +23,12 @@ Pass any available port to `./scripts/dev-backend.sh`, for example `8001` or
 `8002`, when running another local backend instance. Pair it with the same port
 in `./scripts/dev-frontend.sh`, such as `./scripts/dev-frontend.sh 3001 8001`.
 
+The backend script validates the selected port and prefers the repository's
+`.venv/bin/uvicorn`. Check a running instance with
+`curl http://127.0.0.1:<port>/api/v1/health` or open its `/docs` page. Restart
+the process after route or settings changes when reload is not observing the
+change; a stale process can expose an older API contract.
+
 ## Configuration
 
 The backend reads `.env` through `src/quant_research/api/config.py`.
@@ -108,7 +114,34 @@ All routes are prefixed with `/api/v1`.
 - `DELETE /testing-history`
 - `DELETE /research/artifacts/{kind}/{artifact_key}`
 
+### Scanning, ML, and watchlist
+
+- `POST /market-scanner/run` — run a vectorized multi-stock strategy scan from the local NSE cache.
+- `POST /breakout-scanner/scan` — find local historical breakout setups by conviction threshold.
+- `POST /ml/experiments` and `GET /ml/experiments` — run and list chronological, past-only ML research experiments.
+- `POST /data/sync-today` — import the current missing NSE archive day when available.
+- `POST /watchlist/add`, `GET /watchlist`, and `DELETE /watchlist/{item_id}` — persist, evaluate, and remove simulated setup bookmarks.
+
+Watchlist status is evaluated only against local daily bars on or after the setup's
+entry date. A pre-entry high or low must not mark a newly saved setup as completed.
+
 `GET /market-data` is the chart-read path for a selected symbol, timeframe, and datetime range. The custom backtest response includes the existing candles, indicators, trades, equity, drawdown, and metrics plus real candle `volume` and stable signal `id`/`trade_id` fields. `422` responses are used for insufficient history and unsupported strategy parameters so the frontend can show an actionable correction.
+
+### Strategy engine additions
+
+`run_rule_backtest()` supports the original indicator strategies plus these deterministic price-action interpretations:
+
+- `support_resistance_breakout`
+- `market_structure_break`
+- `fibonacci_retracement`
+- `price_action_reversal`
+- `supply_demand_zones`
+- `ict_liquidity_fvg`
+- `multi_timeframe_trend`
+
+Signals are computed after candle close `T` and filled at the next candle open `T+1`. The new price-action rules are daily-bar, long-only interpretations and are explicitly not exact YouTube transcriptions. `ict_liquidity_fvg` is an educational daily approximation, not full intraday ICT logic.
+
+When adding a strategy, add its engine logic, chart indicators, frontend catalogue entry, comparison/hypothesis label, and a parametrized test. Keep the shared cost/risk controls and no-lookahead execution contract unchanged.
 
 ### Replay
 
@@ -119,6 +152,23 @@ All routes are prefixed with `/api/v1`.
 - `POST /replay/sessions/{session_id}/orders/{order_id}/close`
 - `POST /replay/sessions/{session_id}/finish`
 
+### Watchlist tracking
+
+- `POST /watchlist/add` — save a scanner setup as a forward paper-tracking item.
+- `GET /watchlist` — return current price, P&L, and status.
+- `DELETE /watchlist/{item_id}` — remove one saved setup.
+
+Target/stop status is evaluated only against candles on or after the item's
+entry date. Historical highs and lows from before a setup was bookmarked must
+not complete a new setup.
+
+### Local SQLite concurrency
+
+Repository connections use a 30-second busy timeout. This prevents concurrent
+local frontend instances from failing immediately with `database is locked`,
+but SQLite remains a single-user local store rather than a distributed job
+database.
+
 ## Backend source map
 
 ```text
@@ -128,7 +178,7 @@ src/quant_research/
 ├── domain/           # Data models, indicators, DSL, engine, analytics, validity
 ├── llm/              # Ollama client and response handling
 ├── repositories/     # SQLite market, run, and artifact persistence
-└── services/         # Import, research, YouTube, replay, ML, and strategy workflows
+└── services/         # Import, research, YouTube, replay, ML, scanner, watchlist, and strategy workflows
 ```
 
 ## Backend tests

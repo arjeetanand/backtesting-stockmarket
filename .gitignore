@@ -25,3 +25,6 @@ data/**/*.zip
 data/*.zip
 .DS_Store
 data/.DS_Store
+*.md
+!COMPLETE_PROJECT_GUIDE.md
+!QA_ERROR_LOG.md

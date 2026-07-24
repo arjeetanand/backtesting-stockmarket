@@ -17,12 +17,22 @@ The frontend can be started on ports `3000`, `3001`, or `3002` with the named np
 commands (`npm --prefix frontend run dev:3000`, `dev:3001`, or `dev:3002`) or with
 `./scripts/dev-frontend.sh <frontend-port> <backend-port>`. The script passes the
 backend port through `NEXT_PUBLIC_API_BASE_URL` so the selected pair stays aligned.
+The named scripts isolate Next output per port and enable `WATCHPACK_POLLING=true` by
+default to reduce `EMFILE` watcher pressure; set `WATCHPACK_POLLING=false` when the
+machine has enough file-watcher capacity.
+
+For parallel local instances, each port gets an isolated Next build directory
+(`.next-port-3000`, `.next-port-3001`, or `.next-port-3002`) to avoid build-file
+collisions. If a newly added route still returns a Next 404, stop and restart
+the relevant dev server; a stale watcher may not have discovered the route.
 
 Optional `frontend/.env.local`:
 
 ```dotenv
 NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000/api/v1
 ```
+
+The home page is only a workflow chooser. Stock and date controls belong on Research, Strategy Lab, Pattern Finder, or Replay; do not reintroduce stock/date state into the home page unless the product flow changes deliberately.
 
 ## Routes
 
@@ -39,6 +49,8 @@ NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000/api/v1
 | `/comparison` | Compare saved tests |
 | `/robustness` | Robustness and walk-forward analysis |
 | `/bias-validity` | Bias and validity checks |
+| `/market-scanner` | Multi-stock strategy and breakout scanning |
+| `/watchlist` | Persisted simulated setup tracking |
 | `/ml-lab` | Chronological ML experiments |
 | `/pattern-finder` | Historical pattern detection and review |
 | `/options` | Educational options payoff calculator |
@@ -90,6 +102,10 @@ Important files:
 - `src/lib/agents/` — deterministic five-agent in-process orchestration.
 - `src/lib/strategy-library.ts` — known strategy definitions used by the UI.
 
+The strategy catalogue includes the original indicator rules and seven price-action interpretation templates: support/resistance breakout, market-structure break, Fibonacci retracement, price-action reversal, supply/demand zones, ICT-style liquidity/FVG approximation, and multi-timeframe trend confirmation. Their cards and rules must say `Backtrack interpretation` or equivalent review-required language because the supplied video did not provide a usable transcript.
+
+The Market Scanner uses the local scanner API and real leaderboard values only. Its Stitch-aligned heatmap view uses a narrow filter rail, KPI strip, and data-backed result cards; the legacy detailed table remains available in source for traceability but is not the primary composition. ML Lab uses the same visual language with a narrow model-configuration rail and a wide diagnostics surface. Both routes keep explicit loading, unavailable, empty, and result states and must never show seeded prices or fabricated time series.
+
 ## Local swarm modules
 
 The five frontend agents are deterministic TypeScript modules, not paid remote agents:
@@ -110,3 +126,13 @@ npm --prefix frontend run lint
 ```
 
 When changing a rendered page, verify loading, empty, error, success, desktop, and narrow mobile states. Never use mock market prices as a fallback for a failed API request.
+
+## Runtime QA notes
+
+- Keep the backend running on the port selected in `NEXT_PUBLIC_API_BASE_URL`;
+  a healthy frontend can still show explicit unavailable states when that API
+  is stopped.
+- DELETE controls (saved tests and watchlist items) require the backend CORS
+  policy to allow `DELETE` in addition to `GET` and `POST`.
+- Missing history remains an actionable import/unavailable state; it must never
+  be replaced with mock prices.
