@@ -457,7 +457,7 @@ export default function ResearchPage() {
     void parseHypothesis();
   };
 
-  return <div className="backtrack-page">
+  return <div className="backtrack-page bt-research-page">
     <TopBar />
     <main className="backtrack-content bt-stack">
       <section className="bt-heading-row">

@@ -263,7 +263,7 @@ export default function MlLabPage() {
   const activePoint = hoverIndex !== null && chart ? chart.preds[hoverIndex] : null;
 
   return (
-    <div className="backtrack-page">
+    <div className="backtrack-page bt-ml-page">
       <TopBar />
       <div className="backtrack-content bt-stack ml-lab-page">
         {/* Header section */}
@@ -340,6 +340,7 @@ export default function MlLabPage() {
           </section>
         )}
 
+        <div className="ml-preflight-grid">
         {/* Main Controls Panel */}
         <section className="bt-panel ml-control-panel">
           <div className="bt-panel-head">
@@ -542,6 +543,16 @@ export default function MlLabPage() {
             </div>
           )}
         </section>
+
+        {!result && !loading && !error && (
+          <section className="bt-panel ml-diagnostics-empty" aria-label="Training diagnostics">
+            <div className="bt-panel-head"><div><span className="bt-eyebrow">TRAINING DIAGNOSTICS</span><h2>Training and validation curves</h2><p>Model diagnostics will appear here after a past-only run.</p></div><span className="bt-panel-note">Awaiting experiment</span></div>
+            <div className="ml-placeholder-chart" aria-hidden="true"><span /><span /><span /></div>
+            <div className="ml-placeholder-metrics"><div><span>Directional precision</span><strong>—</strong></div><div><span>Test error (RMSE)</span><strong>—</strong></div></div>
+            <p className="ml-diagnostics-note">No seeded values are shown. Run the experiment to calculate this view from the selected NSE history.</p>
+          </section>
+        )}
+        </div>
 
         {!result && !loading && !error && (
           <section className="ml-empty-state">

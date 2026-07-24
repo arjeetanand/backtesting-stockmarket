@@ -258,3 +258,12 @@ class BreakoutScannerRequest(BaseModel):
     start: datetime | None = None
     end: datetime | None = None
 
+
+class WatchlistAddRequest(BaseModel):
+    symbol: str = Field(..., min_length=1, max_length=50)
+    company_name: str = Field(default="")
+    setup_type: str = Field(default="Breakout Candidate")
+    entry_price: float = Field(..., gt=0.0)
+    target_price: float | None = Field(default=None, gt=0.0)
+    stop_loss_price: float | None = Field(default=None, gt=0.0)
+

@@ -121,14 +121,26 @@ export default function PatternFinderPage() {
     return result.trades;
   }, [result, filterType]);
 
+  const outcomePolyline = useMemo(() => {
+    if (!filteredTrades.length) return "";
+    const values = filteredTrades.slice(0, 36).map((trade) => Number(trade.max_return_pct));
+    const min = Math.min(...values, 0);
+    const max = Math.max(...values, 1);
+    return values.map((value, index) => {
+      const x = values.length === 1 ? 50 : (index / (values.length - 1)) * 100;
+      const y = 88 - ((value - min) / Math.max(1, max - min)) * 72;
+      return `${x},${y}`;
+    }).join(" ");
+  }, [filteredTrades]);
+
   return (
-    <div style={{ paddingTop: "72px", paddingBottom: "48px", minHeight: "100vh", backgroundColor: "#fafafa" }}>
+    <div className="backtrack-page pattern-finder-page">
       <TopBar title="Volume Spike & Breakout Pattern Finder" subtitle="Discover historical price surge patterns and analyze winning vs failed trade signals" />
 
-      <div style={{ padding: "0 32px", maxWidth: "1400px", margin: "0 auto" }}>
+      <main className="backtrack-content pattern-finder-content">
         
         {/* Simple Customer Explainer Banner */}
-        <div
+        <div className="pattern-finder-intro"
           style={{
             background: "linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%)",
             border: "1px solid #c7d2fe",
@@ -198,7 +210,7 @@ export default function PatternFinderPage() {
         </div>
 
         {/* Strategy Controls Form Card */}
-        <div className="bt-stat-card" style={{ padding: "24px", marginBottom: "24px" }}>
+        <div className="bt-stat-card pattern-finder-controls" style={{ padding: "24px", marginBottom: "24px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "18px" }}>
             <Target size={20} className="text-indigo-600" />
             <h3 style={{ fontFamily: "var(--font-space-grotesk)", fontSize: "16px", fontWeight: "700", color: "#0f172a" }}>
@@ -260,6 +272,29 @@ export default function PatternFinderPage() {
                 placeholder="2.0"
               />
               <span style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px", display: "block" }}>2.0 = Volume is 200% of 20-day avg</span>
+            </div>
+
+            <div>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "#475569", marginBottom: "6px" }}>
+                52-Week High Distance (%)
+              </label>
+              <input
+                type="number"
+                step="0.5"
+                style={{
+                  width: "100%",
+                  padding: "9px 12px",
+                  borderRadius: "8px",
+                  border: "1px solid #cbd5e1",
+                  fontSize: "13px",
+                  fontWeight: "600",
+                  outline: "none",
+                }}
+                value={dist52w}
+                onChange={(e) => setDist52w(e.target.value)}
+                placeholder="5.0"
+              />
+              <span style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px", display: "block" }}>Only scan signals near the 52-week high</span>
             </div>
 
             <div>
@@ -333,7 +368,8 @@ export default function PatternFinderPage() {
         {result && (
           <div>
             {/* KPI Performance Cards */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "16px", marginBottom: "24px" }}>
+            <div className="pattern-finder-results">
+            <div className="pattern-finder-metrics" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "16px", marginBottom: "24px" }}>
               
               <div className="bt-stat-card">
                 <span>Tested Stock</span>
@@ -384,8 +420,17 @@ export default function PatternFinderPage() {
 
             </div>
 
+            <section className="bt-panel pattern-finder-visualization" aria-label="Historical breakout visualization">
+              <div className="bt-panel-head">
+                <div><span className="bt-eyebrow">BREAKOUT VISUALIZATION</span><h2>{result.symbol} signal outcomes</h2><p>Peak forward return for the filtered historical triggers.</p></div>
+                <span className="bt-panel-note">{filteredTrades.length} signals</span>
+              </div>
+              {outcomePolyline ? <svg className="pattern-finder-chart" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Historical peak return by signal"><line x1="0" x2="100" y1="88" y2="88" /><line x1="0" x2="100" y1="52" y2="52" /><line x1="0" x2="100" y1="16" y2="16" /><polyline points={outcomePolyline} /></svg> : <div className="bt-chart-empty">No historical triggers match this filter.</div>}
+              <div className="pattern-finder-chart-legend"><span><i /> Peak forward return</span><small>Values come directly from the selected NSE history.</small></div>
+            </section>
+
             {/* Interactive Trade Signal & False Positive Log Table */}
-            <div className="bt-stat-card" style={{ padding: "24px" }}>
+            <div className="bt-stat-card pattern-finder-signal-log" style={{ padding: "24px" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px", flexWrap: "wrap", gap: "14px" }}>
                 <div>
                   <h3 style={{ fontFamily: "var(--font-space-grotesk)", fontSize: "18px", fontWeight: "700", color: "#0f172a" }}>
@@ -527,9 +572,10 @@ export default function PatternFinderPage() {
                 </table>
               </div>
             </div>
+            </div>
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 }

@@ -21,10 +21,10 @@ export function GlassCard({
   return (
     <div
       className={cn(
-        "bg-white border border-slate-200 shadow-xs rounded-xl p-5 transition-all duration-150",
-        hover && "hover:border-indigo-300 hover:shadow-md cursor-pointer",
-        cyanBorder && "border-indigo-300 shadow-2xs",
-        purpleBorder && "border-indigo-300 shadow-2xs",
+        "bg-white border border-[#c7c4d8] shadow-xs rounded-xl p-5 transition-all duration-150",
+        hover && "hover:border-[#3525cd] hover:shadow-md cursor-pointer",
+        cyanBorder && "border-[#c7c4d8] shadow-2xs",
+        purpleBorder && "border-[#c7c4d8] shadow-2xs",
         className
       )}
       onClick={onClick}
@@ -69,7 +69,7 @@ export function MetricCard({
   }[size];
 
   return (
-    <div className="bg-white border border-slate-200 shadow-xs rounded-xl p-5 flex flex-col gap-1.5 hover:border-indigo-300 transition-all group">
+    <div className="bg-white border border-[#c7c4d8] shadow-xs rounded-xl p-5 flex flex-col gap-1.5 hover:border-[#3525cd] transition-all group">
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 font-mono">
           {label}

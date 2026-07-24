@@ -140,7 +140,7 @@ export default function StrategyPage() {
     } finally { setRunning(false); setPreviewing(false); }
   };
 
-  return <div className="backtrack-page">
+  return <div className="backtrack-page bt-strategy-page">
     <TopBar />
     <div className="backtrack-content bt-stack">
     <section className="bt-heading-row"><div><div className="bt-kicker"><span className="live-dot" /> BUILD A STRATEGY</div><h1>Build your strategy.</h1><p>Start with a familiar template, change the rules if you want, and test the idea on historical NSE data.</p></div><div className="bt-heading-actions"><span className="data-source"><Sparkles size={14} /> {result ? "Test complete" : "Ready to test"}</span></div></section>

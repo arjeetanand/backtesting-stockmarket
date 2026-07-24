@@ -13,7 +13,7 @@ const checks = [
 
 export default function BiasValidityPage() {
   return (
-    <div className="backtrack-page">
+    <div className="backtrack-page bt-bias-page">
       <TopBar />
       <div className="backtrack-content bt-stack">
         <section className="bt-heading-row">

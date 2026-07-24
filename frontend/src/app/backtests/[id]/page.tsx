@@ -62,7 +62,7 @@ export default function BacktestResultPage() {
     ["Trades", String(Math.round(metric(m, "trade_count"))), "neutral"],
   ];
 
-  return <div className="backtrack-page"><TopBar /><main className="backtrack-content bt-run-detail">
+  return <div className="backtrack-page bt-result-page"><TopBar /><main className="backtrack-content bt-run-detail">
     <section className="bt-run-header" aria-label="Backtest summary"><Link href="/backtests" aria-label="Back to backtest runs" className="bt-run-back"><ArrowLeft size={17} /></Link><div className="bt-run-title-group"><h1>{strategyName(result.config)} · {symbol}</h1><div className="bt-run-meta"><span className="bt-run-id">{result.run_id}</span><i>•</i><span>Completed {new Date(result.execution_timestamp).toLocaleString("en-IN")}</span><i>•</i><span>{start} → {end}</span><i>•</i><span>{result.engine_version}</span></div></div><button type="button" onClick={() => window.print()} className="bt-run-export"><Download size={14} /> Export</button></section>
     <section className="bt-run-metrics" aria-label="Backtest performance metrics">{metrics.map(([label, value, tone]) => <div key={label} className="bt-run-metric"><span>{label}</span><strong className={`bt-run-metric-${tone}`}>{value}</strong></div>)}</section>
     <div className="bt-run-layout"><section className="bt-run-workspace" aria-label="Backtest results"><div className="bt-run-chart-panel"><nav className="bt-run-tabs" aria-label="Backtest result views">{TABS.map(({ id, label, icon: Icon }) => <button type="button" key={id} aria-pressed={activeTab === id} onClick={() => setActiveTab(id)} className={cn("bt-run-tab", activeTab === id && "is-active")}><Icon size={14} /> {label}</button>)}</nav><div className="bt-run-chart-content">

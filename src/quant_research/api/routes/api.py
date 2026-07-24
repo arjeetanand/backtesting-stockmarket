@@ -39,6 +39,7 @@ from quant_research.api.schemas import (
     ResearchDataEnsureRequest,
     RobustnessAnalysisRequest,
     SmaBacktestRequest,
+    WatchlistAddRequest,
     YouTubeStrategyRequest,
 )
 from quant_research.data_providers.base import MarketDataProviderError
@@ -769,6 +770,74 @@ def create_api_router(
             )
         except Exception as exc:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+
+    @router.post("/data/sync-today", tags=["data"])
+    def sync_today_market_data() -> dict[str, Any]:
+        """One-click sync missing trading day archives up to today's session."""
+        from quant_research.services.daily_sync import DailySyncService
+
+        if market_cache is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Market cache repository not available.")
+        try:
+            service = DailySyncService(market_cache)
+            return service.sync_latest()
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+
+    @router.post("/watchlist/add", tags=["watchlist"])
+    def add_watchlist_item(payload: WatchlistAddRequest) -> dict[str, Any]:
+        """Bookmark setup candidate to persistent local watchlist."""
+        from quant_research.services.watchlist import WatchlistService
+
+        if market_cache is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Market cache repository not available.")
+        try:
+            service = WatchlistService(market_cache)
+            return service.add_item(
+                symbol=payload.symbol,
+                company_name=payload.company_name,
+                setup_type=payload.setup_type,
+                entry_price=payload.entry_price,
+                target_price=payload.target_price,
+                stop_loss_price=payload.stop_loss_price,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+
+    @router.get("/watchlist", tags=["watchlist"])
+    def get_watchlist_items() -> list[dict[str, Any]]:
+        """List all saved watchlist setups with current performance status."""
+        from quant_research.services.watchlist import WatchlistService
+
+        if market_cache is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Market cache repository not available.")
+        try:
+            service = WatchlistService(market_cache)
+            return service.get_items()
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+
+    @router.delete("/watchlist/{item_id}", tags=["watchlist"])
+    def delete_watchlist_item(item_id: str) -> dict[str, Any]:
+        """Delete bookmark item from local watchlist."""
+        from quant_research.services.watchlist import WatchlistService
+
+        if market_cache is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Market cache repository not available.")
+        try:
+            service = WatchlistService(market_cache)
+            deleted = service.delete_item(item_id)
+            if not deleted:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Watchlist item not found.")
+            return {"deleted": True, "id": item_id}
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+
+
+    return router
+
 
 
     return router

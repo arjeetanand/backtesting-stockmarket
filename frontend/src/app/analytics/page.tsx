@@ -6,7 +6,7 @@ import TopBar from "@/components/layout/TopBar";
 
 export default function AnalyticsPage() {
   return (
-    <div className="backtrack-page">
+    <div className="backtrack-page bt-analytics-page">
       <TopBar />
       <div className="backtrack-content bt-stack">
         <section className="bt-heading-row">

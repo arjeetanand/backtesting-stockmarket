@@ -184,7 +184,7 @@ export default function ReplayPage() {
   /* ── Setup Screen ─────────────────────────────────────── */
   if (!session) {
     return (
-      <div className="backtrack-page">
+      <div className="backtrack-page bt-replay-page">
         <TopBar />
         <div className="backtrack-content bt-replay-setup">
           <div className="bt-panel bt-replay-setup-card" style={{ padding: "32px" }}>
@@ -261,7 +261,7 @@ export default function ReplayPage() {
 
   /* ── Replay Workspace ─────────────────────────────────── */
   return (
-    <div className="backtrack-page">
+    <div className="backtrack-page bt-replay-page">
       <TopBar />
 
       <div className="backtrack-content bt-stack">

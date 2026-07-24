@@ -89,7 +89,7 @@ export default function BacktestsPage() {
   };
 
   const filtered = useMemo(() => runs.filter((run) => `${run.run_id} ${run.config.strategy ?? ""} ${run.config.symbol ?? ""}`.toLowerCase().includes(query.toLowerCase())), [runs, query]);
-  return <div className="backtrack-page"><TopBar /><main className="backtrack-content bt-stack">
+  return <div className="backtrack-page bt-my-tests-page"><TopBar /><main className="backtrack-content bt-stack">
     <section className="bt-heading-row"><div><h1>My tests</h1><p>Every completed historical test saved by the local engine appears here.</p></div><div className="bt-heading-actions"><button type="button" className="bt-secondary" onClick={() => void clearHistory()} disabled={deleting !== null}><Trash2 size={14} /> Clear testing history</button><Link href="/research" className="bt-primary">Start a test <ArrowRight size={14} /></Link></div></section>
     {error && <div className="bt-alert-error bt-row-between" role="alert"><span>{error}</span><button type="button" className="bt-secondary small" onClick={() => setReloadVersion((value) => value + 1)} disabled={loading}>Retry</button></div>}
     {message && <div className="bt-alert-success" role="status">{message}</div>}

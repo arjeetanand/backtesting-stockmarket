@@ -13,16 +13,17 @@ import {
   BookOpenCheck,
   Settings,
   Play,
-  TrendingUp,
   ShieldAlert,
   BrainCircuit,
   Sparkles,
   Search,
+  BookmarkCheck,
 } from "lucide-react";
 
 const mainNav = [
   { href: "/", label: "Home", icon: LayoutDashboard },
   { href: "/market-scanner", label: "Market Scanner", icon: Search },
+  { href: "/watchlist", label: "Daily Watchlist", icon: BookmarkCheck },
   { href: "/pattern-finder", label: "Pattern Finder", icon: Sparkles },
   { href: "/research", label: "Test a strategy", icon: FlaskConical },
   { href: "/backtests", label: "My tests", icon: GitCompare },
@@ -47,20 +48,9 @@ export default function Sidebar() {
     <aside className="bt-sidebar">
       {/* Brand Header */}
       <div className="bt-sidebar-brand">
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <div className="bt-sidebar-logo">
-            <TrendingUp size={18} />
-          </div>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <span className="bt-sidebar-title">backtrack</span>
-            </div>
-            <p className="bt-sidebar-subtitle">Test ideas with history</p>
-          </div>
-        </div>
+        <div className="bt-sidebar-title">backtrack</div>
+        <p className="bt-sidebar-subtitle">Research Workstation</p>
       </div>
-
-      <div className="bt-sidebar-cta"><Link href="/research"><span>Start a new test</span></Link></div>
 
       {/* Main Navigation Area */}
       <nav className="bt-sidebar-nav">
@@ -87,7 +77,7 @@ export default function Sidebar() {
         </div>
 
         <div>
-          <p className="bt-nav-section-label">More ways to test</p>
+          <p className="bt-nav-section-label">Utility</p>
           <div className="bt-nav-items">
             {secondaryNav.map(({ href, label, icon: Icon }) => {
               const isActive = pathname.startsWith(href);

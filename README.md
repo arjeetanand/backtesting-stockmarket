@@ -33,16 +33,21 @@ Start the API in one terminal:
 
 ```bash
 source .venv/bin/activate
-uvicorn quant_research.api.main:app --reload --port 8000
+./scripts/dev-backend.sh 8000
 ```
 
 Start the UI in another terminal:
 
 ```bash
-npm --prefix frontend run dev
+./scripts/dev-frontend.sh 3000 8000
 ```
 
 Open `http://localhost:3000`. API documentation is available at `http://localhost:8000/docs`.
+
+Both launch scripts accept ports. For example, use `./scripts/dev-backend.sh 8001` and
+`./scripts/dev-frontend.sh 3001 8001` for a second frontend/backend pair. The frontend
+script sets `NEXT_PUBLIC_API_BASE_URL` to the backend port you pass; an explicitly set
+`NEXT_PUBLIC_API_BASE_URL` still takes precedence.
 
 ## Download historical NSE data
 

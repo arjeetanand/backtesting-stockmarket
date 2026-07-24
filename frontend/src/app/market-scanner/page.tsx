@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   AlertCircle,
   BarChart3,
+  BookmarkCheck,
   Database,
   Flame,
   Globe,
@@ -148,6 +149,31 @@ export default function MarketScannerPage() {
     }
   };
 
+  const [bookmarkingSym, setBookmarkingSym] = useState<string | null>(null);
+
+  const addToWatchlist = async (setup: BreakoutSetup) => {
+    setBookmarkingSym(setup.symbol);
+    try {
+      const res = await fetch(`${API_BASE_URL}/watchlist/add`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol: setup.symbol,
+          company_name: setup.company_name,
+          setup_type: setup.setup_type,
+          entry_price: setup.close,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail ?? "Failed to add setup.");
+      alert(`Bookmarked ${setup.symbol} to your Daily Watchlist!`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Error adding to watchlist.");
+    } finally {
+      setBookmarkingSym(null);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === "heatmap" && !scannerResult) {
       void runUniverseScan();
@@ -166,11 +192,11 @@ export default function MarketScannerPage() {
   });
 
   return (
-    <div className="backtrack-page">
+    <div className="backtrack-page bt-scanner-page">
       <TopBar />
       <div className="backtrack-content bt-stack market-scanner-page">
         {/* Heading Header */}
-        <section className="bt-heading-row">
+        <section className="bt-heading-row bt-scanner-heading">
           <div>
             <div className="bt-kicker">
               <span className="live-dot" /> MULTI-STOCK QUANT SCANNER
@@ -188,7 +214,7 @@ export default function MarketScannerPage() {
         </section>
 
         {/* Tab Selection Row */}
-        <div className="scanner-tab-bar">
+        <div className="scanner-tab-bar bt-scanner-tabs">
           <button
             type="button"
             className={`scanner-tab-btn ${activeTab === "heatmap" ? "is-active" : ""}`}
@@ -211,7 +237,7 @@ export default function MarketScannerPage() {
         {/* Tab 1: Universe Screener & Sector Heatmap */}
         {activeTab === "heatmap" && (
           <>
-            <section className="bt-panel scanner-control-panel">
+            <section className="bt-panel scanner-control-panel bt-scanner-filter-panel">
               <div className="bt-panel-head">
                 <div>
                   <span className="bt-eyebrow">UNIVERSE PARAMETERS</span>
@@ -266,6 +292,13 @@ export default function MarketScannerPage() {
               )}
             </section>
 
+            <section className="bt-scanner-kpis" aria-label="Scanner summary">
+              <div className="bt-scanner-kpi"><span>Matches</span><strong>{scannerResult?.total_scanned?.toLocaleString("en-IN") ?? "—"}</strong><small>symbols scanned</small></div>
+              <div className="bt-scanner-kpi is-positive"><span>Avg strategy gain</span><strong>{scannerResult?.sector_heatmap.length ? pct(scannerResult.sector_heatmap.reduce((sum, item) => sum + item.avg_strategy_return, 0) / scannerResult.sector_heatmap.length) : "—"}</strong><small>across sectors</small></div>
+              <div className="bt-scanner-kpi"><span>Sector groups</span><strong>{scannerResult?.sectors_count?.toLocaleString("en-IN") ?? "—"}</strong><small>from local cache</small></div>
+              <div className="bt-scanner-kpi"><span>Scan time</span><strong>{scannerTimeSec ? `${scannerTimeSec}s` : "—"}</strong><small>vectorized run</small></div>
+            </section>
+
             {loadingScanner && (
               <div className="bt-panel bt-loading-state">
                 <RefreshCw size={18} className="spin" />
@@ -293,7 +326,7 @@ export default function MarketScannerPage() {
             {scannerResult && scannerResult.total_scanned > 0 && !loadingScanner && (
               <>
                 {/* Sector Heatmap Section */}
-                <section className="bt-panel">
+                <section className="bt-panel bt-scanner-results">
                   <div className="bt-panel-head">
                     <div>
                       <span className="bt-eyebrow">SECTOR PERFORMANCE HEATMAP</span>
@@ -340,7 +373,7 @@ export default function MarketScannerPage() {
                 </section>
 
                 {/* Stock Leaderboard Table */}
-                <section className="bt-panel">
+                <section className="bt-panel bt-scanner-table-panel">
                   <div className="bt-panel-head">
                     <div>
                       <span className="bt-eyebrow">UNIVERSE LEADERBOARD</span>
@@ -398,7 +431,7 @@ export default function MarketScannerPage() {
         {/* Tab 2: Automated Breakout Scanner */}
         {activeTab === "breakout" && (
           <>
-            <section className="bt-panel scanner-control-panel">
+            <section className="bt-panel scanner-control-panel bt-scanner-filter-panel">
               <div className="bt-panel-head">
                 <div>
                   <span className="bt-eyebrow">AUTOMATED BREAKOUT RECOGNITION</span>
@@ -532,7 +565,19 @@ export default function MarketScannerPage() {
                         </div>
                       </div>
 
-                      <p className="breakout-desc">{setup.description}</p>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", borderTop: "1px solid #f1f5f9", paddingTop: "8px", marginTop: "4px" }}>
+                        <p className="breakout-desc" style={{ borderTop: 0, paddingTop: 0, marginTop: 0, flex: 1 }}>{setup.description}</p>
+                        <button
+                          type="button"
+                          className="bt-secondary-btn"
+                          style={{ padding: "4px 8px", fontSize: "10px", gap: "4px", flexShrink: 0 }}
+                          onClick={() => void addToWatchlist(setup)}
+                          disabled={bookmarkingSym === setup.symbol}
+                        >
+                          <BookmarkCheck size={12} />
+                          {bookmarkingSym === setup.symbol ? "Bookmarking…" : "Bookmark Setup"}
+                        </button>
+                      </div>
                     </div>
                   ))
                 )}

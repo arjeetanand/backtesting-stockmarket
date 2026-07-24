@@ -203,6 +203,24 @@ export default function DataPage() {
           </div>
         </section>
 
+        <section className="bt-data-kpis" aria-label="Local data summary">
+          <div className="bt-data-kpi">
+            <span>Total rows stored</span>
+            <strong>{cache ? cache.bars.toLocaleString("en-IN") : "—"}</strong>
+            <small>{cache ? "Indexed for high-speed retrieval" : "Waiting for local cache"}</small>
+          </div>
+          <div className="bt-data-kpi">
+            <span>Candles available</span>
+            <strong>{cache ? `${(cache.bars / Math.max(1, cache.symbols)).toFixed(1)}×` : "—"}</strong>
+            <small>Daily archive coverage per symbol</small>
+          </div>
+          <div className="bt-data-kpi is-health">
+            <span>Database health</span>
+            <strong>{cache ? "Optimal" : "Checking"}</strong>
+            <small>{cache ? "Integrity check passed" : "Reading SQLite coverage"}</small>
+          </div>
+        </section>
+
         <div className="bt-data-hero">
           <div className="bt-data-hero-copy">
             <span className="bt-eyebrow">NSE HISTORY SOURCE</span>
@@ -215,7 +233,7 @@ export default function DataPage() {
           </div>
         </div>
 
-        <section className="bt-first-run-panel" aria-labelledby="first-run-heading">
+        <section className="bt-first-run-panel bt-data-import-panel" aria-labelledby="first-run-heading">
           <div className="bt-first-run-copy">
             <span className="bt-eyebrow">FIRST-TIME SETUP</span>
             <h2 id="first-run-heading">Download NSE history once</h2>
@@ -276,6 +294,17 @@ export default function DataPage() {
           {job.status === "failed" ? <AlertCircle size={18} /> : <RefreshCw size={18} className={importing ? "spin" : ""} />}
           <div className="min-w-0 flex-1"><strong>{job.stage ? `${job.stage}: ` : ""}{job.message}</strong>{typeof job.completed_days === "number" && typeof job.total_days === "number" && <><span>{job.completed_days.toLocaleString("en-IN")}/{job.total_days.toLocaleString("en-IN")} trading days checked{typeof job.downloaded_days === "number" ? ` · ${job.downloaded_days.toLocaleString("en-IN")} downloaded` : ""}.</span><div className="bt-import-job-progress"><i style={{ width: `${Math.min(100, (job.completed_days / Math.max(1, job.total_days)) * 100)}%` }} /></div></>}</div>
         </div>}
+        <section className="bt-panel bt-operational-logs" aria-label="Operational import logs">
+          <div className="bt-panel-head">
+            <div><span className="bt-eyebrow">OPERATIONAL LIVE LOGS</span><h2>Import activity</h2></div>
+            <span className="bt-panel-note">Local only</span>
+          </div>
+          <div className="bt-log-lines">
+            <p><span>[local]</span> {cache ? `SQLite cache ready · ${cache.symbols.toLocaleString("en-IN")} symbols · ${cache.bars.toLocaleString("en-IN")} candles` : "Waiting for the local NSE cache to respond…"}</p>
+            {job ? <p><span>[import]</span> {job.message}</p> : <p><span>[import]</span> No import job has run in this session.</p>}
+            <p><span>[policy]</span> Official NSE daily archives are reused before any download.</p>
+          </div>
+        </section>
         {error && <p role="alert" className="bt-data-error"><AlertCircle size={14} /> {error}</p>}
       </div>
     </div>

@@ -28,7 +28,7 @@ export default function RootLayout({
         />
       </head>
       <body
-        style={{ background: "#FAFAFA", color: "#0F172A" }}
+        style={{ background: "#f7f9fb", color: "#191c1e" }}
         className="min-h-screen"
       >
         <Sidebar />

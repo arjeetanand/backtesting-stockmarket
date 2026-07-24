@@ -53,6 +53,20 @@ class MarketAvailability:
     latest_close: float | None
 
 
+@dataclass(frozen=True, slots=True)
+class WatchlistItem:
+    id: str
+    symbol: str
+    company_name: str
+    setup_type: str
+    entry_date: str
+    entry_price: float
+    target_price: float
+    stop_loss_price: float
+    status: str
+    created_at: str
+
+
 class SqliteMarketCache:
     """Small, dependency-free local store. It contains research data only."""
 
@@ -136,6 +150,22 @@ class SqliteMarketCache:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS watchlist_items (
+                    id TEXT PRIMARY KEY,
+                    symbol TEXT NOT NULL,
+                    company_name TEXT NOT NULL,
+                    setup_type TEXT NOT NULL,
+                    entry_date TEXT NOT NULL,
+                    entry_price REAL NOT NULL,
+                    target_price REAL NOT NULL,
+                    stop_loss_price REAL NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
             # These read paths are used by the data-management screen on every
             # visit. Keep the date-coverage and archive lookups indexed so a
             # large NSE catalogue does not turn the first render into a scan.
@@ -144,7 +174,12 @@ class SqliteMarketCache:
             connection.execute("CREATE INDEX IF NOT EXISTS idx_coverage_time_day_symbol ON nse_import_coverage (timeframe, trading_day, symbol)")
             connection.execute("CREATE INDEX IF NOT EXISTS idx_archive_status_day ON nse_archive_days (status, trading_day)")
 
-    def get(self, symbol: str, timeframe: str, start: datetime, end: datetime) -> list[OHLCVBar]:
+    def get(self, symbol: str, timeframe: str = "1day", start: datetime | None = None, end: datetime | None = None) -> list[OHLCVBar]:
+        if start is None:
+            start = datetime(1970, 1, 1, tzinfo=UTC)
+        if end is None:
+            end = datetime(2099, 12, 31, tzinfo=UTC)
+
         cache_key = (symbol.upper(), timeframe, _stamp(start), _stamp(end))
         if hasattr(self, "_lru_cache") and cache_key in self._lru_cache:
             self._lru_cache.move_to_end(cache_key)
@@ -574,6 +609,57 @@ class SqliteMarketCache:
         with self._connect() as connection:
             rows = connection.execute("SELECT symbol FROM instruments WHERE universe = ? ORDER BY symbol", (universe,)).fetchall() if universe else connection.execute("SELECT symbol FROM instruments ORDER BY symbol").fetchall()
         return [str(row[0]) for row in rows]
+
+    def add_watchlist_item(self, item: WatchlistItem) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT OR REPLACE INTO watchlist_items (id, symbol, company_name, setup_type, entry_date, entry_price, target_price, stop_loss_price, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    item.id,
+                    item.symbol,
+                    item.company_name,
+                    item.setup_type,
+                    item.entry_date,
+                    item.entry_price,
+                    item.target_price,
+                    item.stop_loss_price,
+                    item.status,
+                    item.created_at,
+                ),
+            )
+
+    def list_watchlist_items(self) -> list[WatchlistItem]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT id, symbol, company_name, setup_type, entry_date, entry_price, target_price, stop_loss_price, status, created_at FROM watchlist_items ORDER BY created_at DESC"
+            ).fetchall()
+        return [
+            WatchlistItem(
+                id=r[0],
+                symbol=r[1],
+                company_name=r[2],
+                setup_type=r[3],
+                entry_date=r[4],
+                entry_price=float(r[5]),
+                target_price=float(r[6]),
+                stop_loss_price=float(r[7]),
+                status=r[8],
+                created_at=r[9],
+            )
+            for r in rows
+        ]
+
+    def delete_watchlist_item(self, item_id: str) -> bool:
+        with self._connect() as connection:
+            cursor = connection.execute("DELETE FROM watchlist_items WHERE id = ?", (item_id,))
+            return cursor.rowcount > 0
+
+    def update_watchlist_status(self, item_id: str, status: str) -> None:
+        with self._connect() as connection:
+            connection.execute("UPDATE watchlist_items SET status = ? WHERE id = ?", (status, item_id))
 
     def market_availability(self, symbol: str, timeframe: str = "1day") -> MarketAvailability:
         clean_symbol = symbol.strip().upper().removesuffix(".NS")

@@ -139,7 +139,7 @@ export default function StrategyImportPage() {
   };
 
   return (
-    <div className="backtrack-page">
+    <div className="backtrack-page bt-strategy-import-page">
       <TopBar />
       <div className="backtrack-content space-y-6 bt-youtube-page">
         <section className="bt-heading-row">

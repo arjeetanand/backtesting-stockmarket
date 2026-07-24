@@ -8,10 +8,15 @@ From the repository root:
 
 ```bash
 npm --prefix frontend install
-npm --prefix frontend run dev
+./scripts/dev-frontend.sh 3000 8000
 ```
 
 Open `http://localhost:3000`. Start the backend first on port `8000` for real data and backtests. Without it, the UI keeps explicit unavailable/error states and does not substitute mock prices.
+
+The frontend can be started on ports `3000`, `3001`, or `3002` with the named npm
+commands (`npm --prefix frontend run dev:3000`, `dev:3001`, or `dev:3002`) or with
+`./scripts/dev-frontend.sh <frontend-port> <backend-port>`. The script passes the
+backend port through `NEXT_PUBLIC_API_BASE_URL` so the selected pair stays aligned.
 
 Optional `frontend/.env.local`:
 

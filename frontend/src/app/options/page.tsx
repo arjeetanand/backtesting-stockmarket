@@ -84,7 +84,7 @@ export default function OptionsPage() {
 
   const applyExample = (nextStrategy: StrategyId, nextSpot: number, nextStrike: number, nextPremium: number, nextSecond = 110) => { setStrategy(nextStrategy); setSpot(nextSpot); setStrike(nextStrike); setPremium(nextPremium); setSecondStrike(nextSecond); setExpiryPrice(nextSpot); };
 
-  return <div className="backtrack-page"><TopBar /><main className="backtrack-content bt-stack options-page">
+  return <div className="backtrack-page bt-learn-page"><TopBar /><main className="backtrack-content bt-stack options-page">
     <section className="bt-heading-row options-heading"><div><h1>Learning centre</h1><p>Understand the tools traders use, then test the idea on historical NSE data.</p></div><div className="options-mode"><BookOpen size={15} /> Education mode</div></section>
 
     <nav className="learning-mode-switch" aria-label="Learning topics"><button type="button" className={learningMode === "indicators" ? "is-active" : ""} onClick={() => setLearningMode("indicators")}><TrendingUp size={16} /><span><strong>Indicators</strong><small>Read price, momentum, trend and risk</small></span></button><button type="button" className={learningMode === "options" ? "is-active" : ""} onClick={() => setLearningMode("options")}><SlidersHorizontal size={16} /><span><strong>Options</strong><small>Explore payoff, hedges and spreads</small></span></button></nav>
