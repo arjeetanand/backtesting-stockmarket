@@ -14,6 +14,7 @@ import pandas as pd
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Response, status
 
 from quant_research.api.schemas import (
+    BreakoutScannerRequest,
     CacheStatusResponse,
     CatalogueRefreshResponse,
     CustomBacktestRequest,
@@ -23,6 +24,7 @@ from quant_research.api.schemas import (
     InstrumentResponse,
     MarketAvailabilityResponse,
     MarketDataResponse,
+    MarketScannerRequest,
     MlExperimentRequest,
     NseImportCoverageItem,
     NseImportJobResponse,
@@ -731,5 +733,42 @@ def create_api_router(
             )
         except Exception as exc:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+
+    @router.post("/market-scanner/run", tags=["market-scanner"])
+    def run_market_scanner(payload: MarketScannerRequest) -> dict[str, Any]:
+        """Run multi-stock universe strategy screener and sector heatmap calculation."""
+        from quant_research.services.market_scanner import MarketScannerService
+
+        if market_cache is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Market cache repository not available.")
+        try:
+            service = MarketScannerService(market_cache)
+            return service.run_scan(
+                universe=cast(Any, payload.universe),
+                strategy_type=cast(Any, payload.strategy_type),
+                start=payload.start,
+                end=payload.end,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+
+    @router.post("/breakout-scanner/scan", tags=["breakout-scanner"])
+    def scan_breakout_setups(payload: BreakoutScannerRequest) -> dict[str, Any]:
+        """Scan recent historical bars for high-conviction breakout setups (VCP, 52W High + RVOL, SMA Rebound, RSI Surge)."""
+        from quant_research.services.breakout_scanner import BreakoutScannerService
+
+        if market_cache is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Market cache repository not available.")
+        try:
+            service = BreakoutScannerService(market_cache)
+            return service.scan_breakouts(
+                min_conviction=payload.min_conviction,
+                limit=payload.limit,
+                start=payload.start,
+                end=payload.end,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+
 
     return router

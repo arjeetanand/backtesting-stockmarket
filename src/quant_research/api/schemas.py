@@ -243,3 +243,18 @@ class PatternStrategyRequest(BaseModel):
     rvol_threshold: float = Field(default=2.0, ge=0.5, le=10.0)
     dist_52w_pct: float = Field(default=5.0, ge=0.0, le=50.0)
     hold_days: int = Field(default=15, ge=2, le=60)
+
+
+class MarketScannerRequest(BaseModel):
+    universe: str = Field(default="nifty500", pattern="^(nifty50|nifty500|all)$")
+    strategy_type: str = Field(default="sma_crossover", pattern="^(sma_crossover|rsi_reversion|breakout)$")
+    start: datetime | None = None
+    end: datetime | None = None
+
+
+class BreakoutScannerRequest(BaseModel):
+    min_conviction: float = Field(default=50.0, ge=0.0, le=100.0)
+    limit: int = Field(default=50, ge=1, le=200)
+    start: datetime | None = None
+    end: datetime | None = None
+

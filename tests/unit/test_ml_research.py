@@ -36,7 +36,7 @@ class FakeProvider:
 def test_ml_features_use_past_values_and_forward_target() -> None:
     frame, features = build_ml_dataset(make_bars(), horizon_days=5)
 
-    assert len(features) == 14
+    assert len(features) == 25
     assert frame["date"].is_monotonic_increasing
     first = frame.iloc[0]
     source = [bar for bar in make_bars() if bar.timestamp == first["date"]][0]

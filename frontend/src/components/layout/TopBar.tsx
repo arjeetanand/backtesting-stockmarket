@@ -9,6 +9,7 @@ const pageTitles: Record<string, { title: string; category: string }> = {
   "/backtests": { title: "My tests", category: "" },
   "/comparison": { title: "Compare tests", category: "" },
   "/ml-lab": { title: "ML Lab", category: "" },
+  "/market-scanner": { title: "Market Scanner", category: "" },
   "/robustness": { title: "Check reliability", category: "" },
   "/bias-validity": { title: "Risk check", category: "" },
   "/strategy-import": { title: "Strategy library", category: "" },

@@ -213,6 +213,11 @@ class SqliteMarketCache:
             latest=datetime.fromisoformat(latest) if latest else None,
         )
 
+    def get_available_symbols(self) -> list[str]:
+        with self._connect() as connection:
+            rows = connection.execute("SELECT DISTINCT symbol FROM ohlcv_bars").fetchall()
+        return [row[0] for row in rows]
+
     def refresh_summary(self, connection: sqlite3.Connection | None = None) -> CacheSummary:
         """Refresh the persisted summary after a batch import or migration."""
         owns_connection = connection is None

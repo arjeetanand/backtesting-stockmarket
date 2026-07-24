@@ -172,9 +172,18 @@ export function FinancialChart({
     data.trades.some((trade) => trade.id === requestedSelectedTradeId) ||
     data.tradeMarkers.some((marker) => markerSelectionId(marker) === requestedSelectedTradeId)
   ) ? requestedSelectedTradeId : null;
+  const selectedTradeVisibleCount = useMemo(() => {
+    if (!effectiveSelectedTradeId) return 0;
+    const trade = data.trades.find((item) => item.id === effectiveSelectedTradeId);
+    if (!trade) return 0;
+    const keys = new Set([chartTimestampKey(trade.entry.timestamp), ...(trade.exit ? [chartTimestampKey(trade.exit.timestamp)] : [])]);
+    const earliestIndex = data.candles.findIndex((candle) => keys.has(candle.timestampKey));
+    return earliestIndex < 0 ? 0 : data.candles.length - earliestIndex;
+  }, [data.candles, data.trades, effectiveSelectedTradeId]);
+  const effectiveVisibleCount = clamp(Math.max(safeVisibleCount, selectedTradeVisibleCount), 1, Math.max(1, data.candles.length));
   const visibleCandles = useMemo(
-    () => data.candles.slice(Math.max(0, data.candles.length - safeVisibleCount)),
-    [data.candles, safeVisibleCount],
+    () => data.candles.slice(Math.max(0, data.candles.length - effectiveVisibleCount)),
+    [data.candles, effectiveVisibleCount],
   );
   const selectedTrade = effectiveSelectedTradeId ? data.trades.find((trade) => trade.id === effectiveSelectedTradeId) ?? null : null;
   const errorMessage = error instanceof Error ? error.message : error;
@@ -369,6 +378,14 @@ export function FinancialChart({
           <button type="button" onClick={fit} disabled={showEmpty || loading} aria-label="Fit all candles"><Maximize2 size={14} /></button>
         </div>
       </div>
+      {!loading && !errorMessage && !showEmpty && <div className="bt-chart-legend" aria-label="How to read this chart">
+        <strong>How to read it</strong>
+        {showVolume && <span><i style={{ background: "#94a3b8" }} />Volume</span>}
+        {data.indicators.map((indicator) => <span key={indicator.id}><i style={{ background: indicator.color ?? "#4f46e5" }} />{indicator.label}{indicator.placement === "pane" ? " · separate pane" : ""}</span>)}
+        {data.tradeMarkers.some((marker) => marker.kind === "entry") && <span><i className="is-buy" />Buy / entry</span>}
+        {data.tradeMarkers.some((marker) => marker.kind === "exit") && <span><i className="is-sell" />Sell / exit</span>}
+        <small>Hover a candle for OHLC. Select a marker or trade to highlight it.</small>
+      </div>}
       {loading
         ? <ChartStatus kind="loading" message="Historical candles and chart overlays are being prepared." />
         : errorMessage
@@ -377,7 +394,7 @@ export function FinancialChart({
             ? <ChartStatus kind="empty" message={emptyMessage} />
             : <div ref={chartContainerRef} role="img" aria-label={`${title}. ${description}`} style={{ minHeight: chartHeight }} />}
       <span style={visuallyHidden} aria-live="polite">{hoveredCandle ? `${formatTimestamp(hoveredCandle.timestamp)} open ${formatPrice(hoveredCandle.open)}, high ${formatPrice(hoveredCandle.high)}, low ${formatPrice(hoveredCandle.low)}, close ${formatPrice(hoveredCandle.close)}, volume ${formatVolume(hoveredCandle.volume)}` : ""}</span>
-      {chartNavigator && <div className="bt-chart-navigator" aria-label="Chart range summary"><Maximize2 size={13} aria-hidden="true" /><span>{chartNavigator}</span><a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">Charting by TradingView</a></div>}
+      {chartNavigator && <div className="bt-chart-navigator" aria-label="Chart range summary"><Maximize2 size={13} aria-hidden="true" /><span>{chartNavigator}</span><small>Historical only · no live prices</small></div>}
     </div>
   );
 }

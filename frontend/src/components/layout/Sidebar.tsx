@@ -17,10 +17,12 @@ import {
   ShieldAlert,
   BrainCircuit,
   Sparkles,
+  Search,
 } from "lucide-react";
 
 const mainNav = [
   { href: "/", label: "Home", icon: LayoutDashboard },
+  { href: "/market-scanner", label: "Market Scanner", icon: Search },
   { href: "/pattern-finder", label: "Pattern Finder", icon: Sparkles },
   { href: "/research", label: "Test a strategy", icon: FlaskConical },
   { href: "/backtests", label: "My tests", icon: GitCompare },

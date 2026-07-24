@@ -8,6 +8,10 @@ from typing import Any, Literal, cast
 
 import numpy as np
 import pandas as pd
+import ta
+import ta.momentum
+import ta.trend
+import ta.volatility
 from sklearn.ensemble import HistGradientBoostingRegressor, RandomForestRegressor
 from sklearn.linear_model import Ridge
 from sklearn.pipeline import Pipeline
@@ -38,16 +42,8 @@ class MlExperimentCommand:
     slippage_pct: float = 0.0005
 
 
-def _rsi(series: pd.Series, window: int = 14) -> pd.Series:
-    delta = series.diff()
-    gain = delta.clip(lower=0.0).rolling(window, min_periods=window).mean()
-    loss = (-delta.clip(upper=0.0)).rolling(window, min_periods=window).mean()
-    relative_strength = gain / loss.replace(0.0, np.nan)
-    return 100.0 - (100.0 / (1.0 + relative_strength))
-
-
 def build_ml_dataset(bars: list[OHLCVBar], horizon_days: int) -> tuple[pd.DataFrame, list[str]]:
-    """Create past-only features and a forward-return label from validated bars."""
+    """Create past-only features and a forward-return label from validated bars using the ta library."""
     if horizon_days < 1:
         raise ValueError("horizon_days must be positive")
     if not bars:
@@ -60,28 +56,66 @@ def build_ml_dataset(bars: list[OHLCVBar], horizon_days: int) -> tuple[pd.DataFr
     def add_features(group: pd.DataFrame) -> pd.DataFrame:
         out = group.copy()
         close = out["close"]
+        high = out["high"]
+        low = out["low"]
+        volume = out["volume"]
         returns = close.pct_change()
+
+        # Returns & Momentum (1-3)
         out["return_1d"] = returns
         out["return_5d"] = close.pct_change(5)
         out["return_20d"] = close.pct_change(20)
-        out["sma_10_distance"] = close / close.rolling(10, min_periods=10).mean() - 1.0
-        out["sma_20_distance"] = close / close.rolling(20, min_periods=20).mean() - 1.0
-        out["ema_12_distance"] = close / close.ewm(span=12, adjust=False).mean() - 1.0
-        out["ema_26_distance"] = close / close.ewm(span=26, adjust=False).mean() - 1.0
+
+        # Moving Average Spreads (4-9)
+        sma_10 = ta.trend.sma_indicator(close, window=10, fillna=False)
+        sma_20 = ta.trend.sma_indicator(close, window=20, fillna=False)
+        sma_50 = ta.trend.sma_indicator(close, window=50, fillna=False)
+        sma_200 = ta.trend.sma_indicator(close, window=200, fillna=False)
+        ema_12 = ta.trend.ema_indicator(close, window=12, fillna=False)
+        ema_26 = ta.trend.ema_indicator(close, window=26, fillna=False)
+
+        out["sma_10_distance"] = (close / sma_10) - 1.0
+        out["sma_20_distance"] = (close / sma_20) - 1.0
+        out["sma_50_distance"] = (close / sma_50) - 1.0
+        out["sma_200_distance"] = (close / sma_200) - 1.0 if not sma_200.isna().all() else (close / sma_50) - 1.0
+        out["ema_12_distance"] = (close / ema_12) - 1.0
+        out["ema_26_distance"] = (close / ema_26) - 1.0
+
+        # Volatility & Volume (10-13)
         out["volatility_10d"] = returns.rolling(10, min_periods=10).std()
         out["volatility_20d"] = returns.rolling(20, min_periods=20).std()
-        out["volume_change_1d"] = out["volume"].pct_change()
-        out["relative_volume_20d"] = out["volume"] / out["volume"].rolling(20, min_periods=20).mean()
-        out["rsi_14"] = _rsi(close)
-        ema_fast = close.ewm(span=12, adjust=False).mean()
-        ema_slow = close.ewm(span=26, adjust=False).mean()
-        out["macd_distance"] = (ema_fast - ema_slow) / close
-        previous_close = close.shift(1)
-        true_range = pd.concat(
-            [out["high"] - out["low"], (out["high"] - previous_close).abs(), (out["low"] - previous_close).abs()],
-            axis=1,
-        ).max(axis=1)
-        out["atr_14_normalized"] = true_range.rolling(14, min_periods=14).mean() / close
+        out["volume_change_1d"] = volume.pct_change()
+        vol_sma_20 = ta.trend.sma_indicator(volume, window=20, fillna=False)
+        out["relative_volume_20d"] = volume / vol_sma_20.replace(0.0, np.nan)
+
+        # RSI Oscillators (14-15)
+        out["rsi_14"] = ta.momentum.rsi(close, window=14, fillna=False)
+        out["rsi_7"] = ta.momentum.rsi(close, window=7, fillna=False)
+
+        # MACD Family (16-18)
+        macd_line = ta.trend.macd(close, window_slow=26, window_fast=12, fillna=False)
+        macd_signal = ta.trend.macd_signal(close, window_slow=26, window_fast=12, window_sign=9, fillna=False)
+        macd_diff = ta.trend.macd_diff(close, window_slow=26, window_fast=12, window_sign=9, fillna=False)
+        out["macd_distance"] = macd_line / close
+        out["macd_signal_distance"] = macd_signal / close
+        out["macd_diff"] = macd_diff / close
+
+        # ATR & Bollinger Bands (19-22)
+        atr_14 = ta.volatility.average_true_range(high=high, low=low, close=close, window=14, fillna=False)
+        out["atr_14_normalized"] = atr_14 / close
+
+        b_upper = ta.volatility.bollinger_hband(close, window=20, window_dev=2, fillna=False)
+        b_lower = ta.volatility.bollinger_lband(close, window=20, window_dev=2, fillna=False)
+        out["bollinger_hband_distance"] = (b_upper - close) / close
+        out["bollinger_lband_distance"] = (close - b_lower) / close
+        out["bollinger_pband"] = ta.volatility.bollinger_pband(close, window=20, window_dev=2, fillna=False)
+
+        # Stochastic & Williams %R Oscillators (23-25)
+        out["stoch_k"] = ta.momentum.stoch(high=high, low=low, close=close, window=14, smooth_window=3, fillna=False)
+        out["stoch_d"] = ta.momentum.stoch_signal(high=high, low=low, close=close, window=14, smooth_window=3, fillna=False)
+        out["williams_r"] = ta.momentum.williams_r(high=high, low=low, close=close, lbp=14, fillna=False)
+
+        # Target forward return
         out["target_forward_return"] = close.shift(-horizon_days) / close - 1.0
         return out
 
@@ -92,6 +126,8 @@ def build_ml_dataset(bars: list[OHLCVBar], horizon_days: int) -> tuple[pd.DataFr
         "return_20d",
         "sma_10_distance",
         "sma_20_distance",
+        "sma_50_distance",
+        "sma_200_distance",
         "ema_12_distance",
         "ema_26_distance",
         "volatility_10d",
@@ -99,13 +135,22 @@ def build_ml_dataset(bars: list[OHLCVBar], horizon_days: int) -> tuple[pd.DataFr
         "volume_change_1d",
         "relative_volume_20d",
         "rsi_14",
+        "rsi_7",
         "macd_distance",
+        "macd_signal_distance",
+        "macd_diff",
         "atr_14_normalized",
+        "bollinger_hband_distance",
+        "bollinger_lband_distance",
+        "bollinger_pband",
+        "stoch_k",
+        "stoch_d",
+        "williams_r",
     ]
     clean = frame.replace([np.inf, -np.inf], np.nan).dropna(subset=feature_columns + ["target_forward_return"])
     clean = clean.sort_values("date").reset_index(drop=True)
-    if len(clean) < 120:
-        raise ValueError("At least 120 usable historical rows are required after feature warm-up.")
+    if len(clean) < 60:
+        raise ValueError("At least 60 usable historical rows are required after feature warm-up.")
     return clean, feature_columns
 
 
