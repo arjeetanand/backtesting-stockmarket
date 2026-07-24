@@ -11,7 +11,7 @@ npm --prefix frontend install
 npm --prefix frontend run dev
 ```
 
-Open `http://localhost:3000`. Start the backend first on port `8000` for real data and backtests.
+Open `http://localhost:3000`. Start the backend first on port `8000` for real data and backtests. Without it, the UI keeps explicit unavailable/error states and does not substitute mock prices.
 
 Optional `frontend/.env.local`:
 
@@ -51,6 +51,19 @@ The Data page intentionally has one simple bulk workflow:
 
 The search starts only after text is entered and asks the backend for a small result set. It does not scan full date coverage on every keystroke. Each NSE archive is bulk-loaded for all supported stocks, so there is no per-stock import button.
 
+## Research chart workflow
+
+`/research` is the main stock-to-results surface:
+
+1. Search/select a local NSE symbol and inspect saved bars, date coverage, and latest close.
+2. Choose the daily date range and load validated local OHLCV plus volume.
+3. Configure the strategy, capital, position sizing, fees, slippage, stop, and target.
+4. Run the deterministic backtest and inspect indicator overlays/panes, entry/exit markers, selectable trades, equity, drawdown, and metrics.
+
+`src/lib/chart-data.ts` defines the API-independent normalized chart contracts. `src/lib/research-chart.ts` maps `GET /market-data` bars and custom backtest payloads into those contracts. `src/components/charts/FinancialChart.tsx` uses `lightweight-charts` to render candles, volume, overlays, indicator panes, markers, crosshair, pan/zoom controls, and loading/empty/error states. Add a new backend indicator by extending the response's `indicators` map; add placement/reference-line rules in `research-chart.ts` rather than coupling API details to the chart.
+
+The supported path is local daily NSE data. The chart must never fabricate missing prices; import the required official NSE archive days or keep the unavailable state visible.
+
 ## Frontend structure
 
 ```text
@@ -66,6 +79,8 @@ Important files:
 - `src/lib/api.ts` — timeout-aware API requests.
 - `src/lib/backtest-api.ts` — backtest client and response types.
 - `src/lib/market-data.ts` — local market-data client.
+- `src/lib/chart-data.ts` — normalized financial-chart types and pure validation adapters.
+- `src/lib/research-chart.ts` — market/backtest chart payload adapters.
 - `src/lib/replay/` — replay API and state types.
 - `src/lib/agents/` — deterministic five-agent in-process orchestration.
 - `src/lib/strategy-library.ts` — known strategy definitions used by the UI.

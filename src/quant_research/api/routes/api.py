@@ -504,24 +504,27 @@ def create_api_router(
             cached = artifacts.get("custom_backtest", cache_key)
             if cached is not None:
                 return cached
-        res = run_rule_backtest(
-            df=frame,
-            symbol=payload.symbol,
-            timeframe=payload.timeframe,
-            strategy_id=payload.strategy_id,
-            rsi_period=payload.rsi_period,
-            rsi_oversold=payload.rsi_oversold,
-            rsi_overbought=payload.rsi_overbought,
-            fast_ema=payload.fast_ema,
-            slow_ema=payload.slow_ema,
-            initial_capital=payload.initial_capital,
-            commission_pct=payload.commission_pct,
-            slippage_pct=payload.slippage_pct,
-            stop_loss_pct=payload.stop_loss_pct,
-            take_profit_pct=payload.take_profit_pct,
-            position_size_pct=payload.position_size_pct,
-            position_size_amount=payload.position_size_amount,
-        )
+        try:
+            res = run_rule_backtest(
+                df=frame,
+                symbol=payload.symbol,
+                timeframe=payload.timeframe,
+                strategy_id=payload.strategy_id,
+                rsi_period=payload.rsi_period,
+                rsi_oversold=payload.rsi_oversold,
+                rsi_overbought=payload.rsi_overbought,
+                fast_ema=payload.fast_ema,
+                slow_ema=payload.slow_ema,
+                initial_capital=payload.initial_capital,
+                commission_pct=payload.commission_pct,
+                slippage_pct=payload.slippage_pct,
+                stop_loss_pct=payload.stop_loss_pct,
+                take_profit_pct=payload.take_profit_pct,
+                position_size_pct=payload.position_size_pct,
+                position_size_amount=payload.position_size_amount,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
         result = asdict(res)
         if artifacts is not None:
             artifacts.save("custom_backtest", cache_key, result)

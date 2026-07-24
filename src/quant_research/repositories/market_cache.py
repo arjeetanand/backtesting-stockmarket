@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections import OrderedDict
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -139,10 +140,16 @@ class SqliteMarketCache:
             # visit. Keep the date-coverage and archive lookups indexed so a
             # large NSE catalogue does not turn the first render into a scan.
             connection.execute("CREATE INDEX IF NOT EXISTS idx_ohlcv_time_symbol_timestamp ON ohlcv_bars (timeframe, symbol, timestamp)")
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_ohlcv_symbol_tf_ts ON ohlcv_bars (symbol, timeframe, timestamp)")
             connection.execute("CREATE INDEX IF NOT EXISTS idx_coverage_time_day_symbol ON nse_import_coverage (timeframe, trading_day, symbol)")
             connection.execute("CREATE INDEX IF NOT EXISTS idx_archive_status_day ON nse_archive_days (status, trading_day)")
 
     def get(self, symbol: str, timeframe: str, start: datetime, end: datetime) -> list[OHLCVBar]:
+        cache_key = (symbol.upper(), timeframe, _stamp(start), _stamp(end))
+        if hasattr(self, "_lru_cache") and cache_key in self._lru_cache:
+            self._lru_cache.move_to_end(cache_key)
+            return self._lru_cache[cache_key]
+
         with self._connect() as connection:
             rows = connection.execute(
                 """
@@ -153,7 +160,7 @@ class SqliteMarketCache:
                 """,
                 (symbol.upper(), timeframe, _stamp(start), _stamp(end)),
             ).fetchall()
-        return [
+        result = [
             OHLCVBar(
                 timestamp=datetime.fromisoformat(row[0]),
                 symbol=symbol.upper(),
@@ -161,8 +168,20 @@ class SqliteMarketCache:
             )
             for row in rows
         ]
+        if not hasattr(self, "_lru_cache"):
+            self._lru_cache = OrderedDict()
+        self._lru_cache[cache_key] = result
+        self._lru_cache.move_to_end(cache_key)
+        if len(self._lru_cache) > 256:
+            self._lru_cache.popitem(last=False)
+        return result
+
+    def clear_lru_cache(self) -> None:
+        if hasattr(self, "_lru_cache"):
+            self._lru_cache.clear()
 
     def put(self, bars: list[OHLCVBar], timeframe: str, source: str) -> int:
+        self.clear_lru_cache()
         if not bars:
             return 0
         records = [

@@ -72,17 +72,22 @@ The importer does not download or commit one file per stock. Each weekday is one
 
 Dates before 2024 use NSE's legacy historical equity archive path (`content/historical/EQUITIES/<year>/<MONTH>/cmDDMMMYYYYbhav.csv.zip`) and legacy fields such as `OPEN_PRICE`, `CLOSE_PRICE`, and `TTL_TRD_QNTY`. Dates from 2024 onward use the current Common Bhavcopy path and UDiFF/modern field aliases. All raw columns are retained in JSON while compatible equity/BE/ETF price fields are normalized for backtesting.
 
-### SQLite tables
+### SQLite tables & Performance Architecture
 
 `SqliteMarketCache` creates and owns:
 
 | Table | Purpose |
 | --- | --- |
-| `ohlcv_bars` | Normalized candles; primary key is `(symbol, timeframe, timestamp)` |
+| `ohlcv_bars` | Normalized candles; primary key is `(symbol, timeframe, timestamp)` with covering index `idx_ohlcv_symbol_tf_ts` |
 | `instruments` | Official NSE catalogue metadata and searchable company/industry fields |
 | `nse_import_coverage` | Symbol/timeframe/day coverage markers and backward-compatible import tracking |
 | `nse_archive_days` | One row per complete processed archive day, including ZIP path/source/row count |
 | `nse_bhavcopy_rows` | Every imported raw CSV row as JSON, including fields not yet used by the backtest engine |
+
+#### High-Performance Read Architecture:
+1. **SQLite Indexing**: Optimized composite indexes (`idx_ohlcv_symbol_tf_ts`, `idx_ohlcv_time_symbol_timestamp`) enable range queries across 10+ years of daily bars in < 10ms.
+2. **In-Memory LRU Cache**: `SqliteMarketCache` incorporates an in-memory Bounded LRU Cache (max 256 active symbol-range matrices). Repeated backtests and ML feature extraction calls execute in sub-millisecond time directly from RAM. Cache is automatically invalidated upon new batch writes (`put`).
+3. **On-Demand Feature Engineering**: Technical indicators (RSI, Volatility, ATR, Moving Average Spreads, RVOL) are calculated on-the-fly in memory using vectorized NumPy/Pandas ops to prevent disk bloat, allow dynamic parameter tweaking, and enforce strict leakage prevention.
 
 `data/` is runtime state and is ignored by Git. Original ZIPs are stored under `data/nse_archives/<year>/`; older flat ZIPs are moved there when the importer starts. Existing historical data remains usable; when a future request needs a stock/day without a complete archive marker, the importer downloads the day once and upgrades the local cache with the full archive.
 
@@ -123,7 +128,7 @@ Persistence is local single-user SQLite. There is no authentication, multi-user 
 | Page | File | Responsibility |
 | --- | --- | --- |
 | Home | `frontend/src/app/page.tsx` | Stock/date selection and clear entry points into testing, YouTube import, and replay |
-| Research | `frontend/src/app/research/page.tsx` | Hypothesis prompt, Ollama proposal, NSE data preparation, backtest handoff, saved-session restore |
+| Research | `frontend/src/app/research/page.tsx` | Hypothesis prompt, Ollama proposal, NSE data preparation, daily OHLCV/volume chart, backtest handoff, signals/trades/equity/drawdown, saved-session restore |
 | Strategy Lab | `frontend/src/app/strategy/page.tsx` | Rule/indicator strategy configuration |
 | YouTube Import | `frontend/src/app/strategy-import/page.tsx` | URL/transcript extraction and human-review draft |
 | Manage Stock Data | `frontend/src/app/data/page.tsx` | Bulk quick/custom date-range import, local catalogue search, saved period/candle count, progress, and cache status |
@@ -143,9 +148,12 @@ Shared frontend infrastructure:
 
 - `frontend/src/components/layout/`: sidebar and top navigation.
 - `frontend/src/components/charts/`: chart primitives.
+- `frontend/src/components/charts/FinancialChart.tsx`: reusable `lightweight-charts` candlestick, volume, indicator-pane, and trade-marker chart.
 - `frontend/src/components/ui/`: buttons, cards, and badges.
 - `frontend/src/lib/backtest-api.ts`: backtest API client.
 - `frontend/src/lib/market-data.ts`: market-data client.
+- `frontend/src/lib/chart-data.ts`: API-independent normalized financial-chart contracts and validation.
+- `frontend/src/lib/research-chart.ts`: market/backtest payload adapters, indicator placement, and signal/trade mapping.
 - `frontend/src/lib/replay/`: replay API client and types.
 - `frontend/src/lib/robustness-api.ts`: robustness API client.
 - `frontend/src/lib/agents/`: five in-process TypeScript swarm modules.
@@ -207,6 +215,8 @@ API schemas live in `src/quant_research/api/schemas.py`; route behavior lives in
 - `DELETE /backtests/{run_id}`
 - `DELETE /testing-history`
 - `DELETE /research/artifacts/{kind}/{artifact_key}`
+
+`GET /market-data` returns validated local bars for the selected symbol, date range, and timeframe. The custom backtest response keeps its existing result fields and adds chart-ready candle `volume` plus stable signal `id` and `trade_id` metadata. Invalid strategy parameters and insufficient history return actionable `422` errors rather than an opaque server error.
 
 ### Replay
 

@@ -11,6 +11,7 @@ It does not place real orders, connect to a broker, provide live quotes, or requ
 - Bulk-loads every supported equity, BE, and ETF row from each archive into SQLite.
 - Keeps raw archive rows for future research and normalized OHLCV candles for fast tests.
 - Tests SMA, RSI/EMA, configurable rule, strategy-library, and imported YouTube ideas.
+- On `/research`, follows one stock → local data → chart → strategy → backtest → results workflow with OHLCV, volume, indicators, signals, trades, equity, drawdown, and metrics.
 - Replays historical candles with simulated orders only.
 - Persists backtests, research artifacts, import jobs, and replay sessions locally.
 
@@ -92,6 +93,12 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 
 See [PROJECT_GUIDE.md](PROJECT_GUIDE.md) for the complete user guide.
 
+## Research workflow
+
+Use **Test a strategy** for the primary end-to-end path. Select a symbol from the local NSE catalogue, confirm the saved coverage and latest close, choose a daily date range, then load the available historical bars. The chart shows real local OHLCV and volume; missing data produces import guidance or an unavailable state and never synthetic prices. After the strategy and execution assumptions are set, run the deterministic historical simulation and review signal markers, trade selection, equity, drawdown, and the detailed ledger.
+
+The chart boundary is intentionally API-independent: `frontend/src/lib/research-chart.ts` adapts market-data and backtest responses into the typed contracts in `frontend/src/lib/chart-data.ts`, while `frontend/src/components/charts/FinancialChart.tsx` owns rendering and interaction. The backend's custom result adds candle `volume` and signal `id`/`trade_id` fields without removing existing result fields.
+
 ## Runtime data and Git
 
 SQLite databases, NSE ZIP archives, `.env` files, caches, and generated runtime artifacts are ignored by Git. A fresh clone intentionally has no market data. The first data import creates:
@@ -127,6 +134,7 @@ npm --prefix frontend run build
 ## Important limitations
 
 - NSE data is daily historical archive data, not a real-time feed.
+- The current research chart and strategy engine support the local `1day` NSE path; other timeframes remain explicit unavailable/configuration states until normalized data exists.
 - Replay and backtesting are simulations, not trading execution.
 - Normalized backtest bars currently cover supported EQ/BE/ETF rows; raw rows are retained for future work.
 - Options calculations are educational and do not model the complete derivatives lifecycle.

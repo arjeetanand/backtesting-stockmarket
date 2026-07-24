@@ -2,12 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { BarChart3, Check, CheckCircle, ChevronRight, Circle, Code2, Loader2, MessageSquare, Play, Send, Sparkles, Star, TrendingDown, TrendingUp } from "lucide-react";
+import { BarChart3, Check, CheckCircle, ChevronRight, Circle, Code2, Loader2, MessageSquare, Play, Send, Sparkles, Star } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
-import { getMarketAvailability, type MarketAvailability } from "@/lib/market-data";
+import { getMarketAvailability, getMarketData, type MarketAvailability, type MarketDataBar } from "@/lib/market-data";
 import { SymbolCombobox } from "@/components/data/SymbolCombobox";
 import { STRATEGY_LIBRARY } from "@/lib/strategy-library";
-import StrategyReplay from "@/components/research/StrategyReplay";
+import { FinancialChart } from "@/components/charts/FinancialChart";
+import { DrawdownChart } from "@/components/charts/Charts";
+import { adaptBacktestChart, adaptMarketBars, type BacktestChartPayload } from "@/lib/research-chart";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 const EXAMPLES = [
@@ -42,9 +44,9 @@ type BacktestResult = {
   trades: Array<{ id?: string; trade_id?: number; symbol?: string; entry_date?: string; exit_date?: string; entry_price?: number; exit_price?: number; pnl: number; return_pct: number; holding_days?: number; entry_amount?: number; max_unrealized_pnl?: number; min_unrealized_pnl?: number }>;
   equity_curve?: Array<{ date?: string; timestamp?: string; equity: number }>;
   drawdown_curve?: Array<{ date?: string; timestamp?: string; drawdown: number }>;
-  candles?: Array<{ date: string; open: number; high: number; low: number; close: number }>;
+  candles?: Array<{ date: string; open: number; high: number; low: number; close: number; volume?: number | null }>;
   indicators?: Record<string, Array<{ date: string; value: number | null }>>;
-  signals?: Array<{ date: string; type: "entry" | "exit"; price: number }>;
+  signals?: Array<{ id?: string; date: string; type: "entry" | "exit"; price: number; trade_id?: number }>;
   trade_path?: Array<{ trade_id: number; date: string; entry_amount: number; market_value: number; unrealized_pnl: number; realized_pnl: number }>;
   metrics: Record<string, number>;
   warnings: string[];
@@ -60,6 +62,7 @@ type ImportJob = {
 
 const PIPELINE = ["Parse hypothesis", "Validate proposal", "Select local data", "Compile strategy", "Run backtest", "Calculate metrics", "Check bias"];
 const moneyLabel = (value: number) => `₹${Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+const dateOnly = (value?: string) => value?.slice(0, 10) ?? "";
 function withTimeout<T>(promise: Promise<T>, message: string, timeoutMs: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = window.setTimeout(() => reject(new Error(message)), timeoutMs);
@@ -67,33 +70,7 @@ function withTimeout<T>(promise: Promise<T>, message: string, timeoutMs: number)
   });
 }
 
-function ResearchResultChart({ curve, trades }: { curve: Array<{ date?: string; timestamp?: string; equity: number }>; trades: BacktestResult["trades"] }) {
-  const width = 900;
-  const height = 250;
-  const left = 52;
-  const right = 18;
-  const top = 18;
-  const bottom = 34;
-  const safeCurve = curve
-    .map((point) => ({ date: point.date ?? point.timestamp, equity: Number(point.equity) }))
-    .filter((point) => Number.isFinite(point.equity));
-  const values = safeCurve.map((point) => point.equity);
-  const min = values.length ? Math.min(...values) : 0;
-  const max = values.length ? Math.max(...values) : 1;
-  const range = Math.max(max - min, 1);
-  const xFor = (index: number) => left + (index / Math.max(safeCurve.length - 1, 1)) * (width - left - right);
-  const yFor = (value: number) => top + ((max - value) / range) * (height - top - bottom);
-  const path = safeCurve.map((point, index) => `${index === 0 ? "M" : "L"}${xFor(index).toFixed(1)} ${yFor(point.equity).toFixed(1)}`).join(" ");
-  const dateLabel = (value?: string) => value ? value.slice(0, 10) : "—";
-  const indexForDate = (date: string | undefined) => {
-    const target = dateLabel(date);
-    if (target === "—") return -1;
-    return safeCurve.findIndex((point) => dateLabel(point.date) === target);
-  };
-  return <div className="bt-result-chart"><div className="bt-row-between"><strong>Equity curve and simulated trades</strong><span className="bt-field-help"><TrendingUp size={13} /> Green line = portfolio value · dots = entries/exits</span></div><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Backtest equity curve with simulated trade markers"><title>Backtest equity curve</title><desc>The portfolio value changes through the selected historical period. Green dots are entries and red dots are exits.</desc>{[0, .5, 1].map((fraction) => <line key={fraction} x1={left} x2={width - right} y1={top + fraction * (height - top - bottom)} y2={top + fraction * (height - top - bottom)} stroke="#e2e8f0" strokeDasharray="3 4" />)}<path d={path} fill="none" stroke="#059669" strokeWidth="2.5" strokeLinecap="round" />{trades.flatMap((trade) => { const entryIndex = indexForDate(trade.entry_date); const exitIndex = indexForDate(trade.exit_date); return [entryIndex, exitIndex].filter((index) => index >= 0).map((index, markerIndex) => <circle key={`${trade.id ?? trade.trade_id}-${index}-${markerIndex}`} cx={xFor(index)} cy={yFor(safeCurve[index].equity)} r="4" fill={markerIndex === 0 ? "#4f46e5" : "#e11d48"} stroke="#fff" strokeWidth="2" />); })}<text x={left} y={height - 10} className="bt-result-svg-label">{dateLabel(safeCurve[0]?.date)}</text><text x={width - right} y={height - 10} textAnchor="end" className="bt-result-svg-label">{dateLabel(safeCurve.at(-1)?.date)}</text><text x={left - 8} y={top + 4} textAnchor="end" className="bt-result-svg-label">{moneyLabel(max)}</text><text x={left - 8} y={height - bottom} textAnchor="end" className="bt-result-svg-label">{moneyLabel(min)}</text></svg><div className="bt-result-chart-legend"><span><i className="entry" /> Entry</span><span><i className="exit" /> Exit</span><span><TrendingDown size={13} /> Historical path, not a forecast</span></div></div>;
-}
-
-type Candle = { date: string; open: number; high: number; low: number; close: number };
+type Candle = { date: string; open: number; high: number; low: number; close: number; volume?: number | null };
 
 export default function ResearchPage() {
   const today = new Date().toISOString().slice(0, 10);
@@ -123,6 +100,20 @@ export default function ResearchPage() {
   const [restored, setRestored] = useState(false);
   const [proposalScore, setProposalScore] = useState<number | null>(null);
   const [importedFlow, setImportedFlow] = useState(false);
+  const [marketBars, setMarketBars] = useState<MarketDataBar[]>([]);
+  const [marketDataLoading, setMarketDataLoading] = useState(false);
+  const [marketDataError, setMarketDataError] = useState<string | null>(null);
+  const [selectedTradeId, setSelectedTradeId] = useState<string | null>(null);
+  const [hiddenIndicators, setHiddenIndicators] = useState<string[]>([]);
+
+  const invalidateRun = () => {
+    setBacktest(null);
+    setSelectedTradeId(null);
+    setMarketBars([]);
+    setMarketDataLoading(false);
+    setMarketDataError(null);
+    setHiddenIndicators([]);
+  };
 
   useEffect(() => {
     try {
@@ -184,7 +175,53 @@ export default function ResearchPage() {
   }));
   }, [restored, hypothesis, symbol, strategyId, timeframe, initialCapital, positionSizeAmount, stopLossPct, takeProfitPct, requestedStart, requestedEnd, analysis, availability, startDate, endDate, backtest, chatHistory, proposalScore]);
 
+  useEffect(() => {
+    if (!availability?.bars || !startDate || !endDate || timeframe === "1hour") return;
+    let disposed = false;
+    queueMicrotask(() => {
+      if (!disposed) {
+        setMarketDataLoading(true);
+        setMarketDataError(null);
+      }
+    });
+    void withTimeout(
+      getMarketData(symbol.trim().toUpperCase(), startDate, endDate, timeframe),
+      "Historical candles are taking longer than expected. Check the API connection and retry.",
+      15000,
+    ).then((response) => {
+      if (disposed) return;
+      if (!response.quality.is_valid) {
+        const firstIssue = response.quality.errors[0];
+        throw new Error(typeof firstIssue === "string" ? firstIssue : firstIssue?.message ?? "The local market-data response failed validation.");
+      }
+      setMarketBars(response.bars);
+    }).catch((requestError) => {
+      if (!disposed) {
+        setMarketBars([]);
+        setMarketDataError(requestError instanceof Error ? requestError.message : "Could not load local historical candles.");
+      }
+    }).finally(() => {
+      if (!disposed) setMarketDataLoading(false);
+    });
+    return () => { disposed = true; };
+  }, [availability?.bars, endDate, startDate, symbol, timeframe]);
+
   const isLlmGenerated = Boolean(analysis?.generated_by && analysis.generated_by.toLowerCase().includes("ollama") && !analysis.generated_by.toLowerCase().includes("fallback"));
+  const marketChart = useMemo(() => adaptMarketBars(marketBars), [marketBars]);
+  const resultChart = useMemo(() => adaptBacktestChart((backtest ?? {}) as BacktestChartPayload), [backtest]);
+  const visibleResultIndicators = useMemo(
+    () => resultChart.indicators.filter((indicator) => !hiddenIndicators.includes(indicator.id)),
+    [hiddenIndicators, resultChart.indicators],
+  );
+  const selectedDrawdown = useMemo(
+    () => (backtest?.drawdown_curve ?? [])
+      .filter((point) => {
+        const date = dateOnly(point.date ?? point.timestamp);
+        return Boolean(date) && (!startDate || date >= startDate) && (!endDate || date <= endDate);
+      })
+      .map((point) => ({ date: dateOnly(point.date ?? point.timestamp), drawdown: Number(point.drawdown ?? 0) })),
+    [backtest?.drawdown_curve, endDate, startDate],
+  );
   const dsl = useMemo(() => analysis ? JSON.stringify({
     source: isLlmGenerated ? "local_ollama_review" : "curated_rule_template",
     generated_by: analysis.generated_by ?? "local Ollama",
@@ -278,7 +315,7 @@ export default function ResearchPage() {
     if (!nextHypothesis.trim() || !symbol.trim()) return;
     setLoading(true);
     setError(null);
-    setBacktest(null);
+    invalidateRun();
     try {
       const response = await withTimeout(fetch(`${API_BASE_URL}/research/hypothesis`, {
         method: "POST",
@@ -399,7 +436,7 @@ export default function ResearchPage() {
 
   const retryOllama = () => {
     setAnalysis(null);
-    setBacktest(null);
+    invalidateRun();
     setError(null);
     void parseHypothesis();
   };
@@ -415,8 +452,9 @@ export default function ResearchPage() {
       <section className="bt-hypothesis-block">
         <div className="bt-hypothesis-header"><div className="bt-hypothesis-icon"><Sparkles size={17} /></div><span className="bt-hypothesis-title">Describe your trading hypothesis</span><span className="bt-ai-badge">Local AI</span></div>
         <textarea className="bt-hypothesis-textarea" value={hypothesis} onChange={(event) => setHypothesis(event.target.value)} />
-        <div className="bt-grid-2" style={{ margin: "14px 0" }}><div><label className="bt-field-label">NSE symbol</label><SymbolCombobox value={symbol} onChange={(nextSymbol) => { setSymbol(nextSymbol); setAnalysis(null); setAvailability(null); setStartDate(""); setEndDate(""); setBacktest(null); setImportJob(null); setAutoRunPending(false); }} /></div><div><label className="bt-field-label">Strategy</label><select className="bt-field-input" aria-label="Strategy to test" value={strategyId} onChange={(event) => { setStrategyId(event.target.value); setAnalysis(null); setBacktest(null); }}><option value="sma_crossover">SMA crossover</option>{STRATEGY_LIBRARY.filter((item) => item.id !== "golden-cross" && item.strategyId !== "sma_crossover").map((item) => <option key={item.id} value={item.strategyId}>{item.name}</option>)}</select></div><div><label className="bt-field-label">Timeframe</label><select className="bt-field-input" aria-label="Backtest timeframe" value={timeframe} onChange={(event) => { setTimeframe(event.target.value); setAnalysis(null); setBacktest(null); }} >{TIMEFRAMES.map((item) => <option key={item.value} value={item.value}>{item.label} · {item.detail}</option>)}</select><span className="bt-field-help">Weekly and monthly are resampled from saved NSE daily candles. Monthly needs a longer history for slow indicators. Hourly needs an intraday source and stays unavailable for this NSE archive.</span></div><div><label className="bt-field-label">Starting capital (₹)</label><input className="bt-field-input" type="number" min="1000" step="1000" value={initialCapital} onChange={(event) => setInitialCapital(Math.max(1000, Number(event.target.value) || 1000))} /><span className="bt-field-help">Paper-only account size.</span></div><div><label className="bt-field-label">Money per trade (₹)</label><input className="bt-field-input" type="number" min="100" step="100" value={positionSizeAmount} onChange={(event) => setPositionSizeAmount(Math.max(100, Number(event.target.value) || 100))} /><span className="bt-field-help">Fixed amount committed to each entry.</span></div><div><label className="bt-field-label">Maximum loss per trade (%)</label><input className="bt-field-input" type="number" min="0" max="99" step="0.25" value={stopLossPct} onChange={(event) => setStopLossPct(Math.min(99, Math.max(0, Number(event.target.value) || 0)))} /><span className="bt-field-help">0 disables the stop-loss rule.</span></div><div><label className="bt-field-label">Profit target per trade (%)</label><input className="bt-field-input" type="number" min="0" max="1000" step="0.25" value={takeProfitPct} onChange={(event) => setTakeProfitPct(Math.min(1000, Math.max(0, Number(event.target.value) || 0)))} /><span className="bt-field-help">0 lets the strategy exit on its signal.</span></div><div><label className="bt-field-label">Backtest from</label><input className="bt-field-input" type="date" max={requestedEnd} value={requestedStart} onChange={(event) => { setRequestedStart(event.target.value); setAnalysis(null); setImportJob(null); setAutoRunPending(false); }} /></div><div><label className="bt-field-label">Backtest to</label><input className="bt-field-input" type="date" min={requestedStart} max={today} value={requestedEnd} onChange={(event) => { setRequestedEnd(event.target.value); setAnalysis(null); setImportJob(null); setAutoRunPending(false); }} /></div></div>
-        <section className="bt-strategy-library" aria-label="Available strategy library"><div className="bt-row-between"><div><div className="bt-row"><BarChart3 size={15} style={{ color: "#4f46e5" }} /><strong>Strategy library</strong></div><p className="bt-field-help">Choose a familiar, supported rule set. Source links are community references; the engine calculates fresh stats for your exact inputs.</p></div><span className="bt-ai-badge">{STRATEGY_LIBRARY.length} available</span></div><div className="bt-strategy-library-grid">{STRATEGY_LIBRARY.map((item) => { const isSelected = strategyId === item.strategyId && item.id !== "golden-cross"; return <button type="button" key={item.id} data-testid={`strategy-card-${item.id}`} aria-pressed={isSelected} className={isSelected ? "is-selected" : ""} onClick={() => { setStrategyId(item.strategyId); setAnalysis(null); setBacktest(null); }}><span><strong>{item.name}</strong><small>{item.family} · {item.sourceLabel}</small></span><p>{item.description}</p><ChevronRight size={13} /></button>; })}</div>{strategyId && <p className="bt-library-selection"><Check size={13} /> Selected: <strong>{STRATEGY_LIBRARY.find((item) => item.strategyId === strategyId && item.id !== "golden-cross")?.name ?? STRATEGY_LIBRARY.find((item) => item.strategyId === strategyId)?.name}</strong> · {STRATEGY_LIBRARY.find((item) => item.strategyId === strategyId && item.id !== "golden-cross")?.use ?? STRATEGY_LIBRARY.find((item) => item.strategyId === strategyId)?.use}</p>}</section>
+        <div className="bt-test-window-summary"><strong>Test window</strong><span>{requestedStart} → {requestedEnd}</span><small>These dates are used consistently for the historical price chart, backtest, trades, and risk curve.</small></div>
+        <div className="bt-grid-2" style={{ margin: "14px 0" }}><div><label className="bt-field-label">NSE symbol</label><SymbolCombobox value={symbol} onChange={(nextSymbol) => { setSymbol(nextSymbol); setAnalysis(null); setAvailability(null); setStartDate(""); setEndDate(""); invalidateRun(); setImportJob(null); setAutoRunPending(false); }} /></div><div><label className="bt-field-label">Strategy</label><select className="bt-field-input" aria-label="Strategy to test" value={strategyId} onChange={(event) => { setStrategyId(event.target.value); setAnalysis(null); invalidateRun(); }}><option value="sma_crossover">SMA crossover</option>{STRATEGY_LIBRARY.filter((item) => item.id !== "golden-cross" && item.strategyId !== "sma_crossover").map((item) => <option key={item.id} value={item.strategyId}>{item.name}</option>)}</select></div><div><label className="bt-field-label">Timeframe</label><select className="bt-field-input" aria-label="Backtest timeframe" value={timeframe} onChange={(event) => { setTimeframe(event.target.value); setAnalysis(null); invalidateRun(); }} >{TIMEFRAMES.map((item) => <option key={item.value} value={item.value}>{item.label} · {item.detail}</option>)}</select><span className="bt-field-help">Weekly and monthly are resampled from saved NSE daily candles. Monthly needs a longer history for slow indicators. Hourly needs an intraday source and stays unavailable for this NSE archive.</span></div><div><label className="bt-field-label">Starting capital (₹)</label><input className="bt-field-input" type="number" min="1000" step="1000" value={initialCapital} onChange={(event) => { setInitialCapital(Math.max(1000, Number(event.target.value) || 1000)); invalidateRun(); }} /><span className="bt-field-help">Paper-only account size.</span></div><div><label className="bt-field-label">Money per trade (₹)</label><input className="bt-field-input" type="number" min="100" step="100" value={positionSizeAmount} onChange={(event) => { setPositionSizeAmount(Math.max(100, Number(event.target.value) || 100)); invalidateRun(); }} /><span className="bt-field-help">Fixed amount committed to each entry.</span></div><div><label className="bt-field-label">Maximum loss per trade (%)</label><input className="bt-field-input" type="number" min="0" max="99" step="0.25" value={stopLossPct} onChange={(event) => { setStopLossPct(Math.min(99, Math.max(0, Number(event.target.value) || 0))); invalidateRun(); }} /><span className="bt-field-help">0 disables the stop-loss rule.</span></div><div><label className="bt-field-label">Profit target per trade (%)</label><input className="bt-field-input" type="number" min="0" max="1000" step="0.25" value={takeProfitPct} onChange={(event) => { setTakeProfitPct(Math.min(1000, Math.max(0, Number(event.target.value) || 0))); invalidateRun(); }} /><span className="bt-field-help">0 lets the strategy exit on its signal.</span></div><div><label className="bt-field-label">Backtest from</label><input className="bt-field-input" type="date" max={requestedEnd} value={requestedStart} onChange={(event) => { setRequestedStart(event.target.value); setAnalysis(null); setStartDate(""); setEndDate(""); invalidateRun(); setImportJob(null); setAutoRunPending(false); }} /></div><div><label className="bt-field-label">Backtest to</label><input className="bt-field-input" type="date" min={requestedStart} max={today} value={requestedEnd} onChange={(event) => { setRequestedEnd(event.target.value); setAnalysis(null); setStartDate(""); setEndDate(""); invalidateRun(); setImportJob(null); setAutoRunPending(false); }} /></div></div>
+        <section className="bt-strategy-library" aria-label="Available strategy library"><div className="bt-row-between"><div><div className="bt-row"><BarChart3 size={15} style={{ color: "#4f46e5" }} /><strong>Strategy library</strong></div><p className="bt-field-help">Choose a familiar, supported rule set. Source links are community references; the engine calculates fresh stats for your exact inputs.</p></div><span className="bt-ai-badge">{STRATEGY_LIBRARY.length} available</span></div><div className="bt-strategy-library-grid">{STRATEGY_LIBRARY.map((item) => { const isSelected = strategyId === item.strategyId && item.id !== "golden-cross"; return <button type="button" key={item.id} data-testid={`strategy-card-${item.id}`} aria-pressed={isSelected} className={isSelected ? "is-selected" : ""} onClick={() => { setStrategyId(item.strategyId); setAnalysis(null); invalidateRun(); }}><span><strong>{item.name}</strong><small>{item.family} · {item.sourceLabel}</small></span><p>{item.description}</p><ChevronRight size={13} /></button>; })}</div>{strategyId && <p className="bt-library-selection"><Check size={13} /> Selected: <strong>{STRATEGY_LIBRARY.find((item) => item.strategyId === strategyId && item.id !== "golden-cross")?.name ?? STRATEGY_LIBRARY.find((item) => item.strategyId === strategyId)?.name}</strong> · {STRATEGY_LIBRARY.find((item) => item.strategyId === strategyId && item.id !== "golden-cross")?.use ?? STRATEGY_LIBRARY.find((item) => item.strategyId === strategyId)?.use}</p>}</section>
         <div className="bt-hypothesis-footer"><div className="bt-hypothesis-pills">{importedFlow ? <span className="bt-imported-formula-note"><CheckCircle size={13} /> Formula loaded from YouTube strategy selection. Review the risk settings, then use this single action.</span> : EXAMPLES.map((example) => <button type="button" key={example} className="bt-hypothesis-pill" onClick={() => setHypothesis(example)}>{example.slice(0, 42)}…</button>)}</div><button type="button" className="bt-primary" onClick={primaryAction} disabled={loading || runningBacktest || timeframe === "1hour" || Boolean(importJob && ["queued", "running"].includes(importJob.status))}>{runningBacktest || loading ? <Loader2 size={14} className="spin" /> : <Play size={14} />} {primaryActionLabel}</button></div>
         {progressMessage && <div className="bt-run-status" role="status" aria-live="polite"><Loader2 size={15} className="spin" /><div><strong>{primaryActionLabel}</strong><span>{progressMessage}</span><small>This can take a little longer when NSE history or Ollama is being contacted. If Ollama is unavailable, a clearly labelled catalogue proposal keeps the historical test usable.</small></div></div>}
       </section>
@@ -445,7 +483,20 @@ export default function ResearchPage() {
         </>}
       </section>}
 
-      {backtest && <section className="bt-panel bt-research-result" style={{ padding: "20px" }}><div className="bt-row-between"><div><div className="bt-row"><CheckCircle size={17} style={{ color: "#059669" }} /><h3>Backtest completed</h3></div><p className="text-xs text-slate-500" style={{ marginTop: "6px" }}>Run {backtest.run_id} · {backtest.symbol} · {backtest.timeframe} · {startDate} to {endDate}</p></div><span className="bt-ai-badge">Real local NSE candles</span></div><div className="bt-result-explainer"><BarChart3 size={17} /><div><strong>What happened in normal language</strong><p>The engine followed the selected rules one candle at a time. Signals were calculated after each candle and filled on the next candle, so the test does not look into the future. Use the replay below to reveal each historical day and understand every simulated entry, exit, gain, and loss.</p><p>With <strong>{moneyLabel(backtest.initial_capital)}</strong> starting capital and <strong>{moneyLabel(positionSizeAmount)}</strong> committed per trade, the simulation finished at <strong>{moneyLabel(backtest.final_equity)}</strong>. This describes one historical path; it does not tell us what the next trade will do.</p></div></div><div className="bt-grid-2 bt-result-metrics" style={{ marginTop: "16px" }}><div className="bt-callout"><strong>Total return</strong><p className={(backtest.metrics?.total_return ?? 0) >= 0 ? "bt-result-positive" : "bt-result-negative"}>{formatPercent(backtest.metrics?.total_return)}</p></div><div className="bt-callout"><strong>Maximum fall from a peak</strong><p className="bt-result-negative">{formatPercent(backtest.metrics?.maximum_drawdown ?? backtest.metrics?.max_drawdown)}</p></div><div className="bt-callout"><strong>Win rate</strong><p>{formatPercent(backtest.metrics?.win_rate)}</p></div><div className="bt-callout"><strong>Closed trades</strong><p>{Math.round(backtest.metrics?.trade_count ?? backtest.metrics?.total_trades ?? backtest.trades?.length ?? 0)}</p></div></div>{backtest.candles && backtest.candles.length > 0 && <StrategyReplay key={backtest.run_id} candles={backtest.candles} indicators={backtest.indicators} signals={backtest.signals} trades={backtest.trades ?? []} tradePath={backtest.trade_path ?? []} initialCapital={backtest.initial_capital} />}{backtest.equity_curve && backtest.equity_curve.length > 1 && <ResearchResultChart curve={backtest.equity_curve} trades={backtest.trades ?? []} />}{(backtest.trades?.length ?? 0) > 0 && <div className="bt-result-trades"><div className="bt-row-between"><strong>Where trades happened</strong><span className="bt-field-help">Entry and exit markers are also shown on the chart.</span></div>{(backtest.trades ?? []).map((trade) => <div className="bt-result-trade" key={trade.id ?? trade.trade_id}><span className="bt-trade-index">#{trade.trade_id ?? trade.id}</span><span><strong>{trade.entry_date || "Entry"} → {trade.exit_date || "Exit"}</strong><small>{trade.entry_price ? `₹${trade.entry_price.toLocaleString("en-IN")} → ₹${(trade.exit_price ?? 0).toLocaleString("en-IN")}` : "Simulated next-candle execution"}</small><small>Committed {moneyLabel(trade.entry_amount ?? 0)} · Held {trade.holding_days ?? 0} days · Best open {moneyLabel(trade.max_unrealized_pnl ?? 0)} · Worst open {moneyLabel(trade.min_unrealized_pnl ?? 0)}</small><small>Realized at exit {moneyLabel(trade.pnl)}</small></span><b className={trade.pnl >= 0 ? "bt-result-positive" : "bt-result-negative"}>{trade.pnl >= 0 ? "+" : "−"}{moneyLabel(Math.abs(trade.pnl))}</b></div>)}</div>}{(backtest.warnings?.length ?? 0) > 0 && <div className="bt-alert-error" style={{ marginTop: "16px" }}>{backtest.warnings?.join(" ")}</div>}<div className="bt-row-between" style={{ marginTop: "16px" }}><span className="text-xs text-slate-500">Historical simulation only · no real order was placed.</span><span className="bt-row"><Link href="/strategy" className="bt-secondary">Adjust rules in Strategy Lab <ChevronRight size={14} /> </Link><Link href={{ pathname: "/comparison", query: { source: "research", symbol, strategy: strategyId, timeframe, start: startDate, end: endDate, capital: initialCapital, position: positionSizeAmount, stop: stopLossPct, target: takeProfitPct } }} className="bt-secondary">Compare this run <ChevronRight size={14} /> </Link></span></div></section>}
+      {analysis && !backtest && (!importJob || importJob.status === "complete") && <section className="bt-panel bt-research-chart-panel" aria-label="Historical price chart">
+        <div className="bt-row-between"><div><div className="bt-row"><BarChart3 size={16} style={{ color: "#4f46e5" }} /><h3>Historical price and volume</h3></div><p className="text-xs text-slate-500" style={{ marginTop: "6px" }}>Real local NSE candles for {symbol.trim().toUpperCase()} · {timeframe === "1day" ? "daily" : `${timeframe} derived from daily NSE candles`} · {startDate} to {endDate}.</p></div><span className="data-source">{marketBars.length ? `${marketBars.length} candles loaded` : "Waiting for candles"}</span></div>
+        <FinancialChart candles={marketChart.candles} indicators={marketChart.indicators} tradeMarkers={marketChart.tradeMarkers} trades={marketChart.trades} loading={marketDataLoading} error={marketDataError} empty={!marketDataLoading && !marketDataError && marketChart.candles.length === 0} emptyMessage="No local candles were returned for this range. Import the official NSE history before running a test." title={`${symbol.trim().toUpperCase()} · ${timeframe}`} description="Historical local NSE OHLCV candles. This chart does not display live prices." />
+      </section>}
+
+      {backtest && <section className="bt-panel bt-research-chart-panel" aria-label="Backtest price chart">
+        <div className="bt-row-between"><div><div className="bt-row"><CheckCircle size={16} style={{ color: "#059669" }} /><h3>Signals on the historical chart</h3></div><p className="text-xs text-slate-500" style={{ marginTop: "6px" }}>Click an entry or exit marker to highlight the matching simulated trade. All fills remain historical and paper-only.</p></div><span className="bt-ai-badge">{resultChart.tradeMarkers.length ? `${resultChart.tradeMarkers.length} markers` : "No markers"}</span></div>
+        {resultChart.indicators.length > 0 && <div className="bt-chart-indicator-toggle" aria-label="Show or hide backtest indicators"><span>Indicators</span>{resultChart.indicators.map((indicator) => { const hidden = hiddenIndicators.includes(indicator.id); return <button key={indicator.id} type="button" aria-pressed={!hidden} className={hidden ? "" : "is-active"} onClick={() => setHiddenIndicators((current) => hidden ? current.filter((id) => id !== indicator.id) : [...current, indicator.id])}>{indicator.label}</button>; })}</div>}
+        <FinancialChart candles={resultChart.candles} indicators={visibleResultIndicators} tradeMarkers={resultChart.tradeMarkers} trades={resultChart.trades} selectedTradeId={selectedTradeId} onTradeSelect={setSelectedTradeId} empty={resultChart.candles.length === 0} emptyMessage="The backtest did not return chart candles. Re-run after confirming local history is available." title={`${backtest.symbol} · ${backtest.strategy_id ?? strategyId}`} description="Historical NSE candlesticks with backend-calculated indicators and simulated entry and exit markers." />
+        {selectedTradeId && <div className="bt-chart-selection-note" role="status">Selected trade <strong>#{selectedTradeId}</strong>. The highlighted line connects its entry and exit when both points are visible.</div>}
+      </section>}
+
+      {backtest && <section className="bt-panel bt-research-result" style={{ padding: "20px" }}><div className="bt-row-between"><div><div className="bt-row"><CheckCircle size={17} style={{ color: "#059669" }} /><h3>Backtest completed</h3></div><p className="text-xs text-slate-500" style={{ marginTop: "6px" }}>Run {backtest.run_id} · {backtest.symbol} · {backtest.timeframe} · {startDate} to {endDate}</p></div><span className="bt-ai-badge">Real local NSE candles</span></div><div className="bt-result-explainer"><BarChart3 size={17} /><div><strong>What happened in normal language</strong><p>The engine followed the selected rules one candle at a time. Signals were calculated after each candle and filled on the next candle, so the test does not look into the future. Use the single historical chart above to inspect the simulated entry, exit, gain, and loss.</p><p>With <strong>{moneyLabel(backtest.initial_capital)}</strong> starting capital and <strong>{moneyLabel(positionSizeAmount)}</strong> committed per trade, the simulation finished at <strong>{moneyLabel(backtest.final_equity)}</strong>. This describes one historical path; it does not tell us what the next trade will do.</p></div></div><div className="bt-grid-2 bt-result-metrics" style={{ marginTop: "16px" }}><div className="bt-callout"><strong>Total return</strong><p className={(backtest.metrics?.total_return ?? 0) >= 0 ? "bt-result-positive" : "bt-result-negative"}>{formatPercent(backtest.metrics?.total_return)}</p></div><div className="bt-callout"><strong>Maximum fall from a peak</strong><p className="bt-result-negative">{formatPercent(backtest.metrics?.maximum_drawdown ?? backtest.metrics?.max_drawdown)}</p></div><div className="bt-callout"><strong>Win rate</strong><p>{formatPercent(backtest.metrics?.win_rate)}</p></div><div className="bt-callout"><strong>Closed trades</strong><p>{Math.round(backtest.metrics?.trade_count ?? backtest.metrics?.total_trades ?? backtest.trades?.length ?? 0)}</p></div></div>{(backtest.trades?.length ?? 0) > 0 && <div className="bt-result-trades"><div className="bt-row-between"><strong>Where trades happened</strong><span className="bt-field-help">Entry and exit markers are shown on the chart above.</span></div>{(backtest.trades ?? []).map((trade) => <div className="bt-result-trade" key={trade.id ?? trade.trade_id}><span className="bt-trade-index">#{trade.trade_id ?? trade.id}</span><span><strong>{trade.entry_date || "Entry"} → {trade.exit_date || "Exit"}</strong><small>{trade.entry_price ? `₹${trade.entry_price.toLocaleString("en-IN")} → ₹${(trade.exit_price ?? 0).toLocaleString("en-IN")}` : "Simulated next-candle execution"}</small><small>Committed {moneyLabel(trade.entry_amount ?? 0)} · Held {trade.holding_days ?? 0} days · Best open {moneyLabel(trade.max_unrealized_pnl ?? 0)} · Worst open {moneyLabel(trade.min_unrealized_pnl ?? 0)}</small><small>Realized at exit {moneyLabel(trade.pnl)}</small></span><b className={trade.pnl >= 0 ? "bt-result-positive" : "bt-result-negative"}>{trade.pnl >= 0 ? "+" : "−"}{moneyLabel(Math.abs(trade.pnl))}</b></div>)}</div>}{(backtest.warnings?.length ?? 0) > 0 && <div className="bt-alert-error" style={{ marginTop: "16px" }}>{backtest.warnings?.join(" ")}</div>}<div className="bt-row-between" style={{ marginTop: "16px" }}><span className="text-xs text-slate-500">Historical simulation only · no real order was placed.</span><span className="bt-row"><Link href="/strategy" className="bt-secondary">Adjust rules in Strategy Lab <ChevronRight size={14} /> </Link><Link href={{ pathname: "/comparison", query: { source: "research", symbol, strategy: strategyId, timeframe, start: startDate, end: endDate, capital: initialCapital, position: positionSizeAmount, stop: stopLossPct, target: takeProfitPct } }} className="bt-secondary">Compare this run <ChevronRight size={14} /> </Link></span></div></section>}
+      {selectedDrawdown.length > 1 && <section className="bt-panel bt-research-chart-panel" aria-label="Backtest drawdown curve"><div className="bt-row-between"><div><h3>Drawdown through the same test window</h3><p className="text-xs text-slate-500" style={{ marginTop: "6px" }}>{startDate} → {endDate}. The percentage fall from the previous equity peak.</p></div><span className="data-source">Max {formatPercent(backtest?.metrics?.maximum_drawdown ?? backtest?.metrics?.max_drawdown)}</span></div><DrawdownChart data={selectedDrawdown} height={220} /></section>}
     </main>
   </div>;
 }

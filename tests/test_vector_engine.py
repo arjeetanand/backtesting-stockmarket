@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -79,6 +81,32 @@ def test_vector_backtest_execution(mock_ohlcv_data: pd.DataFrame) -> None:
     assert m.win_rate >= 0.0 and m.win_rate <= 1.0
 
 
+def test_chart_candles_preserve_real_volume(mock_ohlcv_data: pd.DataFrame) -> None:
+    result = run_rule_backtest(df=mock_ohlcv_data, symbol="RELIANCE", fast_ema=10, slow_ema=30)
+
+    assert [candle["volume"] for candle in result.candles] == mock_ohlcv_data["volume"].astype(float).tolist()
+
+
+def test_chart_candles_are_sorted_and_valid(mock_ohlcv_data: pd.DataFrame) -> None:
+    result = run_rule_backtest(df=mock_ohlcv_data.iloc[::-1], symbol="RELIANCE", fast_ema=10, slow_ema=30)
+
+    dates = [str(candle["date"]) for candle in result.candles]
+    assert dates == sorted(dates)
+    assert dates == [index.strftime("%Y-%m-%d") for index in mock_ohlcv_data.sort_index().index]
+
+    for candle in result.candles:
+        open_price = float(candle["open"])
+        high_price = float(candle["high"])
+        low_price = float(candle["low"])
+        close_price = float(candle["close"])
+        volume = float(candle["volume"])
+        assert all(math.isfinite(value) for value in (open_price, high_price, low_price, close_price, volume))
+        assert open_price > 0.0 and close_price > 0.0
+        assert high_price >= max(open_price, close_price)
+        assert low_price <= min(open_price, close_price)
+        assert volume >= 0.0
+
+
 @pytest.mark.parametrize("strategy_id", [
     "sma_crossover",
     "ema_crossover",
@@ -119,6 +147,11 @@ def test_fixed_trade_amount_and_chart_signals(mock_ohlcv_data: pd.DataFrame) -> 
     assert "SMA 10" in result.indicators
     assert "SMA 30" in result.indicators
     assert all(signal["type"] in {"entry", "exit"} for signal in result.signals)
+    assert all(
+        {"id", "date", "type", "price", "trade_id"}.issubset(signal)
+        and signal["id"] == f"trade-{signal['trade_id']}-{signal['type']}"
+        for signal in result.signals
+    )
     assert all("unrealized_pnl" in point for point in result.trade_path)
 
 

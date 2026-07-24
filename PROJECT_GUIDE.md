@@ -68,8 +68,10 @@ The normal path is:
 3. Confirm that local history covers the requested period.
 4. Review capital, position sizing, risk limit, fees, slippage, and execution convention.
 5. Run the backtest.
-6. Inspect return, win rate, trade count, drawdown, equity curve, and trade ledger.
+6. Inspect the loaded OHLCV/volume chart, then review real entry/exit markers, indicator overlays or panes, trade details, return, win rate, trade count, drawdown, equity curve, and trade ledger.
 7. Save the result and challenge it with comparison, robustness, replay, and validity tools.
+
+The research chart is populated only from locally validated NSE bars or the returned backtest result. It sorts and de-duplicates timestamps, omits invalid numeric points, preserves missing volume as unavailable, and shows explicit loading, empty, and error states. The current main workflow is daily data; intraday or unsupported timeframes must be imported and normalized before they can be charted or tested.
 
 Results are historical evidence, not predictions or financial advice.
 

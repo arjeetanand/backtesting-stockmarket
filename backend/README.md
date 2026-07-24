@@ -104,6 +104,8 @@ All routes are prefixed with `/api/v1`.
 - `DELETE /testing-history`
 - `DELETE /research/artifacts/{kind}/{artifact_key}`
 
+`GET /market-data` is the chart-read path for a selected symbol, timeframe, and datetime range. The custom backtest response includes the existing candles, indicators, trades, equity, drawdown, and metrics plus real candle `volume` and stable signal `id`/`trade_id` fields. `422` responses are used for insufficient history and unsupported strategy parameters so the frontend can show an actionable correction.
+
 ### Replay
 
 - `POST /replay/sessions`

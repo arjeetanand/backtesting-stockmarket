@@ -52,7 +52,7 @@ class VectorBacktestResult:
     trades: list[TradeRecord]
     candles: list[dict[str, float | str]] = field(default_factory=list)
     indicators: dict[str, list[dict[str, float | str | None]]] = field(default_factory=dict)
-    signals: list[dict[str, float | str]] = field(default_factory=list)
+    signals: list[dict[str, float | int | str]] = field(default_factory=list)
     trade_path: list[dict[str, float | str]] = field(default_factory=list)
 
 
@@ -333,17 +333,40 @@ def run_rule_backtest(
     run_id = f"bt_{uuid.uuid4().hex[:8]}"
 
     chart_candles: list[dict[str, float | str]] = [
-        {"date": str(index.strftime("%Y-%m-%d") if hasattr(index, "strftime") else index), "open": float(open_p.iloc[i]), "high": float(df["high"].iloc[i]), "low": float(df["low"].iloc[i]), "close": float(close.iloc[i])}
+        {
+            "date": str(index.strftime("%Y-%m-%d") if hasattr(index, "strftime") else index),
+            "open": float(open_p.iloc[i]),
+            "high": float(df["high"].iloc[i]),
+            "low": float(df["low"].iloc[i]),
+            "close": float(close.iloc[i]),
+            "volume": float(df["volume"].iloc[i]),
+        }
         for i, index in enumerate(dates)
     ]
     chart_indicators: dict[str, list[dict[str, float | str | None]]] = {
         label: [{"date": chart_candles[i]["date"], "value": None if pd.isna(value) else float(value)} for i, value in enumerate(series)]
         for label, series in indicator_series.items()
     }
-    chart_signals: list[dict[str, float | str]] = []
+    chart_signals: list[dict[str, float | int | str]] = []
     for trade in trades:
-        chart_signals.append({"date": trade.entry_date, "type": "entry", "price": trade.entry_price})
-        chart_signals.append({"date": trade.exit_date, "type": "exit", "price": trade.exit_price})
+        chart_signals.append(
+            {
+                "id": f"trade-{trade.trade_id}-entry",
+                "date": trade.entry_date,
+                "type": "entry",
+                "price": trade.entry_price,
+                "trade_id": trade.trade_id,
+            }
+        )
+        chart_signals.append(
+            {
+                "id": f"trade-{trade.trade_id}-exit",
+                "date": trade.exit_date,
+                "type": "exit",
+                "price": trade.exit_price,
+                "trade_id": trade.trade_id,
+            }
+        )
 
     return VectorBacktestResult(
         run_id=run_id,

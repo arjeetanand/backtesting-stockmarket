@@ -47,6 +47,8 @@ Importer and cache changes must cover:
 
 The key regression tests are in `tests/unit/test_nse_import.py` and `tests/unit/test_data_inventory_api.py`.
 
+Backtest chart regressions should also verify that candles preserve real volume and stable ordering, and that signals expose stable IDs and trade IDs while retaining date, type, and price.
+
 ## Backtest and persistence tests
 
 Verify:
@@ -56,6 +58,8 @@ Verify:
 - documented next-bar execution behavior;
 - fees and slippage affect results;
 - return, trade count, win rate, equity, and drawdown are consistent;
+- chart candles preserve real volume and stable ordering;
+- chart signals expose stable IDs and trade IDs while retaining date/type/price;
 - no-trade output is safe and clearly explained;
 - deterministic cache keys reuse saved results;
 - backtests, hypotheses, robustness reports, YouTube drafts, import jobs, and replay sessions survive SQLite object recreation;
@@ -66,6 +70,8 @@ Verify:
 Ollama tests cover valid JSON, Markdown-wrapped JSON, invalid output, timeout, HTTP failure, unavailable server, configured model, and deterministic fallback labeling.
 
 YouTube tests cover valid URLs, rejected non-YouTube URLs, pasted transcripts, missing rules, low confidence, captions, and the requirement for human review. Extraction must never automatically place an order or silently invent rules.
+
+Frontend chart adapters should cover timestamp normalization, ascending sort and de-duplication, invalid OHLC omission, missing-volume preservation, indicator overlay/pane mapping, RSI/MACD reference lines, and trade-marker mapping. These checks belong in pure adapter tests so the chart remains independent of HTTP and backend state.
 
 ## API smoke checks
 

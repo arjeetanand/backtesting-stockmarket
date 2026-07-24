@@ -32,10 +32,7 @@ export default function RootLayout({
         className="min-h-screen"
       >
         <Sidebar />
-        <main
-          className="min-h-screen"
-          style={{ marginLeft: "256px" }}
-        >
+        <main className="min-h-screen bt-app-main">
           {children}
         </main>
       </body>
