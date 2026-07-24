@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass, field
 
 import pandas as pd
@@ -96,6 +97,11 @@ def run_rule_backtest(
     ema_fast = compute_ema(close, fast_ema)
     ema_slow = compute_ema(close, slow_ema)
 
+    prior_high = df["high"].shift(1).rolling(slow_ema, min_periods=slow_ema).max()
+    prior_low = df["low"].shift(1).rolling(slow_ema, min_periods=slow_ema).min()
+    structure_high = df["high"].shift(1).rolling(fast_ema, min_periods=fast_ema).max()
+    structure_low = df["low"].shift(1).rolling(fast_ema, min_periods=fast_ema).min()
+
     if strategy_id == "rsi_ema":
         entry_signal = (rsi < rsi_oversold) & (ema_fast > ema_slow)
         exit_signal = (rsi > rsi_overbought) | (ema_fast < ema_slow)
@@ -127,6 +133,58 @@ def run_rule_backtest(
         momentum = close.pct_change(fast_ema)
         entry_signal = momentum > 0.0
         exit_signal = momentum < 0.0
+    elif strategy_id == "support_resistance_breakout":
+        entry_signal = close > prior_high
+        exit_signal = close < prior_low
+    elif strategy_id == "market_structure_break":
+        entry_signal = (close > structure_high) & (ema_fast > ema_slow)
+        exit_signal = (close < structure_low) | (ema_fast < ema_slow)
+    elif strategy_id == "fibonacci_retracement":
+        price_range = prior_high - prior_low
+        fib_50 = prior_high - (price_range * 0.50)
+        fib_618 = prior_high - (price_range * 0.618)
+        fib_786 = prior_high - (price_range * 0.786)
+        entry_signal = (ema_fast > ema_slow) & (df["low"] <= fib_618) & (close > fib_50)
+        exit_signal = (close < fib_786) | (close > prior_high)
+    elif strategy_id == "price_action_reversal":
+        previous_bearish = df["close"].shift(1) < df["open"].shift(1)
+        previous_open = df["open"].shift(1)
+        previous_close = df["close"].shift(1)
+        bullish_engulfing = (
+            (close > df["open"])
+            & previous_bearish
+            & (close >= previous_open)
+            & (df["open"] <= previous_close)
+        )
+        body = (close - df["open"]).abs()
+        lower_wick = pd.concat([close, df["open"]], axis=1).min(axis=1) - df["low"]
+        upper_wick = df["high"] - pd.concat([close, df["open"]], axis=1).max(axis=1)
+        bullish_hammer = (close > df["open"]) & (lower_wick >= body * 2) & (upper_wick <= body)
+        entry_signal = (bullish_engulfing | bullish_hammer) & (close > ema_slow)
+        bearish_engulfing = (
+            (close < df["open"])
+            & (df["close"].shift(1) > df["open"].shift(1))
+            & (close <= df["open"].shift(1))
+            & (df["open"] >= df["close"].shift(1))
+        )
+        exit_signal = bearish_engulfing | (close < prior_low)
+    elif strategy_id == "supply_demand_zones":
+        demand_floor = df["low"].shift(2).rolling(slow_ema, min_periods=slow_ema).min()
+        demand_candle = (df["low"].shift(1) <= demand_floor * 1.01) & (df["close"].shift(1) > df["open"].shift(1))
+        entry_signal = demand_candle & (close > df["high"].shift(1))
+        exit_signal = (close < demand_floor) | (close < ema_fast)
+    elif strategy_id == "ict_liquidity_fvg":
+        swept_liquidity = (df["low"] < structure_low) & (close > structure_low)
+        bullish_fvg = df["low"] > df["high"].shift(2)
+        entry_signal = swept_liquidity & bullish_fvg & (close > ema_slow)
+        exit_signal = (close < structure_low) | (close < ema_fast)
+    elif strategy_id == "multi_timeframe_trend":
+        higher_frequency = "W-FRI" if timeframe == "1day" else "ME" if timeframe == "1week" else "QE"
+        higher_close = close.resample(higher_frequency).last().reindex(close.index, method="ffill")
+        higher_fast = compute_ema(higher_close, fast_ema)
+        higher_slow = compute_ema(higher_close, slow_ema)
+        entry_signal = (ema_fast > ema_slow) & (higher_fast > higher_slow) & (close > ema_fast)
+        exit_signal = (ema_fast < ema_slow) | (higher_fast < higher_slow)
     else:
         raise ValueError(f"Unsupported strategy '{strategy_id}'.")
 
@@ -147,6 +205,27 @@ def run_rule_backtest(
         indicator_series = {f"Donchian high {slow_ema}": df["high"].shift(1).rolling(slow_ema, min_periods=slow_ema).max(), f"Donchian low {slow_ema}": df["low"].shift(1).rolling(slow_ema, min_periods=slow_ema).min()}
     elif strategy_id == "momentum":
         indicator_series = {f"Momentum {fast_ema}": close.pct_change(fast_ema)}
+    elif strategy_id == "support_resistance_breakout":
+        indicator_series = {f"Resistance {slow_ema}": prior_high, f"Support {slow_ema}": prior_low}
+    elif strategy_id == "market_structure_break":
+        indicator_series = {f"Structure high {fast_ema}": structure_high, f"Structure low {fast_ema}": structure_low, f"EMA {slow_ema}": ema_slow}
+    elif strategy_id == "fibonacci_retracement":
+        price_range = prior_high - prior_low
+        indicator_series = {
+            f"Fib 50 {slow_ema}": prior_high - (price_range * 0.50),
+            f"Fib 61.8 {slow_ema}": prior_high - (price_range * 0.618),
+            f"Fib 78.6 {slow_ema}": prior_high - (price_range * 0.786),
+        }
+    elif strategy_id == "price_action_reversal":
+        indicator_series = {f"EMA {slow_ema}": ema_slow, f"Support {slow_ema}": prior_low}
+    elif strategy_id == "supply_demand_zones":
+        indicator_series = {f"Demand floor {slow_ema}": df["low"].shift(2).rolling(slow_ema, min_periods=slow_ema).min(), f"EMA {fast_ema}": ema_fast}
+    elif strategy_id == "ict_liquidity_fvg":
+        indicator_series = {f"Liquidity low {fast_ema}": structure_low, f"EMA {slow_ema}": ema_slow}
+    elif strategy_id == "multi_timeframe_trend":
+        higher_frequency = "W-FRI" if timeframe == "1day" else "ME" if timeframe == "1week" else "QE"
+        higher_close = close.resample(higher_frequency).last().reindex(close.index, method="ffill")
+        indicator_series = {f"EMA {fast_ema}": ema_fast, f"EMA {slow_ema}": ema_slow, f"Higher EMA {slow_ema}": compute_ema(higher_close, slow_ema)}
 
     # 3. Shift signals by 1 bar for execution on Open T+1 (Strict No-Lookahead)
     execute_entry = entry_signal.shift(1).fillna(False)
@@ -251,24 +330,20 @@ def run_rule_backtest(
     equity_series = pd.Series([p["equity"] for p in equity_points], dtype=float)
     metrics = compute_metrics(equity_series, trades_pnl)
 
-    import uuid
     run_id = f"bt_{uuid.uuid4().hex[:8]}"
 
-    chart_candles = [
+    chart_candles: list[dict[str, float | str]] = [
         {"date": str(index.strftime("%Y-%m-%d") if hasattr(index, "strftime") else index), "open": float(open_p.iloc[i]), "high": float(df["high"].iloc[i]), "low": float(df["low"].iloc[i]), "close": float(close.iloc[i])}
         for i, index in enumerate(dates)
     ]
-    chart_indicators = {
+    chart_indicators: dict[str, list[dict[str, float | str | None]]] = {
         label: [{"date": chart_candles[i]["date"], "value": None if pd.isna(value) else float(value)} for i, value in enumerate(series)]
         for label, series in indicator_series.items()
     }
-    chart_signals = [
-        {"date": trade.entry_date, "type": "entry", "price": trade.entry_price}
-        for trade in trades
-    ] + [
-        {"date": trade.exit_date, "type": "exit", "price": trade.exit_price}
-        for trade in trades
-    ]
+    chart_signals: list[dict[str, float | str]] = []
+    for trade in trades:
+        chart_signals.append({"date": trade.entry_date, "type": "entry", "price": trade.entry_price})
+        chart_signals.append({"date": trade.exit_date, "type": "exit", "price": trade.exit_price})
 
     return VectorBacktestResult(
         run_id=run_id,

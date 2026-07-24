@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -63,10 +62,10 @@ def analyze_symbol_pattern(
             p = json.loads(p_str)
             c = float(p.get("CLOSE", 0))
             h = float(p.get("HIGH", 0))
-            l = float(p.get("LOW", 0))
+            low = float(p.get("LOW", 0))
             v = float(p.get("TOTTRDQTY", 0))
             if c > 0 and v > 0:
-                records.append({"date": day, "close": c, "high": h, "low": l, "volume": v})
+                records.append({"date": day, "close": c, "high": h, "low": low, "volume": v})
         except (ValueError, TypeError, json.JSONDecodeError):
             continue
 

@@ -51,6 +51,13 @@ class HypothesisService:
         "macd_crossover": "MACD crossover",
         "donchian_breakout": "Donchian breakout",
         "momentum": "price momentum",
+        "support_resistance_breakout": "support and resistance breakout",
+        "market_structure_break": "market-structure break",
+        "fibonacci_retracement": "Fibonacci retracement",
+        "price_action_reversal": "price-action reversal",
+        "supply_demand_zones": "supply and demand zones",
+        "ict_liquidity_fvg": "ICT-style liquidity sweep and fair-value-gap approximation",
+        "multi_timeframe_trend": "multi-timeframe trend confirmation",
     }
 
     def __init__(self, client: JsonLlmClient) -> None:
@@ -133,6 +140,13 @@ Required JSON: {{"summary": string, "assumptions": [string], "risks": [string], 
             "macd_crossover": (12, 26),
             "donchian_breakout": (20, 50),
             "momentum": (20, 50),
+            "support_resistance_breakout": (20, 50),
+            "market_structure_break": (20, 50),
+            "fibonacci_retracement": (20, 50),
+            "price_action_reversal": (20, 50),
+            "supply_demand_zones": (20, 50),
+            "ict_liquidity_fvg": (20, 50),
+            "multi_timeframe_trend": (20, 50),
         }
         fast_window, slow_window = defaults.get(command.strategy_id, (20, 50))
         model_note = reason.strip().replace("\n", " ")[:240]

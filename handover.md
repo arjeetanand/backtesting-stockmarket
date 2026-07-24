@@ -149,7 +149,7 @@ Shared frontend infrastructure:
 - `frontend/src/lib/replay/`: replay API client and types.
 - `frontend/src/lib/robustness-api.ts`: robustness API client.
 - `frontend/src/lib/agents/`: five in-process TypeScript swarm modules.
-- `frontend/src/lib/strategy-library.ts`: known strategy definitions used by strategy selection and education.
+- `frontend/src/lib/strategy-library.ts`: known strategy definitions used by strategy selection and education. Price-action and ICT-style entries are explicitly labelled as configurable Backtrack interpretations.
 - `frontend/src/lib/market-data.ts`: local market-data and availability client.
 - `frontend/src/app/globals.css`: shared design tokens, layout, responsive rules, and page-specific styles.
 
