@@ -16,7 +16,7 @@ Backtrack is a local, research-only Indian-market backtesting application. It us
 
 | Page | User task | Current behavior |
 | --- | --- | --- |
-| Home | Choose where to begin | Select a symbol/date window and enter strategy testing, YouTube import, or replay |
+| Home | Choose where to begin | Enter strategy testing, YouTube import, or replay |
 | Test a strategy | Test a trading idea | Review a proposal, ensure local history, configure capital/risk, and run a saved backtest |
 | Build rules | Create a rule strategy | Configure indicators, entries, exits, risk, fees, and slippage |
 | Use a YouTube strategy | Bring in an online idea | Extract a reviewable draft from a URL, captions, or pasted transcript; human review is required |

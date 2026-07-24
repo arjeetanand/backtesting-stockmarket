@@ -2,32 +2,24 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, CalendarDays, FileText, Play, Video } from "lucide-react";
+import { ArrowRight, FileText, Play, Video } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
-import { SymbolCombobox } from "@/components/data/SymbolCombobox";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 type SavedRun = { run_id: string; config: { strategy?: string; symbol?: string; fast_window?: number; slow_window?: number }; execution_timestamp: string; metrics: Record<string, number> };
 
 export default function DashboardPage() {
-  const today = new Date().toISOString().slice(0, 10);
-  const [symbol, setSymbol] = useState("RELIANCE");
-  const [start, setStart] = useState("2024-01-01");
-  const [end, setEnd] = useState("2026-06-30");
   const [runs, setRuns] = useState<SavedRun[]>([]);
 
   useEffect(() => {
     void fetch(`${API_BASE_URL}/backtests`).then((response) => response.ok ? response.json() : []).then((data: SavedRun[]) => setRuns(data)).catch(() => setRuns([]));
   }, []);
 
-  const researchUrl = `/research?symbol=${encodeURIComponent(symbol)}&start=${start}&end=${end}`;
   return <div className="backtrack-page"><TopBar /><main className="backtrack-content bt-stack">
-    <section className="bt-heading-row"><div><h1>What would you like to test?</h1><p>Choose a stock, choose a time period, and test your idea using historical NSE data.</p></div></section>
-
-    <section className="bt-panel bt-home-controls" style={{ padding: "20px" }}><div className="bt-grid-2"><div><label className="bt-field-label">Choose a stock</label><SymbolCombobox value={symbol} onChange={setSymbol} /></div><div><label className="bt-field-label">Time period</label><div className="bt-home-date-range"><CalendarDays size={16} className="text-slate-400" /><input className="bt-field-input" type="date" value={start} max={end} onChange={(event) => setStart(event.target.value)} /><span>to</span><input className="bt-field-input" type="date" value={end} min={start} max={today} onChange={(event) => setEnd(event.target.value)} /></div></div></div></section>
+    <section className="bt-heading-row"><div><h1>What would you like to test?</h1><p>Choose where to begin with historical NSE research.</p></div></section>
 
     <section className="bt-grid-3 bt-home-actions" aria-label="Choose what to test">
-      <Link href={researchUrl} className="bt-panel bt-action-card">
+      <Link href="/research" className="bt-panel bt-action-card">
         <span className="bt-action-card-icon"><FileText size={21} /></span>
         <div className="bt-action-card-copy"><h2>Start with a strategy</h2><p>Pick a known strategy or describe your own rules, then test them on history.</p></div>
         <span className="bt-action-card-action">Start testing <ArrowRight size={14} /></span>
@@ -37,7 +29,7 @@ export default function DashboardPage() {
         <div className="bt-action-card-copy"><h2>Use a YouTube strategy</h2><p>Bring in a strategy you found online and review its rules before testing.</p></div>
         <span className="bt-action-card-action">Import a strategy <ArrowRight size={14} /></span>
       </Link>
-      <Link href={`/replay?symbol=${encodeURIComponent(symbol)}&start=${start}&end=${end}`} className="bt-panel bt-action-card">
+      <Link href="/replay" className="bt-panel bt-action-card">
         <span className="bt-action-card-icon"><Play size={21} /></span>
         <div className="bt-action-card-copy"><h2>Replay the chart</h2><p>Move through the historical candles one step at a time to understand what happened.</p></div>
         <span className="bt-action-card-action">Open replay <ArrowRight size={14} /></span>
