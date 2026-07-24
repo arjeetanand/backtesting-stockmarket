@@ -66,6 +66,16 @@ function fmt(val: number | undefined, digits = 2): string {
   return Number.isFinite(val) ? Number(val).toFixed(digits) : "—";
 }
 
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 60_000): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 export default function MarketScannerPage() {
   const [activeTab, setActiveTab] = useState<"heatmap" | "breakout">("heatmap");
 
@@ -101,7 +111,7 @@ export default function MarketScannerPage() {
     setScannerError(null);
     const t0 = performance.now();
     try {
-      const res = await fetch(`${API_BASE_URL}/market-scanner/run`, {
+      const res = await fetchWithTimeout(`${API_BASE_URL}/market-scanner/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ universe, strategy_type: strategyType }),
@@ -111,7 +121,7 @@ export default function MarketScannerPage() {
       setScannerResult(data);
       setScannerTimeSec(Number(((performance.now() - t0) / 1000).toFixed(1)));
     } catch (err) {
-      setScannerError(err instanceof Error ? err.message : "Error running scanner.");
+      setScannerError(err instanceof DOMException && err.name === "AbortError" ? "The universe scan took too long. Try NIFTY 50 or a shorter local dataset." : err instanceof Error ? err.message : "Error running scanner.");
     } finally {
       setLoadingScanner(false);
     }
@@ -122,7 +132,7 @@ export default function MarketScannerPage() {
     setBreakoutError(null);
     const t0 = performance.now();
     try {
-      const res = await fetch(`${API_BASE_URL}/breakout-scanner/scan`, {
+      const res = await fetchWithTimeout(`${API_BASE_URL}/breakout-scanner/scan`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ min_conviction: Number(minConviction), limit: 60 }),
@@ -132,7 +142,7 @@ export default function MarketScannerPage() {
       setBreakoutResult(data);
       setBreakoutTimeSec(Number(((performance.now() - t0) / 1000).toFixed(1)));
     } catch (err) {
-      setBreakoutError(err instanceof Error ? err.message : "Error scanning setups.");
+      setBreakoutError(err instanceof DOMException && err.name === "AbortError" ? "The breakout scan took too long. The scan is limited to the priority NSE universe; retry once the local cache is ready." : err instanceof Error ? err.message : "Error scanning setups.");
     } finally {
       setLoadingBreakout(false);
     }
@@ -467,7 +477,7 @@ export default function MarketScannerPage() {
             {loadingBreakout && (
               <div className="bt-panel bt-loading-state">
                 <RefreshCw size={18} className="spin" />
-                <span>Scanning technical price action across all imported stocks for VCP, 52W High, and RSI breakouts…</span>
+                <span>Scanning the priority NSE universe for VCP, 52W High, and RSI breakouts…</span>
               </div>
             )}
 

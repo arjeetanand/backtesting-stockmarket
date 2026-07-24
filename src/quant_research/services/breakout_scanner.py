@@ -53,14 +53,18 @@ class BreakoutScannerService:
         if start is None:
             start = summary.earliest or (end - timedelta(days=380))
 
-        # Prioritize liquid NIFTY & Sensex symbols
-        priority_symbols = set(NIFTY50_SYMBOLS).union(SENSEX_NSE_STARTER).union(all_instruments.keys())
+        # Keep the default scan bounded. Scanning every imported catalogue symbol
+        # can turn a quick UI action into a multi-minute synchronous request.
+        # Start with the liquid NIFTY/Sensex set, then use a bounded local sample
+        # only when none of those symbols are available.
+        priority_symbols = set(NIFTY50_SYMBOLS).union(SENSEX_NSE_STARTER)
+        max_scan_symbols = 250
         if cached_symbols:
             scan_symbols = sorted(priority_symbols.intersection(cached_symbols))
             if not scan_symbols:
-                scan_symbols = sorted(cached_symbols)[:250]
+                scan_symbols = sorted(cached_symbols)[:max_scan_symbols]
         else:
-            scan_symbols = sorted(priority_symbols)[:250]
+            scan_symbols = sorted(priority_symbols)[:max_scan_symbols]
 
         for sym in scan_symbols:
             bars = self._cache.get(sym, "1day", start, end)
