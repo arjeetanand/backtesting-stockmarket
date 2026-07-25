@@ -6,7 +6,7 @@ import { BarChart3, Check, CheckCircle, ChevronRight, Circle, Code2, Loader2, Me
 import TopBar from "@/components/layout/TopBar";
 import { getMarketAvailability, getMarketData, type MarketAvailability, type MarketDataBar } from "@/lib/market-data";
 import { SymbolCombobox } from "@/components/data/SymbolCombobox";
-import { STRATEGY_LIBRARY } from "@/lib/strategy-library";
+import { STRATEGY_LIBRARY, UNIFIED_STRATEGIES } from "@/lib/strategy-library";
 import { FinancialChart } from "@/components/charts/FinancialChart";
 import { DrawdownChart } from "@/components/charts/Charts";
 import { adaptBacktestChart, adaptMarketBars, type BacktestChartPayload } from "@/lib/research-chart";
@@ -209,7 +209,7 @@ export default function ResearchPage() {
 
   const isLlmGenerated = Boolean(analysis?.generated_by && analysis.generated_by.toLowerCase().includes("ollama") && !analysis.generated_by.toLowerCase().includes("fallback"));
   const selectedStrategy = useMemo(
-    () => STRATEGY_LIBRARY.find((item) => item.strategyId === strategyId && item.id !== "golden-cross") ?? STRATEGY_LIBRARY.find((item) => item.strategyId === strategyId),
+    () => STRATEGY_LIBRARY.find((item) => item.strategyId === strategyId),
     [strategyId],
   );
   const proposalAssumptions = analysis?.assumptions.filter((item) => !/ollama|model|llm/i.test(item)).slice(0, 2) ?? [];
@@ -284,7 +284,7 @@ export default function ResearchPage() {
     if (params.get("source") !== "youtube-template") return;
     setImportedFlow(true);
     const importedStrategy = params.get("strategy") ?? "sma_crossover";
-    const selected = STRATEGY_LIBRARY.find((item) => item.strategyId === importedStrategy && item.id !== "golden-cross") ?? STRATEGY_LIBRARY[0];
+    const selected = UNIFIED_STRATEGIES.find((item) => item.strategyId === importedStrategy) ?? UNIFIED_STRATEGIES[0];
     const importedSymbol = (params.get("symbol") ?? "RELIANCE").trim().toUpperCase();
     const importedTimeframe = params.get("timeframe") ?? "1day";
     const importedCapital = Math.max(1000, Number(params.get("capital") ?? 100000) || 100000);
@@ -353,7 +353,7 @@ export default function ResearchPage() {
       } else {
         void ensureResearchData(selectedSymbol);
       }
-      const selectedStrategy = STRATEGY_LIBRARY.find((item) => item.strategyId === strategyId && item.id !== "golden-cross") ?? STRATEGY_LIBRARY.find((item) => item.strategyId === strategyId);
+      const selectedStrategy = UNIFIED_STRATEGIES.find((item) => item.strategyId === strategyId);
       setChatHistory((history) => [...history, { role: "ai", text: `${result.summary} Selected strategy: ${selectedStrategy?.name ?? strategyId}. The local model proposed windows ${result.suggested_backtest.fast_window} and ${result.suggested_backtest.slow_window}. ${result.suggested_backtest.rationale}` }]);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Research parsing failed.");

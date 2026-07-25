@@ -247,7 +247,7 @@ class PatternStrategyRequest(BaseModel):
 
 class MarketScannerRequest(BaseModel):
     universe: str = Field(default="nifty500", pattern="^(nifty50|nifty500|all)$")
-    strategy_type: str = Field(default="sma_crossover", pattern="^(sma_crossover|rsi_reversion|breakout)$")
+    strategy_type: str = Field(default="sma_crossover", pattern="^[a-z][a-z0-9_]*$")
     start: datetime | None = None
     end: datetime | None = None
 
@@ -266,4 +266,3 @@ class WatchlistAddRequest(BaseModel):
     entry_price: float = Field(..., gt=0.0)
     target_price: float | None = Field(default=None, gt=0.0)
     stop_loss_price: float | None = Field(default=None, gt=0.0)
-

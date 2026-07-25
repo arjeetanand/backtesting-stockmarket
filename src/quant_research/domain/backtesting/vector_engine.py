@@ -16,6 +16,24 @@ from quant_research.domain.indicators.calculator import (
     compute_sma,
 )
 
+SUPPORTED_STRATEGY_IDS: tuple[str, ...] = (
+    "sma_crossover",
+    "ema_crossover",
+    "rsi_ema",
+    "rsi_mean_reversion",
+    "bollinger_mean_reversion",
+    "macd_crossover",
+    "donchian_breakout",
+    "momentum",
+    "support_resistance_breakout",
+    "market_structure_break",
+    "fibonacci_retracement",
+    "price_action_reversal",
+    "supply_demand_zones",
+    "ict_liquidity_fvg",
+    "multi_timeframe_trend",
+)
+
 
 @dataclass
 class TradeRecord:

@@ -2,7 +2,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import numpy as np
+import pytest
 
+from quant_research.domain.backtesting.vector_engine import SUPPORTED_STRATEGY_IDS
 from quant_research.domain.data.models import OHLCVBar
 from quant_research.repositories.market_cache import SqliteMarketCache
 from quant_research.services.market_scanner import MarketScannerService
@@ -43,3 +45,16 @@ def test_market_scanner_service_run_scan(tmp_path: Path) -> None:
     assert "sector_heatmap" in result
     assert "leaderboard" in result
     assert len(result["leaderboard"]) == 2
+
+
+@pytest.mark.parametrize("strategy_id", SUPPORTED_STRATEGY_IDS)
+def test_market_scanner_accepts_every_unified_strategy(tmp_path: Path, strategy_id: str) -> None:
+    cache = SqliteMarketCache(tmp_path / f"{strategy_id}.sqlite3")
+    cache.put(make_sample_bars("RELIANCE", count=180), "1day", "test")
+
+    result = MarketScannerService(cache).run_scan(universe="nifty50", strategy_type=strategy_id)
+
+    assert result["strategy_type"] == strategy_id
+    assert result["total_scanned"] == 1
+    assert result["leaderboard"][0]["symbol"] == "RELIANCE"
+    assert "strategy_return" in result["leaderboard"][0]

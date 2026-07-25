@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Activity, ArrowRight, CheckCircle2, Database, Gauge, LineChart, Play, RotateCcw, ShieldAlert, Target, Zap } from "lucide-react";
 import { runStrategyBacktest, type LiveBacktestResult } from "@/lib/backtest-api";
 
-type IndicatorId = "rsi" | "sma" | "ema" | "macd" | "bollinger" | "atr" | "stochastic" | "vwap";
+type IndicatorId = "rsi" | "sma" | "ema" | "macd" | "bollinger" | "atr" | "stochastic" | "vwap" | "rvol" | "breakout52w" | "vcp";
 type BacktestStrategy = "rsi_mean_reversion" | "sma_crossover" | "ema_crossover" | "macd_crossover" | "bollinger_mean_reversion" | "donchian_breakout";
 
 type IndicatorGuide = {
@@ -151,6 +151,78 @@ const guides: IndicatorGuide[] = [
     exampleRule: "Use a 50-day breakout and review the result alongside the stock’s ATR risk range.",
   },
   {
+    id: "rvol",
+    name: "RVOL (Relative Volume)",
+    family: "Volume",
+    oneLine: "Compares current volume against its 20-day moving average.",
+    question: "Is big institutional money driving the current price move?",
+    defaultPeriod: 20,
+    periodMin: 5,
+    periodMax: 50,
+    periodHint: "20 days is the standard baseline for average daily volume.",
+    standard: "RVOL 20",
+    faster: "RVOL 10 reacts quickly to sudden volume surges.",
+    slower: "RVOL 30 provides a smoother baseline for multi-week volume trends.",
+    read: [
+      "RVOL = 1.0x means volume equals the 20-day average.",
+      "RVOL >= 1.8x indicates strong institutional interest and breakout confirmation.",
+      "RVOL < 0.8x on a price move indicates weak participant conviction."
+    ],
+    helps: "It separates fake retail breakouts from genuine institutional accumulation moves.",
+    caution: "High RVOL during news events can cause gap ups that reverse quickly. Always pair with price location.",
+    strategyId: "donchian_breakout",
+    exampleName: "Volume-confirmed breakout",
+    exampleRule: "Scan for stocks with RVOL >= 1.8x near 52-week highs.",
+  },
+  {
+    id: "breakout52w",
+    name: "52W High & Distance",
+    family: "Price action",
+    oneLine: "Measures proximity to the highest price of the past 52 weeks.",
+    question: "Is the stock at or near a major multi-month breakout peak?",
+    defaultPeriod: 252,
+    periodMin: 50,
+    periodMax: 380,
+    periodHint: "252 trading days corresponds to 1 full calendar year.",
+    standard: "252-day High",
+    faster: "60-day high tracks shorter quarterly breakouts.",
+    slower: "380-day high covers over a year of peak price memory.",
+    read: [
+      "Distance <= 4% means the stock is within striking distance of a 1-year high.",
+      "Stocks at 52-week highs have zero overhead trapped sellers.",
+      "Breakouts with expanding RVOL have the highest historical follow-through."
+    ],
+    helps: "It targets stocks displaying market leadership with strong momentum.",
+    caution: "Chasing extended breakouts without a tight base can lead to sharp pullbacks.",
+    strategyId: "donchian_breakout",
+    exampleName: "Donchian 52W breakout",
+    exampleRule: "Buy when price reaches a new 52-week high with volume confirmation.",
+  },
+  {
+    id: "vcp",
+    name: "VCP (Volatility Contraction)",
+    family: "Pattern",
+    oneLine: "Measures tight price consolidation above key moving averages.",
+    question: "Has price volatility dried up prior to an explosive expansion?",
+    defaultPeriod: 20,
+    periodMin: 10,
+    periodMax: 50,
+    periodHint: "20 days measures recent base tightness.",
+    standard: "20D Range <= 11%",
+    faster: "10-day tightness catches rapid micro-bases.",
+    slower: "50-day contraction measures multi-month cup-with-handle bases.",
+    read: [
+      "Range <= 11% above 20D SMA indicates seller exhaustion.",
+      "RSI > 55 confirms underlying buying interest inside the tight base.",
+      "Low volume during contraction followed by high RVOL marks entry."
+    ],
+    helps: "It identifies low-risk entry points with tight stop-loss placement.",
+    caution: "A tight range in an overall downtrend can be a bear flag. Require price to hold above key moving averages.",
+    strategyId: "bollinger_mean_reversion",
+    exampleName: "VCP base breakout",
+    exampleRule: "Buy when 20D range contracts under 11% and breaks out above SMA 20.",
+  },
+  {
     id: "stochastic",
     name: "Stochastic",
     family: "Momentum",
@@ -203,6 +275,9 @@ const strategyRecipes: Record<IndicatorId, { primary: string; usedIn: string; pa
   macd: { primary: "MACD crossover", usedIn: "Momentum confirmation, trend continuation, and zero-line studies.", pairs: "Price structure, support/resistance, or a longer trend average to reduce whipsaws.", steps: ["Subtract the 26-period EMA from the 12-period EMA.", "Smooth that gap into a 9-period signal line.", "Enter on a bullish MACD/signal cross and exit on a bearish cross."], historySupported: true },
   bollinger: { primary: "Bollinger mean reversion", usedIn: "Range trading, volatility squeezes, and stretch-versus-trend analysis.", pairs: "SMA 20 as the centre line, RSI for momentum, and ATR for stop distance.", steps: ["Calculate a 20-period average and bands two standard deviations away.", "Enter when the close falls below the lower band.", "Exit when price returns to the middle band; a strong trend can invalidate this idea."], historySupported: true },
   atr: { primary: "ATR risk planning", usedIn: "Position sizing, adaptive stops, breakout risk, and volatility regime checks.", pairs: "Any directional entry such as EMA, SMA, or Donchian breakout; ATR itself is not directional.", steps: ["Measure the average true range over 14 daily candles.", "Use a multiple such as 1–2 ATR for a volatility-aware stop distance.", "Reduce position size when ATR expands so one trade does not dominate risk."], historySupported: false },
+  rvol: { primary: "RVOL volume confirmation", usedIn: "Breakout confirmation, institutional footprint tracking, and volume-surge filters.", pairs: "52W High for breakout location, SMA 20 for trend, and RSI for momentum.", steps: ["Divide current daily volume by the 20-day SMA volume.", "Require RVOL >= 1.8x to confirm institutional demand.", "Execute on candle close or next open when combined with a breakout."], historySupported: false },
+  breakout52w: { primary: "Donchian 52-week breakout", usedIn: "Momentum breakout trading, 52-week high scans, and trend following.", pairs: "RVOL for volume confirmation, ATR for trailing stop distance.", steps: ["Calculate the 252-day rolling high price.", "Measure distance % = (52W High - Close) / 52W High.", "Enter when distance <= 4% with RVOL >= 1.8x."], historySupported: true },
+  vcp: { primary: "VCP contraction base", usedIn: "Minervini VCP setups, tight base entry, and low-risk breakout timing.", pairs: "SMA 20 as support baseline, RSI > 55 for momentum, RVOL for entry expansion.", steps: ["Calculate 20-day price range % = (20D High - 20D Low) / Close.", "Confirm range <= 11% while price holds above 20D SMA.", "Enter as price breaks out of contraction with expanding volume."], historySupported: false },
   stochastic: { primary: "Stochastic pullback", usedIn: "Range trading, short-term momentum turns, and timing a pullback.", pairs: "Support/resistance, a trend filter, or RSI to avoid buying every extreme reading.", steps: ["Compare the close with the recent 14-candle high-low range.", "Look for a turn from below 20 near a support area.", "Confirm the market regime before treating an extreme as a reversal."], historySupported: false },
   vwap: { primary: "VWAP execution filter", usedIn: "Intraday execution, volume-aware trend context, and institutional reference pricing.", pairs: "Price action, volume, opening range, and a session high/low; it needs intraday data.", steps: ["Weight each traded price by its volume for the current session.", "Use price above/below VWAP as context, not a standalone buy/sell command.", "This app does not claim a VWAP backtest because its official archive is daily."], historySupported: false },
 };
@@ -216,6 +291,9 @@ function periodMeaning(id: IndicatorId, period: number) {
   if (id === "sma" || id === "ema") return `${id.toUpperCase()} ${period} means the line is calculated from a rolling window of ${period} daily closes. A larger number makes the line calmer but later.`;
   if (id === "macd") return `The MACD setup uses fast and slow EMA windows; the ${period} setting controls how quickly the signal line confirms a momentum change.`;
   if (id === "bollinger") return `${period} means the centre average and volatility bands use the latest ${period} daily closes.`;
+  if (id === "rvol") return `RVOL ${period} compares today's volume to the average volume over the last ${period} daily candles. Values > 1.5x indicate elevated trading activity.`;
+  if (id === "breakout52w") return `${period} days represents the lookback window to find the highest price high. 252 days equals 1 trading year.`;
+  if (id === "vcp") return `VCP uses a ${period}-day window to measure price range compression (high minus low divided by close).`;
   if (id === "vwap") return "Session VWAP resets each trading day. This page explains it, but does not run a VWAP backtest on daily-only data.";
   return `${selectedLabel(id)} ${period} means the calculation looks back across ${period} daily candles. A shorter window reacts faster; a longer window is steadier.`;
 }

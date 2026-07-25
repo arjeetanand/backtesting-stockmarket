@@ -61,6 +61,10 @@ Frontend ownership:
 - `frontend/src/lib/agents/` — deterministic local research workflow modules; they do not place orders.
 - `frontend/src/app/globals.css` — shared Backtrack/Stitch visual tokens and responsive page styles.
 
+### Unified strategy catalogue
+
+`frontend/src/lib/strategy-library.ts` is the frontend strategy source of truth. `STRATEGY_LIBRARY` exposes one canonical template per executable `strategyId`; `getUnifiedTemplates()` feeds Strategy Lab, `getUnifiedComparisonList()` feeds Comparison and the Market Scanner, and `UNIFIED_STRATEGIES` feeds Research and Strategy Import. Golden Cross remains in the source catalogue as an educational variant but resolves to the canonical 20/50 SMA crossover template so the same engine ID cannot silently mean different rules on different pages. The backend scanner validates the same IDs against `SUPPORTED_STRATEGY_IDS` and routes every scanner run through `run_rule_backtest`, the shared vector engine used by the rest of the application.
+
 ## 3. Local setup and runtime pairing
 
 From the repository root:
@@ -198,6 +202,7 @@ Backend errors should stay explicit. Frontend catch blocks must not replace them
 The recent route-specific visual reference is Stitch project `8571994091810308125`. The implementation preserves the existing Backtrack shell and API behavior while applying the reference composition:
 
 - Market Scanner: a narrow technical-criteria rail, four KPI cards, and two-column data-backed stock cards with strategy versus buy-and-hold return bars and risk metrics.
+- Market Scanner sector heatmap: a real treemap-style sector surface where tile area represents the number of scanned stocks and color can be switched between strategy return, strategy alpha versus buy-and-hold, and win rate. Selecting a tile loads the sector's top stocks ranked by an explainable research score using return, alpha, win rate, and drawdown, with a direct Research handoff. This follows the interaction pattern used by [TradingView heatmaps](https://www.tradingview.com/support/solutions/43000766446-tradingview-heatmaps-from-global-trends-to-details/) and [Finviz market maps](https://finviz.com/map?preset_order=true&t=sec_all), without claiming market-cap sizing that is not present in the local cache.
 - ML Lab: a narrow model-configuration rail, a wide Training Diagnostics surface, a readiness state, and result diagnostics only after an experiment returns.
 - Both routes collapse cleanly at approximately `390 × 844` without horizontal overflow.
 - Scanner cards and KPIs use real API values. Empty/error states link to local data preparation or tell the user to restart the local API. No seeded prices or fake time series are used.
@@ -275,6 +280,7 @@ Recorded results for the current work:
 | ML Lab composition | ML Lab did not make the Stitch setup-rail/diagnostics relationship clear. | Narrowed the configuration rail, widened diagnostics, stacked candidate models, and added data-driven readiness state without changing the ML API. |
 | Scanner network error | Browser showed only `Failed to fetch` when the local API was unavailable. | Added an actionable local-backend message while preserving the unavailable state and API behavior. |
 | Watchlist status | A saved setup could be marked target/stop hit by a price move that happened before the setup entry date. | Filtered evaluation bars to the entry date and later, and added a regression test using a pre-entry extreme; the setup now remains active until a post-entry bar reaches target/stop. |
+| Sector heatmap | The visible scanner surface showed result cards while the actual sector heatmap lived in hidden legacy markup, so sectors were not clickable and could not load their top stocks. | Replaced the visible area with a data-backed treemap surface. Tile area uses sector stock count, color has three metric modes, and selecting a tile loads ranked stocks with a derived research score plus return, alpha, win rate, drawdown, and Research links. |
 | Frontend route discovery | Multiple watchers caused stale route discovery and `EMFILE` pressure. | Restarted the frontend after route changes, isolated port-specific Next build directories (`.next-port-*`), and enabled opt-out Watchpack polling in the named dev scripts. |
 
 ### Validation and environment errors

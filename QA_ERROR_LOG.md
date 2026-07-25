@@ -69,6 +69,20 @@ Environment tested:
 - **Fix:** Filter OHLCV bars to `bar date >= entry_date` before evaluating target/stop status. If no post-entry bar exists, the setup remains active. Added a regression test covering pre-entry target and stop hits.
 - **Verification:** Focused watchlist tests pass (`2 passed`); a new setup is no longer completed by unrelated historical highs/lows.
 
+### 9. Sector heatmap was not the visible scanner surface
+
+- **Symptom:** The scanner showed stock result cards, while the old sector heatmap was inside hidden legacy markup. A user could not click a sector to inspect its constituent stocks.
+- **Cause:** The Stitch-aligned layout replaced the original heatmap but did not carry the sector interaction into the new visible surface.
+- **Fix:** Added a real treemap-style sector surface. Tile area represents scanned-stock breadth; color can be switched between strategy return, alpha versus buy-and-hold, and win rate. Clicking a tile loads the sector's highest-scoring stocks with an explainable score from return, alpha, win rate, and drawdown, plus research handoff links.
+- **Verification:** The local NIFTY 50 scanner payload returned 47 stocks across 11 sectors; sector counts reconcile exactly to the 47-stock leaderboard, and every leaderboard stock maps to a heatmap sector. Production Next build passes and `/market-scanner` returns HTTP 200.
+
+### 10. Strategy templates diverged across product surfaces
+
+- **Symptom:** Research, Strategy Lab, Comparison, Strategy Import, and Market Scanner exposed different strategy subsets and labels. Strategy Lab even defaulted to a non-existent `RSI Momentum` template, while the scanner used legacy `rsi_reversion` and `breakout` IDs that were not part of the shared catalogue.
+- **Cause:** The shared frontend catalogue existed, but consumers maintained local option lists; the scanner backend also had a separate three-strategy signal implementation.
+- **Fix:** Made `STRATEGY_LIBRARY` the canonical one-template-per-execution-ID registry, reused its existing helpers everywhere, and routed every scanner strategy through the shared vector backtest engine. Golden Cross now resolves to the canonical 20/50 SMA template instead of duplicating `sma_crossover`.
+- **Verification:** Ruff passes; the market-scanner regression suite passes for every `SUPPORTED_STRATEGY_IDS` entry; frontend production build passes.
+
 ## Validation completed so far
 
 - All 17 currently reachable application routes rendered meaningful content after restart, including `/watchlist`.
@@ -89,3 +103,4 @@ Environment tested:
 
 - `npm --prefix frontend run lint` still reports 16 existing source-level React/Next errors and 16 warnings. They are static-analysis debt in effect/state patterns, unused imports, render-time mutation, and a font-placement warning; the production build and runtime flows pass. They are listed in `COMPLETE_PROJECT_GUIDE.md` and should be refactored separately.
 - The non-destructive feature pass is complete for replay, scanner, robustness, ML Lab, comparison, options, settings, analytics entry points, saved tests, watchlist, data, strategy, research, and pattern analysis. Destructive history clearing was intentionally not clicked because it would delete user data; DELETE was validated with a disposable watchlist item and concurrent backtest requests.
+- Browser connector was unavailable after the previous QA session was finalized, so this heatmap pass used the permitted fallback: direct local API reconciliation, frontend HTTP route verification, and the production Next build. An interactive Browser pass should be repeated when the connector is available.

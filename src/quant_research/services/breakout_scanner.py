@@ -51,18 +51,18 @@ class BreakoutScannerService:
         if end is None:
             end = summary.latest or datetime.now(tz=UTC)
         if start is None:
-            start = summary.earliest or (end - timedelta(days=380))
+            start = end - timedelta(days=380)
 
         # Keep the default scan bounded. Scanning every imported catalogue symbol
         # can turn a quick UI action into a multi-minute synchronous request.
-        # Start with the liquid NIFTY/Sensex set, then use a bounded local sample
-        # only when none of those symbols are available.
+        # Start with the liquid NIFTY/Sensex set, then pad up to max_scan_symbols
+        # with other available cached symbols.
         priority_symbols = set(NIFTY50_SYMBOLS).union(SENSEX_NSE_STARTER)
         max_scan_symbols = 250
         if cached_symbols:
-            scan_symbols = sorted(priority_symbols.intersection(cached_symbols))
-            if not scan_symbols:
-                scan_symbols = sorted(cached_symbols)[:max_scan_symbols]
+            priority_in_cache = sorted(priority_symbols.intersection(cached_symbols))
+            other_in_cache = sorted(cached_symbols - priority_symbols)
+            scan_symbols = priority_in_cache + other_in_cache[: max(0, max_scan_symbols - len(priority_in_cache))]
         else:
             scan_symbols = sorted(priority_symbols)[:max_scan_symbols]
 
@@ -90,8 +90,12 @@ class BreakoutScannerService:
 
             range_20 = float((high.rolling(20).max().iloc[-1] - low.rolling(20).min().iloc[-1]) / last_close)
 
-            sma_20 = float(ta.trend.sma_indicator(close, window=20, fillna=False).iloc[-1] or last_close)
-            sma_50 = float(ta.trend.sma_indicator(close, window=50, fillna=False).iloc[-1] or last_close)
+            sma_20_series = ta.trend.sma_indicator(close, window=20, fillna=False)
+            sma_50_series = ta.trend.sma_indicator(close, window=50, fillna=False)
+            sma_20 = float(sma_20_series.iloc[-1] or last_close)
+            sma_50 = float(sma_50_series.iloc[-1] or last_close)
+            prev_close = float(close.iloc[-2])
+            prev_sma_20 = float(sma_20_series.iloc[-2] or prev_close)
 
             inst_info = all_instruments.get(sym)
             c_name = inst_info.company_name if inst_info else sym
@@ -117,7 +121,7 @@ class BreakoutScannerService:
                 )
 
             # Setup 2: Volatility Contraction Pattern (VCP)
-            elif range_20 <= 0.11 and rsi_val >= 55.0 and last_close >= sma_20:
+            if range_20 <= 0.11 and rsi_val >= 55.0 and last_close >= sma_20:
                 score = min(100.0, 65.0 + ((0.11 - range_20) * 300) + (rvol * 8))
                 setups.append(
                     BreakoutSetupItem(
@@ -136,7 +140,7 @@ class BreakoutScannerService:
                 )
 
             # Setup 3: SMA Golden Rebound
-            elif (last_close >= sma_20 or last_close >= sma_50) and float(close.iloc[-2]) < sma_20 and rvol >= 1.4:
+            if (last_close >= sma_20 or last_close >= sma_50) and prev_close < prev_sma_20 and rvol >= 1.4:
                 score = min(100.0, 55.0 + (rvol * 15.0) + (rsi_val * 0.3))
                 setups.append(
                     BreakoutSetupItem(
@@ -155,7 +159,8 @@ class BreakoutScannerService:
                 )
 
             # Setup 4: RSI Momentum Surge
-            elif rsi_val >= 62.0 and float(rsi_series.iloc[-2] or 50.0) < 55.0 and rvol >= 1.3:
+            prev_rsi = float(rsi_series.iloc[-2]) if (len(rsi_series) > 1 and not pd.isna(rsi_series.iloc[-2])) else 50.0
+            if rsi_val >= 62.0 and prev_rsi < 55.0 and rvol >= 1.3:
                 score = min(100.0, 50.0 + (rsi_val * 0.5) + (rvol * 10.0))
                 setups.append(
                     BreakoutSetupItem(

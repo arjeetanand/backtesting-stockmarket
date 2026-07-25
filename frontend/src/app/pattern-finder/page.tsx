@@ -145,7 +145,7 @@ export default function PatternFinderPage() {
             background: "linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%)",
             border: "1px solid #c7d2fe",
             borderRadius: "14px",
-            padding: "20px 24px",
+            padding: "22px 26px",
             marginBottom: "24px",
             boxShadow: "0 2px 8px rgba(79, 70, 224, 0.05)",
           }}
@@ -153,8 +153,8 @@ export default function PatternFinderPage() {
           <div style={{ display: "flex", alignItems: "flex-start", gap: "14px" }}>
             <div
               style={{
-                width: "40px",
-                height: "40px",
+                width: "42px",
+                height: "42px",
                 borderRadius: "10px",
                 background: "#4f46e5",
                 color: "#ffffff",
@@ -164,24 +164,49 @@ export default function PatternFinderPage() {
                 flexShrink: 0,
               }}
             >
-              <Zap size={22} />
+              <Zap size={24} />
             </div>
             <div>
               <h2 style={{ fontFamily: "var(--font-space-grotesk)", fontSize: "18px", fontWeight: "700", color: "#1e1b4b" }}>
-                How Does Volume Spike Breakout Analysis Work?
+                What is Pattern Finder and How Does It Work?
               </h2>
-              <p style={{ fontSize: "13px", color: "#4338ca", marginTop: "4px", lineHeight: "1.5" }}>
-                When institutional traders buy heavily into a stock, they leave a <strong>Volume Spike</strong> signal. This tool scans 25+ years of stock data (2000–2026) to find every time a stock had a volume spike near its 52-week high, and tests whether it successfully gained your target profit or failed (false positive).
+              <p style={{ fontSize: "13px", color: "#3730a3", marginTop: "4px", lineHeight: "1.5" }}>
+                Before risking real money on a breakout idea, <strong>Pattern Finder</strong> tests if volume surges on a stock historically led to actual gains. It scans 25+ years of daily stock history (2000–2026) to calculate your exact historical win rate.
               </p>
             </div>
           </div>
 
+          {/* 3-Step How-It-Works Visual Card */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px", marginTop: "18px", paddingTop: "16px", borderTop: "1px solid #c7d2fe" }}>
+            <div style={{ background: "#ffffff", padding: "12px 14px", borderRadius: "8px", border: "1px solid #a5b4fc" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#4338ca", fontWeight: "700", fontSize: "12px" }}>
+                <span style={{ background: "#e0e7ff", borderRadius: "50%", width: "20px", height: "20px", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "11px" }}>1</span>
+                <span>The Trigger (Volume Surge)</span>
+              </div>
+              <p style={{ fontSize: "11px", color: "#475569", marginTop: "4px" }}>Scans for days when volume is $\ge 2.0\times$ normal within 5% of 52-week highs.</p>
+            </div>
+            <div style={{ background: "#ffffff", padding: "12px 14px", borderRadius: "8px", border: "1px solid #a5b4fc" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#4338ca", fontWeight: "700", fontSize: "12px" }}>
+                <span style={{ background: "#e0e7ff", borderRadius: "50%", width: "20px", height: "20px", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "11px" }}>2</span>
+                <span>The Test (Forward Move)</span>
+              </div>
+              <p style={{ fontSize: "11px", color: "#475569", marginTop: "4px" }}>Tracks if price surged +20% within the next 15 trading days.</p>
+            </div>
+            <div style={{ background: "#ffffff", padding: "12px 14px", borderRadius: "8px", border: "1px solid #a5b4fc" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#4338ca", fontWeight: "700", fontSize: "12px" }}>
+                <span style={{ background: "#e0e7ff", borderRadius: "50%", width: "20px", height: "20px", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "11px" }}>3</span>
+                <span>The Verdict (Win Rate)</span>
+              </div>
+              <p style={{ fontSize: "11px", color: "#475569", marginTop: "4px" }}>Shows total successful breakouts vs failed false breakouts.</p>
+            </div>
+          </div>
+
           {/* Quick Setup Presets */}
-          <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px solid #c7d2fe" }}>
-            <span style={{ fontFamily: "var(--font-jetbrains)", fontSize: "11px", fontWeight: "700", color: "#3730a3", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-              Quick Preset Profiles:
+          <div style={{ marginTop: "14px", display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+            <span style={{ fontFamily: "var(--font-jetbrains)", fontSize: "11px", fontWeight: "700", color: "#3730a3", textTransform: "uppercase" }}>
+              Try Preset Stock Scans:
             </span>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "8px" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
               {PRESET_PROFILES.map((p, idx) => (
                 <button
                   key={idx}
@@ -220,16 +245,18 @@ export default function PatternFinderPage() {
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "20px" }}>
             <div>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "#475569", marginBottom: "6px" }}>
-                Select Stock Symbol
+              <label title="Select any Indian NSE stock from local database cache" style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "12px", fontWeight: "600", color: "#475569", marginBottom: "6px", cursor: "help" }}>
+                <span>Select Stock Symbol</span>
+                <HelpCircle size={13} className="text-slate-400" />
               </label>
               <SymbolCombobox value={symbol} onChange={setSymbol} />
               <span style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px", display: "block" }}>e.g., PNB, SBIN, RELIANCE, CANBK</span>
             </div>
 
             <div>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "#475569", marginBottom: "6px" }}>
-                Target Profit Gain (%)
+              <label title="The percentage profit target you want the stock to achieve after the volume breakout signal" style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "12px", fontWeight: "600", color: "#475569", marginBottom: "6px", cursor: "help" }}>
+                <span>Target Profit Gain (%)</span>
+                <HelpCircle size={13} className="text-slate-400" />
               </label>
               <div style={{ position: "relative" }}>
                 <input
@@ -252,8 +279,9 @@ export default function PatternFinderPage() {
             </div>
 
             <div>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "#475569", marginBottom: "6px" }}>
-                Volume Spike Multiplier (RVOL)
+              <label title="Relative Volume: Entry day volume vs 20-day average. 2.0x means 200% of normal volume." style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "12px", fontWeight: "600", color: "#475569", marginBottom: "6px", cursor: "help" }}>
+                <span>Volume Surge Multiplier (RVOL)</span>
+                <HelpCircle size={13} className="text-slate-400" />
               </label>
               <input
                 type="number"
@@ -275,8 +303,9 @@ export default function PatternFinderPage() {
             </div>
 
             <div>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "#475569", marginBottom: "6px" }}>
-                52-Week High Distance (%)
+              <label title="Proximity to 52-week high: only scan signals within X% of annual high peak" style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "12px", fontWeight: "600", color: "#475569", marginBottom: "6px", cursor: "help" }}>
+                <span>52-Week High Distance (%)</span>
+                <HelpCircle size={13} className="text-slate-400" />
               </label>
               <input
                 type="number"
@@ -298,8 +327,9 @@ export default function PatternFinderPage() {
             </div>
 
             <div>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "#475569", marginBottom: "6px" }}>
-                Holding Window (Trading Days)
+              <label title="Maximum number of trading days allowed to reach the target profit gain" style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "12px", fontWeight: "600", color: "#475569", marginBottom: "6px", cursor: "help" }}>
+                <span>Holding Window (Trading Days)</span>
+                <HelpCircle size={13} className="text-slate-400" />
               </label>
               <input
                 type="number"
@@ -383,7 +413,7 @@ export default function PatternFinderPage() {
               </div>
 
               <div className="bt-stat-card" style={{ borderLeft: "4px solid #059669" }}>
-                <span>Historical Hit Rate</span>
+                <span title="Percentage of times the pattern successfully reached your target profit goal">Historical Hit Rate</span>
                 <h3 style={{ fontFamily: "var(--font-space-grotesk)", fontSize: "28px", fontWeight: "700", color: "#059669", marginTop: "4px" }}>
                   {result.metrics.hit_rate_pct}%
                 </h3>
@@ -393,7 +423,7 @@ export default function PatternFinderPage() {
               </div>
 
               <div className="bt-stat-card" style={{ borderLeft: "4px solid #4f46e5" }}>
-                <span>True Positives (Winners)</span>
+                <span title="Setups that successfully reached your target profit within the holding window">SUCCESS (Target Met)</span>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}>
                   <CheckCircle2 className="text-emerald-600" size={24} />
                   <h3 style={{ fontFamily: "var(--font-space-grotesk)", fontSize: "28px", fontWeight: "700", color: "#0f172a" }}>
@@ -406,7 +436,7 @@ export default function PatternFinderPage() {
               </div>
 
               <div className="bt-stat-card" style={{ borderLeft: "4px solid #e11d48" }}>
-                <span>False Positives (Failed Signals)</span>
+                <span title="Setups that failed to reach your target profit within the holding window">FAILED (Target Missed)</span>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}>
                   <XCircle className="text-rose-600" size={24} />
                   <h3 style={{ fontFamily: "var(--font-space-grotesk)", fontSize: "28px", fontWeight: "700", color: "#0f172a" }}>
@@ -420,7 +450,7 @@ export default function PatternFinderPage() {
 
             </div>
 
-            <section className="bt-panel pattern-finder-visualization" aria-label="Historical breakout visualization">
+            <section className="bt-panel pattern-finder-visualization" aria-label="Historical breakout visualization" style={{ marginBottom: "24px" }}>
               <div className="bt-panel-head">
                 <div><span className="bt-eyebrow">BREAKOUT VISUALIZATION</span><h2>{result.symbol} signal outcomes</h2><p>Peak forward return for the filtered historical triggers.</p></div>
                 <span className="bt-panel-note">{filteredTrades.length} signals</span>
@@ -473,7 +503,7 @@ export default function PatternFinderPage() {
                       boxShadow: filterType === "true_positive" ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
                     }}
                   >
-                    True Positives ({result.metrics.true_positives})
+                    SUCCESS ({result.metrics.true_positives})
                   </button>
                   <button
                     onClick={() => setFilterType("false_positive")}
@@ -489,7 +519,7 @@ export default function PatternFinderPage() {
                       boxShadow: filterType === "false_positive" ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
                     }}
                   >
-                    False Positives ({result.metrics.false_positives})
+                    FAILED ({result.metrics.false_positives})
                   </button>
                 </div>
               </div>
@@ -498,13 +528,13 @@ export default function PatternFinderPage() {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
                   <thead>
                     <tr style={{ borderBottom: "2px solid #f1f5f9", textAlign: "left", color: "#64748b", fontFamily: "var(--font-jetbrains)", fontSize: "11px", textTransform: "uppercase" }}>
-                      <th style={{ padding: "12px 10px" }}>Date</th>
-                      <th style={{ padding: "12px 10px" }}>Stock Price</th>
-                      <th style={{ padding: "12px 10px" }}>Volume Surge (RVOL)</th>
-                      <th style={{ padding: "12px 10px" }}>52w High Dist %</th>
-                      <th style={{ padding: "12px 10px" }}>Peak 15d Move</th>
-                      <th style={{ padding: "12px 10px" }}>Signal Outcome</th>
-                      <th style={{ padding: "12px 10px" }}>Diagnostic Note</th>
+                      <th title="Trading date when volume spike occurred" style={{ padding: "12px 10px" }}>Date</th>
+                      <th title="Closing stock price on trigger day" style={{ padding: "12px 10px" }}>Stock Price</th>
+                      <th title="Relative volume: Entry volume vs 20-day average volume" style={{ padding: "12px 10px" }}>Volume Surge (RVOL)</th>
+                      <th title="Percentage gap to 52-week high peak" style={{ padding: "12px 10px" }}>52w High Dist %</th>
+                      <th title="Highest percentage gain reached within holding window" style={{ padding: "12px 10px" }}>Peak Move</th>
+                      <th title="Pattern test outcome: Success (Target Met) vs Failed (Target Missed)" style={{ padding: "12px 10px" }}>Signal Outcome</th>
+                      <th title="Diagnostic explanation of why trade succeeded or failed" style={{ padding: "12px 10px" }}>Diagnostic Note</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -536,7 +566,7 @@ export default function PatternFinderPage() {
                                 fontWeight: "600",
                               }}
                             >
-                              <TrendingUp size={14} /> True Positive
+                              <TrendingUp size={14} /> SUCCESS (Target Met)
                             </span>
                           ) : (
                             <span
@@ -552,11 +582,11 @@ export default function PatternFinderPage() {
                                 fontWeight: "600",
                               }}
                             >
-                              <TrendingDown size={14} /> False Positive
+                              <TrendingDown size={14} /> FAILED (Target Missed)
                             </span>
                           )}
                         </td>
-                        <td style={{ padding: "12px 10px", color: t.failure_reason ? "#e11d48" : "#64748b", fontSize: "12px" }}>
+                        <td style={{ padding: "12px 10px", color: t.failure_reason ? "#e11d48" : "#059669", fontSize: "12px", fontWeight: t.failure_reason ? "400" : "600" }}>
                           {t.failure_reason ?? "✓ Reached Target Profit"}
                         </td>
                       </tr>

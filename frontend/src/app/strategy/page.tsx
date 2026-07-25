@@ -5,37 +5,26 @@ import { CheckCircle, ChevronDown, ChevronUp, Eye, Play, Plus, Search, ShieldChe
 import TopBar from "@/components/layout/TopBar";
 import { SymbolCombobox } from "@/components/data/SymbolCombobox";
 import { runStrategyBacktest, type LiveBacktestResult } from "@/lib/backtest-api";
+import { getUnifiedTemplates } from "@/lib/strategy-library";
 
 type ASTKind = "operator" | "indicator" | "comparison" | "literal";
 type ASTNode = { kind: ASTKind; value: string };
-type Template = { name: string; strategyId: string; type: string; rsiOversold: number; rsiOverbought: number; fastEma: number; slowEma: number; entryText?: string; exitText?: string; indicators?: Array<{ alias: string; type: string; params: string }> };
+type Template = { name: string; strategyId: string; type: string; rsiOversold: number; rsiOverbought: number; fastEma: number; slowEma: number; entryText?: string; exitText?: string; defaults?: { symbol: string; timeframe: "1day" | "1week" | "1month"; fast: number; slow: number }; indicators?: Array<{ alias: string; type: string; params: string }> };
 
-const templates: Template[] = [
-  { name: "SMA Crossover", strategyId: "sma_crossover", type: "Trend Following", rsiOversold: 30, rsiOverbought: 70, fastEma: 20, slowEma: 50 },
-  { name: "RSI Momentum", strategyId: "rsi_ema", type: "Mean Reversion", rsiOversold: 30, rsiOverbought: 70, fastEma: 20, slowEma: 50 },
-  { name: "MACD Crossover", strategyId: "macd_crossover", type: "Trend Following", rsiOversold: 35, rsiOverbought: 65, fastEma: 12, slowEma: 26 },
-  { name: "Bollinger Reversion", strategyId: "bollinger_mean_reversion", type: "Mean Reversion", rsiOversold: 25, rsiOverbought: 75, fastEma: 20, slowEma: 50 },
-  { name: "Donchian Breakout", strategyId: "donchian_breakout", type: "Breakout", rsiOversold: 40, rsiOverbought: 60, fastEma: 20, slowEma: 50 },
-  { name: "EMA Trend", strategyId: "ema_crossover", type: "Trend Following", rsiOversold: 30, rsiOverbought: 70, fastEma: 20, slowEma: 50 },
-  { name: "Support / Resistance Breakout", strategyId: "support_resistance_breakout", type: "Price Action", rsiOversold: 30, rsiOverbought: 70, fastEma: 20, slowEma: 50, entryText: "Buy when close breaks the prior range high.", exitText: "Sell when close breaks the prior range low.", indicators: [{ alias: "resistance_50", type: "PRICE LEVEL", params: "prior high: 50" }, { alias: "support_50", type: "PRICE LEVEL", params: "prior low: 50" }] },
-  { name: "Market-Structure Break", strategyId: "market_structure_break", type: "Price Action", rsiOversold: 30, rsiOverbought: 70, fastEma: 20, slowEma: 50, entryText: "Buy on a structure-high break while fast EMA is above slow EMA.", exitText: "Sell below structure low or when the EMA trend turns down.", indicators: [{ alias: "structure_high_20", type: "PRICE LEVEL", params: "prior high: 20" }, { alias: "structure_low_20", type: "PRICE LEVEL", params: "prior low: 20" }, { alias: "ema_50", type: "EMA", params: "period: 50" }] },
-  { name: "Fibonacci Retracement", strategyId: "fibonacci_retracement", type: "Price Action", rsiOversold: 30, rsiOverbought: 70, fastEma: 20, slowEma: 50, entryText: "Buy an uptrend pullback that reaches Fib 61.8% and recovers above Fib 50%.", exitText: "Sell below Fib 78.6% or above the prior range high.", indicators: [{ alias: "fib_50", type: "FIBONACCI", params: "level: 50%" }, { alias: "fib_618", type: "FIBONACCI", params: "level: 61.8%" }, { alias: "fib_786", type: "FIBONACCI", params: "level: 78.6%" }] },
-  { name: "Price-Action Reversal", strategyId: "price_action_reversal", type: "Price Action", rsiOversold: 30, rsiOverbought: 70, fastEma: 20, slowEma: 50, entryText: "Buy a bullish engulfing candle or hammer above the slow EMA.", exitText: "Sell on a bearish engulfing candle or support loss.", indicators: [{ alias: "bullish_reversal", type: "CANDLE", params: "engulfing or hammer" }, { alias: "ema_50", type: "EMA", params: "period: 50" }] },
-  { name: "Supply / Demand Zones", strategyId: "supply_demand_zones", type: "Price Action", rsiOversold: 30, rsiOverbought: 70, fastEma: 20, slowEma: 50, entryText: "Buy when a bullish low-area demand candle is reclaimed above its high.", exitText: "Sell below the demand floor or fast EMA.", indicators: [{ alias: "demand_floor_50", type: "ZONE", params: "rolling low: 50" }, { alias: "ema_20", type: "EMA", params: "period: 20" }] },
-  { name: "ICT-Style Liquidity + FVG", strategyId: "ict_liquidity_fvg", type: "Price Action", rsiOversold: 30, rsiOverbought: 70, fastEma: 20, slowEma: 50, entryText: "Buy a reclaimed liquidity sweep with a bullish fair-value-gap approximation above the slow EMA.", exitText: "Sell below the liquidity low or fast EMA.", indicators: [{ alias: "liquidity_low_20", type: "PRICE LEVEL", params: "prior low: 20" }, { alias: "bullish_fvg", type: "IMBALANCE", params: "three-candle gap" }, { alias: "ema_50", type: "EMA", params: "period: 50" }] },
-  { name: "Multi-Timeframe Trend", strategyId: "multi_timeframe_trend", type: "Trend Confirmation", rsiOversold: 30, rsiOverbought: 70, fastEma: 20, slowEma: 50, entryText: "Buy when current and higher-timeframe EMA trends are both bullish.", exitText: "Sell when either timeframe loses bullish EMA alignment.", indicators: [{ alias: "ema_20", type: "EMA", params: "current period: 20" }, { alias: "ema_50", type: "EMA", params: "current period: 50" }, { alias: "higher_ema_50", type: "EMA", params: "higher timeframe: 50" }] },
-];
+const templates: Template[] = getUnifiedTemplates();
+const defaultTemplate = templates[0];
 
-const initialEntry: ASTNode[] = [
-  { kind: "operator", value: "AND" }, { kind: "indicator", value: "RSI(14)" }, { kind: "comparison", value: "<" }, { kind: "literal", value: "30" },
-  { kind: "comparison", value: "," }, { kind: "operator", value: "CROSS_ABOVE" }, { kind: "indicator", value: "EMA_20" }, { kind: "indicator", value: "EMA_50" },
-];
-const initialExit: ASTNode[] = [{ kind: "indicator", value: "RSI(14)" }, { kind: "comparison", value: ">" }, { kind: "literal", value: "70" }];
-const initialIndicators = [
-  { alias: "rsi_14", type: "RSI", params: "period: 14" },
-  { alias: "ema_20", type: "EMA", params: "period: 20" },
-  { alias: "ema_50", type: "EMA", params: "period: 50" },
-];
+function entryNodesFor(template: Template): ASTNode[] {
+  return [{ kind: "literal", value: template.entryText ?? "Use the selected template's entry rule." }];
+}
+
+function exitNodesFor(template: Template): ASTNode[] {
+  return [{ kind: "literal", value: template.exitText ?? "Use the selected template's exit rule." }];
+}
+
+const initialEntry: ASTNode[] = entryNodesFor(defaultTemplate);
+const initialExit: ASTNode[] = exitNodesFor(defaultTemplate);
+const initialIndicators = defaultTemplate.indicators ?? [];
 const initialRisk = { stopLoss: "3.0", takeProfit: "9.0", positionSize: "10.0", maxPositions: "1", commission: "0.1", slippage: "0.05" };
 const TIMEFRAME_OPTIONS = [
   { value: "1day", label: "Daily · official NSE candles" },
@@ -48,12 +37,12 @@ function percent(value: number) { return `${value >= 0 ? "+" : ""}${value.toFixe
 
 export default function StrategyPage() {
   const [symbol, setSymbol] = useState("RELIANCE");
-  const [title, setTitle] = useState("My RSI + EMA Strategy");
+  const [title, setTitle] = useState(`${defaultTemplate.name} research test`);
   const [start, setStart] = useState("2020-01-01");
   const [end, setEnd] = useState("2024-12-31");
   const [timeframe, setTimeframe] = useState<"1day" | "1week" | "1month">("1day");
   const [capital, setCapital] = useState("100000");
-  const [selectedTemplate, setSelectedTemplate] = useState("RSI Momentum");
+  const [selectedTemplate, setSelectedTemplate] = useState(defaultTemplate.name);
   const [templateQuery, setTemplateQuery] = useState("");
   const [showIndicators, setShowIndicators] = useState(true);
   const [showRisk, setShowRisk] = useState(true);
@@ -116,7 +105,7 @@ export default function StrategyPage() {
   };
 
   const resetStrategy = () => {
-    setSymbol("RELIANCE"); setTitle("My RSI + EMA Strategy"); setStart("2020-01-01"); setEnd("2024-12-31"); setTimeframe("1day"); setCapital("100000"); setSelectedTemplate("RSI Momentum"); setIndicators(initialIndicators); setEntryNodes(initialEntry); setExitNodes(initialExit); setRisk(initialRisk); setResult(null); setError(null); setMessage("New strategy workspace ready.");
+    setSymbol(defaultTemplate.defaults?.symbol ?? "RELIANCE"); setTitle(`${defaultTemplate.name} research test`); setStart("2020-01-01"); setEnd("2024-12-31"); setTimeframe(defaultTemplate.defaults?.timeframe ?? "1day"); setCapital("100000"); setSelectedTemplate(defaultTemplate.name); setIndicators(initialIndicators); setEntryNodes(initialEntry); setExitNodes(initialExit); setRisk(initialRisk); setResult(null); setError(null); setMessage("New strategy workspace ready.");
   };
 
   const execute = async (mode: "run" | "preview") => {

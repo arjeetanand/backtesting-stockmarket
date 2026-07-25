@@ -9,11 +9,12 @@ from typing import Any, Literal
 import numpy as np
 import pandas as pd
 
+from quant_research.domain.backtesting.vector_engine import SUPPORTED_STRATEGY_IDS, run_rule_backtest
 from quant_research.repositories.market_cache import SqliteMarketCache
 from quant_research.services.nse_import import SENSEX_NSE_STARTER
 
 UniverseType = Literal["nifty50", "nifty500", "all"]
-StrategyType = Literal["sma_crossover", "rsi_reversion", "breakout"]
+StrategyType = str
 
 NIFTY50_SYMBOLS: set[str] = {
     "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "BHARTIARTL", "ITC", "SBIN", "LTIM", "LARSEN",
@@ -73,6 +74,8 @@ class MarketScannerService:
         start: datetime | None = None,
         end: datetime | None = None,
     ) -> dict[str, Any]:
+        if strategy_type not in SUPPORTED_STRATEGY_IDS:
+            raise ValueError(f"Unsupported strategy '{strategy_type}'. Choose one of: {', '.join(SUPPORTED_STRATEGY_IDS)}.")
         summary = self._cache.summary()
         all_instruments = {inst.symbol: inst for inst in self._cache.search_instruments(limit=2000)}
         cached_symbols = set(self._cache.get_available_symbols())
@@ -103,66 +106,37 @@ class MarketScannerService:
 
         for sym in scan_symbols:
             bars = self._cache.get(sym, "1day", start, end)
-            if not bars or len(bars) < 30:
+            if not bars or len(bars) < 60:
                 continue
 
-            close = np.array([b.close for b in bars], dtype=float)
-            open_prices = np.array([b.open for b in bars], dtype=float)
-            high_prices = np.array([b.high for b in bars], dtype=float)
-            n_bars = len(close)
+            frame = pd.DataFrame([
+                {
+                    "date": bar.timestamp,
+                    "open": bar.open,
+                    "high": bar.high,
+                    "low": bar.low,
+                    "close": bar.close,
+                    "volume": bar.volume,
+                }
+                for bar in bars
+            ])
+            try:
+                engine_result = run_rule_backtest(
+                    frame,
+                    symbol=sym,
+                    timeframe="1day",
+                    strategy_id=strategy_type,
+                    initial_capital=100_000.0,
+                    commission_pct=0.001,
+                    slippage_pct=0.0005,
+                    position_size_pct=100.0,
+                )
+            except ValueError:
+                continue
 
-            # Strategy Signal Calculation
-            if strategy_type == "sma_crossover":
-                fast_sma = pd.Series(close).rolling(20, min_periods=20).mean().values
-                slow_sma = pd.Series(close).rolling(50, min_periods=50).mean().values
-                signals = np.where(fast_sma > slow_sma, 1, 0)
-            elif strategy_type == "rsi_reversion":
-                delta = pd.Series(close).diff()
-                gain = delta.clip(lower=0.0).rolling(14, min_periods=14).mean()
-                loss = (-delta.clip(upper=0.0)).rolling(14, min_periods=14).mean()
-                rs = gain / loss.replace(0.0, np.nan)
-                rsi = 100.0 - (100.0 / (1.0 + rs))
-                signals = np.where(rsi < 35, 1, np.where(rsi > 70, 0, np.nan))
-                # Forward fill positions
-                s_series = pd.Series(signals).ffill().fillna(0)
-                signals = s_series.values
-            else:  # breakout
-                sma_20 = pd.Series(close).rolling(20, min_periods=20).mean().values
-                high_52w = pd.Series(high_prices).rolling(250, min_periods=50).max().values
-                signals = np.where((close >= high_52w * 0.98) & (close > sma_20), 1, 0)
-
-            # Vectorized Return Simulation
-            trades: list[float] = []
-            position = 0
-            entry_p = 0.0
-
-            for i in range(1, n_bars - 1):
-                sig = signals[i]
-                if position == 0 and sig == 1:
-                    position = 1
-                    entry_p = open_prices[i + 1]
-                elif position == 1 and sig == 0:
-                    position = 0
-                    exit_p = open_prices[i + 1]
-                    ret = (exit_p / entry_p) - 1.0 if entry_p > 0 else 0.0
-                    trades.append(ret)
-
-            buy_hold_ret = (close[-1] / close[0]) - 1.0 if close[0] > 0 else 0.0
-            strat_ret = sum(trades) if trades else 0.0
-            win_rate = float(np.mean([1 if t > 0 else 0 for t in trades])) if trades else 0.0
-
-            # Drawdown calculation
-            cumulative = np.cumprod(1.0 + np.array(trades)) if trades else np.array([1.0])
-            peak = np.maximum.accumulate(cumulative)
-            drawdowns = (cumulative - peak) / peak
-            max_dd = float(abs(np.min(drawdowns))) if len(drawdowns) > 0 else 0.0
-
-            # Sharpe Ratio
-            if trades and len(trades) > 1:
-                std_dev = float(np.std(trades))
-                sharpe = float(np.mean(trades) / std_dev * np.sqrt(252)) if std_dev > 0 else 0.0
-            else:
-                sharpe = 0.0
+            first_close = float(frame["close"].iloc[0])
+            last_close = float(frame["close"].iloc[-1])
+            buy_hold_ret = (last_close / first_close) - 1.0 if first_close > 0 else 0.0
 
             inst_info = all_instruments.get(sym)
             c_name = inst_info.company_name if inst_info else sym
@@ -173,13 +147,13 @@ class MarketScannerService:
                     symbol=sym,
                     company_name=c_name,
                     sector=sector,
-                    bars=n_bars,
-                    strategy_return=float(strat_ret),
+                    bars=len(bars),
+                    strategy_return=float(engine_result.metrics.total_return),
                     buy_hold_return=float(buy_hold_ret),
-                    win_rate=float(win_rate),
-                    max_drawdown=float(max_dd),
-                    sharpe_ratio=float(sharpe),
-                    trade_count=len(trades),
+                    win_rate=float(engine_result.metrics.win_rate),
+                    max_drawdown=float(abs(engine_result.metrics.max_drawdown)),
+                    sharpe_ratio=float(engine_result.metrics.sharpe_ratio),
+                    trade_count=int(engine_result.metrics.total_trades),
                 )
             )
 

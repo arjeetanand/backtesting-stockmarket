@@ -26,7 +26,7 @@ export type StrategyLibraryEntry = {
  * are never stored here: the selected stock/date/cost inputs determine the
  * live backtest statistics shown after a run.
  */
-export const STRATEGY_LIBRARY: StrategyLibraryEntry[] = [
+const STRATEGY_SOURCE_LIBRARY: StrategyLibraryEntry[] = [
   {
     id: "golden-cross",
     strategyId: "sma_crossover",
@@ -334,3 +334,61 @@ export const STRATEGY_LIBRARY: StrategyLibraryEntry[] = [
 ];
 
 export const STRATEGY_SOURCE_DISCLAIMER = "YouTube links are community search references, not endorsements. Popularity is not performance evidence; return, win rate, drawdown, and trade stats are calculated only after you choose the stock, dates, costs, and run a backtest.";
+
+/**
+ * One canonical execution template per engine strategy ID. Golden Cross is
+ * retained in the source catalogue as an educational variant, but the engine
+ * executes it through the same `sma_crossover` strategy ID as the 20/50 rule.
+ * Every picker and comparison surface should consume this canonical list.
+ */
+export function getUnifiedStrategies(): StrategyLibraryEntry[] {
+  const seen = new Set<string>();
+  const canonical: StrategyLibraryEntry[] = [];
+  for (const item of STRATEGY_SOURCE_LIBRARY) {
+    if (seen.has(item.strategyId)) continue;
+    const preferred = item.strategyId === "sma_crossover"
+      ? STRATEGY_SOURCE_LIBRARY.find((candidate) => candidate.id === "sma-crossover") ?? item
+      : item;
+    seen.add(item.strategyId);
+    canonical.push(preferred);
+  }
+  return canonical;
+}
+
+export const STRATEGY_LIBRARY = getUnifiedStrategies();
+export const UNIFIED_STRATEGIES = STRATEGY_LIBRARY;
+
+export function getUnifiedStrategy(idOrStrategyId: string): StrategyLibraryEntry | undefined {
+  return UNIFIED_STRATEGIES.find((item) => item.id === idOrStrategyId || item.strategyId === idOrStrategyId);
+}
+
+export function getUnifiedTemplates() {
+  return UNIFIED_STRATEGIES.map((entry) => ({
+    name: entry.name,
+    strategyId: entry.strategyId,
+    type: entry.family,
+    rsiOversold: 30,
+    rsiOverbought: 70,
+    fastEma: entry.defaults.fast,
+    slowEma: entry.defaults.slow,
+    entryText: entry.entryRules.join(" "),
+    exitText: entry.exitRules.join(" "),
+    defaults: entry.defaults,
+    indicators: entry.indicators.map((ind, idx) => ({
+      alias: `ind_${idx + 1}`,
+      type: ind,
+      params: ind,
+    })),
+  }));
+}
+
+export function getUnifiedComparisonList() {
+  return UNIFIED_STRATEGIES.map((item) => ({
+    id: item.strategyId,
+    title: item.name,
+    family: item.family,
+    description: item.description,
+    use: item.use,
+    parameters: item.indicators.join(" · "),
+  }));
+}

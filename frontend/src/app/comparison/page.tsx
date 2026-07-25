@@ -6,6 +6,7 @@ import { AlertTriangle, Check, Info, Loader2, Play, Scale, Search, TrendingUp } 
 import TopBar from "@/components/layout/TopBar";
 import { SymbolCombobox } from "@/components/data/SymbolCombobox";
 import { getMarketAvailability, type MarketAvailability } from "@/lib/market-data";
+import { getUnifiedComparisonList } from "@/lib/strategy-library";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
@@ -30,23 +31,7 @@ type BacktestPayload = {
 };
 type MatrixResult = { id: string; strategyId: string; title: string; result: BacktestPayload; source?: "matrix" | "saved" };
 
-const STRATEGIES: StrategyDefinition[] = [
-  { id: "sma_crossover", title: "SMA Golden Cross", family: "Trend following", description: "Buys when a fast simple moving average crosses above a slower average.", use: "A simple baseline for medium-term trend changes.", parameters: "SMA 20 / 50" },
-  { id: "ema_crossover", title: "EMA Trend Crossover", family: "Trend following", description: "Uses exponential averages so recent prices have more influence.", use: "Useful when you want a faster trend signal.", parameters: "EMA 20 / 50" },
-  { id: "rsi_ema", title: "RSI + EMA Filter", family: "Momentum / pullback", description: "Buys an oversold pullback only while the fast EMA is above the slow EMA.", use: "Tests pullbacks inside a broader uptrend.", parameters: "RSI 14 · EMA 20 / 50" },
-  { id: "rsi_mean_reversion", title: "RSI Mean Reversion", family: "Mean reversion", description: "Buys oversold conditions and exits as momentum returns toward neutral.", use: "Tests whether stretched moves tend to snap back.", parameters: "RSI 14 · 30 / 50" },
-  { id: "bollinger_mean_reversion", title: "Bollinger Reversion", family: "Mean reversion", description: "Buys below the lower volatility band and exits near the moving average.", use: "Explores volatility bands and reversion to a centre line.", parameters: "20 periods · 2σ" },
-  { id: "macd_crossover", title: "MACD Crossover", family: "Trend confirmation", description: "Follows MACD and signal-line crossovers for trend confirmation.", use: "Combines momentum with a slower trend filter.", parameters: "12 / 26 / 9" },
-  { id: "donchian_breakout", title: "Donchian Breakout", family: "Breakout", description: "Enters on a new rolling high and exits on a rolling low.", use: "Studies whether sustained breakouts persist.", parameters: "50-day channel" },
-  { id: "momentum", title: "Price Momentum", family: "Momentum", description: "Stays long while the selected lookback return remains positive.", use: "A direct test of recent price persistence.", parameters: "20-day momentum" },
-  { id: "support_resistance_breakout", title: "Support / Resistance Breakout", family: "Price action", description: "Enters above the prior range high and exits below the prior range low.", use: "Study follow-through after a visible range break.", parameters: "Prior high / low · 50" },
-  { id: "market_structure_break", title: "Market-Structure Break", family: "Price action", description: "Enters on a structure-high break with a bullish EMA trend filter.", use: "Study higher-high continuation after a structure break.", parameters: "Structure 20 · EMA 20 / 50" },
-  { id: "fibonacci_retracement", title: "Fibonacci Retracement", family: "Price action", description: "Buys an uptrend pullback that recovers from the 61.8% retracement.", use: "Study trend pullbacks around rolling Fibonacci levels.", parameters: "Fib 50 / 61.8 / 78.6 · 50" },
-  { id: "price_action_reversal", title: "Price-Action Reversal", family: "Price action", description: "Buys bullish engulfing or hammer candles above the slow EMA.", use: "Study deterministic candle reversals in an uptrend.", parameters: "Engulfing / hammer · EMA 50" },
-  { id: "supply_demand_zones", title: "Supply / Demand Zones", family: "Price action", description: "Buys a bullish demand-zone reclaim near a rolling low.", use: "Study low-area reaction and reclaim behavior.", parameters: "Demand 50 · EMA 20" },
-  { id: "ict_liquidity_fvg", title: "ICT-Style Liquidity + FVG", family: "Price action", description: "Buys a reclaimed liquidity sweep with a bullish gap approximation.", use: "Explore daily-bar liquidity and imbalance concepts.", parameters: "Sweep 20 · FVG · EMA 50" },
-  { id: "multi_timeframe_trend", title: "Multi-Timeframe Trend", family: "Trend confirmation", description: "Requires bullish EMA alignment on the selected and higher timeframe.", use: "Study whether higher-timeframe direction confirms entries.", parameters: "EMA 20 / 50 · higher timeframe" },
-];
+const STRATEGIES: StrategyDefinition[] = getUnifiedComparisonList();
 const TIMEFRAMES = [
   { value: "1day", label: "Daily", detail: "NSE daily candles" },
   { value: "1week", label: "Weekly", detail: "Resampled from daily" },

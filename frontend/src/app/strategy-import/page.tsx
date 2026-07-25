@@ -19,7 +19,7 @@ import {
 import TopBar from "@/components/layout/TopBar";
 import { SymbolCombobox } from "@/components/data/SymbolCombobox";
 import { fetchWithTimeout } from "@/lib/api";
-import { STRATEGY_LIBRARY, STRATEGY_SOURCE_DISCLAIMER, type StrategyLibraryEntry } from "@/lib/strategy-library";
+import { STRATEGY_SOURCE_DISCLAIMER, UNIFIED_STRATEGIES, type StrategyLibraryEntry } from "@/lib/strategy-library";
 
 type Extraction = {
   title: string;
@@ -37,7 +37,7 @@ type Extraction = {
 };
 
 type PopularStrategy = StrategyLibraryEntry;
-const POPULAR_STRATEGIES: PopularStrategy[] = STRATEGY_LIBRARY;
+const POPULAR_STRATEGIES: PopularStrategy[] = UNIFIED_STRATEGIES;
 
 const today = new Date().toISOString().slice(0, 10);
 const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
