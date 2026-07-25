@@ -18,6 +18,7 @@ import {
   Sparkles,
   Search,
   BookmarkCheck,
+  SlidersHorizontal,
 } from "lucide-react";
 
 const mainNav = [
@@ -29,7 +30,7 @@ const mainNav = [
   { href: "/backtests", label: "My tests", icon: GitCompare },
   { href: "/comparison", label: "Compare tests", icon: BarChart3 },
   { href: "/ml-lab", label: "ML Lab", icon: BrainCircuit },
-  { href: "/options", label: "Learn", icon: BookOpenCheck },
+  { href: "/options", label: "Learn & Indicators", icon: BookOpenCheck },
 ];
 
 const secondaryNav = [

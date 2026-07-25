@@ -1,107 +1,31 @@
 "use client";
 
-import Link from "next/link";
-import { useMemo, useState } from "react";
-import { ArrowRight, BookOpen, Check, ChevronRight, CircleHelp, Info, ShieldCheck, SlidersHorizontal, TrendingUp } from "lucide-react";
+import { BookOpen, Sparkles, TrendingUp } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import IndicatorSchool from "@/components/learning/IndicatorSchool";
 
-type StrategyId = "long-call" | "long-put" | "covered-call" | "protective-put" | "bull-call-spread" | "bear-put-spread";
-type LessonId = "basics" | "curves" | "hedging";
-type Leg = { label: string; kind: "stock" | "call" | "put"; side: 1 | -1; strike?: number; premium?: number };
-
-const strategyInfo: Record<StrategyId, { name: string; short: string; note: string; risk: string; legs: (spot: number, strike: number, secondStrike: number, premium: number) => Leg[] }> = {
-  "long-call": { name: "Long call", short: "Pay a premium for upside exposure.", note: "You benefit when the underlying rises far enough to cover the premium.", risk: "Buyer risk is limited to the premium paid.", legs: (_spot, strike, _second, premium) => [{ label: `Buy call ₹${strike.toLocaleString("en-IN")}`, kind: "call", side: 1, strike, premium }] },
-  "long-put": { name: "Long put", short: "Pay a premium for downside protection or a bearish view.", note: "You benefit when the underlying falls below the strike by more than the premium.", risk: "Buyer risk is limited to the premium paid.", legs: (_spot, strike, _second, premium) => [{ label: `Buy put ₹${strike.toLocaleString("en-IN")}`, kind: "put", side: 1, strike, premium }] },
-  "covered-call": { name: "Covered call", short: "Hold the underlying and sell a call against it.", note: "The premium cushions a small fall, but your upside is capped at the call strike.", risk: "The stock can still fall substantially; the premium is only a small cushion.", legs: (spot, strike, _second, premium) => [{ label: `Own stock at ₹${spot.toLocaleString("en-IN")}`, kind: "stock", side: 1 }, { label: `Sell call ₹${strike.toLocaleString("en-IN")}`, kind: "call", side: -1, strike, premium }] },
-  "protective-put": { name: "Protective put", short: "Hold the underlying and buy a put as insurance.", note: "The put creates a floor below the strike, in exchange for its premium.", risk: "The premium is the ongoing cost of protection; upside remains open.", legs: (spot, strike, _second, premium) => [{ label: `Own stock at ₹${spot.toLocaleString("en-IN")}`, kind: "stock", side: 1 }, { label: `Buy put ₹${strike.toLocaleString("en-IN")}`, kind: "put", side: 1, strike, premium }] },
-  "bull-call-spread": { name: "Bull call spread", short: "Buy one call and sell a higher-strike call.", note: "A defined-risk bullish trade: lower entry cost, but a capped upside.", risk: "Both the maximum loss and maximum profit are defined before entry.", legs: (_spot, strike, secondStrike, premium) => [{ label: `Buy call ₹${strike.toLocaleString("en-IN")}`, kind: "call", side: 1, strike, premium }, { label: `Sell call ₹${secondStrike.toLocaleString("en-IN")}`, kind: "call", side: -1, strike: secondStrike, premium: premium * 0.42 }] },
-  "bear-put-spread": { name: "Bear put spread", short: "Buy one put and sell a lower-strike put.", note: "A defined-risk bearish trade with a capped payoff if the market falls.", risk: "Both the maximum loss and maximum profit are defined before entry.", legs: (_spot, strike, secondStrike, premium) => [{ label: `Buy put ₹${strike.toLocaleString("en-IN")}`, kind: "put", side: 1, strike, premium }, { label: `Sell put ₹${secondStrike.toLocaleString("en-IN")}`, kind: "put", side: -1, strike: secondStrike, premium: premium * 0.42 }] },
-};
-
-const lessonContent: Record<LessonId, { title: string; description: string; bullets: string[] }> = {
-  basics: { title: "Start with the building blocks", description: "An option is a contract. The buyer pays a premium for a right; the seller receives that premium and takes an obligation if assigned.", bullets: ["Call = right to buy. Put = right to sell.", "Strike = the agreed price. Expiry = when the right ends.", "Intrinsic value is what the option is worth if exercised now; time value is the extra uncertainty premium."] },
-  curves: { title: "Read a payoff curve", description: "The curve answers one question: after all premiums, what would this position be worth at expiry for each possible underlying price?", bullets: ["Above zero means a theoretical profit; below zero means a theoretical loss.", "The break-even line is where the curve crosses zero.", "A flat line is a capped result; an angled line shows exposure to the underlying."] },
-  hedging: { title: "Use options to shape risk", description: "Hedging is not a guarantee of profit. It is a deliberate trade-off: pay a known cost to reduce an unwanted part of another position.", bullets: ["Protective put: pay for a floor under a long holding.", "Covered call: collect premium while accepting a ceiling on upside.", "Spreads exchange some upside for a smaller, defined upfront risk."] },
-};
-
-const money = (value: number) => `${value < 0 ? "−" : ""}₹${Math.abs(value).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
-const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-
-function NumberField({ label, hint, value, onChange, min, max, step = 1 }: { label: string; hint: string; value: number; onChange: (value: number) => void; min: number; max: number; step?: number }) {
-  return <label className="options-field"><span><strong>{label}</strong><small>{hint}</small></span><input type="number" min={min} max={max} step={step} value={value} onChange={(event) => onChange(clamp(Number(event.target.value) || min, min, max))} /></label>;
-}
-
-function PayoffChart({ points, zeroY, selected, setSelected, breakEven }: { points: Array<{ price: number; pnl: number }>; zeroY: number; selected: number; setSelected: (value: number) => void; breakEven: number | null }) {
-  const width = 900;
-  const height = 300;
-  const margin = { top: 20, right: 20, bottom: 42, left: 56 };
-  const innerWidth = width - margin.left - margin.right;
-  const innerHeight = height - margin.top - margin.bottom;
-  const minPnl = Math.min(...points.map((point) => point.pnl), 0);
-  const maxPnl = Math.max(...points.map((point) => point.pnl), 0);
-  const range = Math.max(maxPnl - minPnl, 1);
-  const xFor = (price: number) => margin.left + ((price - points[0].price) / Math.max(points.at(-1)!.price - points[0].price, 1)) * innerWidth;
-  const yFor = (pnl: number) => margin.top + ((maxPnl - pnl) / range) * innerHeight;
-  const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${xFor(point.price)} ${yFor(point.pnl)}`).join(" ");
-  const selectedPoint = points.reduce((closest, point) => Math.abs(point.price - selected) < Math.abs(closest.price - selected) ? point : closest, points[0]);
-  const profitFill = `${margin.left},${zeroY} ${points.map((point) => `${xFor(point.price)},${yFor(Math.max(point.pnl, 0))}`).join(" ")} ${xFor(points.at(-1)!.price)},${zeroY}`;
-  const lossFill = `${margin.left},${zeroY} ${points.map((point) => `${xFor(point.price)},${yFor(Math.min(point.pnl, 0))}`).join(" ")} ${xFor(points.at(-1)!.price)},${zeroY}`;
-  return <div className="options-chart-wrap"><svg viewBox={`0 0 ${width} ${height}`} className="options-curve" role="img" aria-label="Theoretical option payoff at expiry. Use the expiry price slider below to inspect a point on the curve.">
-    <title>Theoretical payoff at expiry</title><desc>Green area is profit and red area is loss. The dashed line is the break-even price.</desc>
-    <defs><linearGradient id="profitFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#16a34a" stopOpacity=".16" /><stop offset="1" stopColor="#16a34a" stopOpacity=".02" /></linearGradient><linearGradient id="lossFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#e11d48" stopOpacity=".02" /><stop offset="1" stopColor="#e11d48" stopOpacity=".15" /></linearGradient></defs>
-    {[0, .25, .5, .75, 1].map((fraction) => <line key={fraction} x1={margin.left} x2={width - margin.right} y1={margin.top + innerHeight * fraction} y2={margin.top + innerHeight * fraction} stroke="#e2e8f0" strokeDasharray="3 4" />)}
-    <polygon points={profitFill} fill="url(#profitFill)" /><polygon points={lossFill} fill="url(#lossFill)" />
-    <line x1={margin.left} x2={width - margin.right} y1={zeroY} y2={zeroY} stroke="#475569" strokeWidth="1.5" />
-    {breakEven !== null && breakEven >= points[0].price && breakEven <= points.at(-1)!.price && <><line x1={xFor(breakEven)} x2={xFor(breakEven)} y1={margin.top} y2={height - margin.bottom} stroke="#4f46e5" strokeDasharray="5 4" /><text x={xFor(breakEven) + 6} y={margin.top + 14} className="options-svg-label">Break-even {breakEven.toFixed(2)}</text></>}
-    <path d={path} fill="none" stroke="#4338ca" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-    <line x1={xFor(selectedPoint.price)} x2={xFor(selectedPoint.price)} y1={margin.top} y2={height - margin.bottom} stroke="#0f172a" strokeDasharray="2 3" opacity=".7" />
-    <circle cx={xFor(selectedPoint.price)} cy={yFor(selectedPoint.pnl)} r="5" fill="#4338ca" stroke="#fff" strokeWidth="2" />
-    <text x={margin.left} y={height - 12} className="options-svg-label">Underlying price at expiry</text><text x={margin.left - 38} y={margin.top + 4} className="options-svg-label">P&amp;L</text>
-    {points.filter((_, index) => index % 4 === 0).map((point) => <text key={point.price} x={xFor(point.price)} y={height - 22} textAnchor="middle" className="options-svg-tick">₹{point.price.toLocaleString("en-IN")}</text>)}
-  </svg><input aria-label="Underlying price at expiry" className="options-price-slider" type="range" min={points[0].price} max={points.at(-1)!.price} step="1" value={selectedPoint.price} onChange={(event) => setSelected(Number(event.target.value))} /><div className="options-chart-hint"><span>Drag to explore: <strong>₹{selectedPoint.price.toLocaleString("en-IN")}</strong></span><span className={selectedPoint.pnl >= 0 ? "is-profit" : "is-loss"}>{selectedPoint.pnl >= 0 ? "Profit" : "Loss"}: <strong>{money(selectedPoint.pnl)}</strong></span></div></div>;
-}
-
 export default function OptionsPage() {
-  const [learningMode, setLearningMode] = useState<"indicators" | "options">("indicators");
-  const [lesson, setLesson] = useState<LessonId>("basics");
-  const [strategy, setStrategy] = useState<StrategyId>("long-call");
-  const [spot, setSpot] = useState(100);
-  const [strike, setStrike] = useState(100);
-  const [secondStrike, setSecondStrike] = useState(110);
-  const [premium, setPremium] = useState(2.5);
-  const [lotSize, setLotSize] = useState(1);
-  const [expiryPrice, setExpiryPrice] = useState(100);
-  const selectedStrategy = strategyInfo[strategy];
-  const legs = useMemo(() => selectedStrategy.legs(spot, strike, secondStrike, premium), [selectedStrategy, spot, strike, secondStrike, premium]);
-  const points = useMemo(() => Array.from({ length: 31 }, (_, index) => { const price = Math.max(1, Math.round(spot * (0.7 + index * 0.02))); const pnl = legs.reduce((total, leg) => { if (leg.kind === "stock") return total + leg.side * (price - spot) * lotSize; const intrinsic = leg.kind === "call" ? Math.max(price - (leg.strike ?? strike), 0) : Math.max((leg.strike ?? strike) - price, 0); return total + leg.side * (intrinsic - (leg.premium ?? 0)) * lotSize; }, 0); return { price, pnl }; }), [legs, spot, strike, lotSize]);
-  const selectedPoint = points.reduce((closest, point) => Math.abs(point.price - expiryPrice) < Math.abs(closest.price - expiryPrice) ? point : closest, points[0]);
-  const zeroY = 20 + (Math.max(...points.map((point) => point.pnl), 0) / Math.max(Math.max(...points.map((point) => point.pnl), 0) - Math.min(...points.map((point) => point.pnl), 0), 1)) * 238;
-  const breakEven = useMemo(() => { const crossings = points.filter((point, index) => index > 0 && ((point.pnl >= 0 && points[index - 1].pnl < 0) || (point.pnl < 0 && points[index - 1].pnl >= 0))); return crossings[0]?.price ?? null; }, [points]);
-  const maxLoss = Math.min(...points.map((point) => point.pnl));
-  const maxProfit = Math.max(...points.map((point) => point.pnl));
-  const displayMaxProfit = strategy === "long-call" || strategy === "covered-call" || strategy === "protective-put" ? "Open-ended" : money(maxProfit);
+  return (
+    <div className="backtrack-page bt-learn-page">
+      <TopBar />
+      <main className="backtrack-content bt-stack options-page">
+        <section className="bt-heading-row options-heading">
+          <div>
+            <div className="bt-kicker">
+              <Sparkles size={13} className="text-indigo-600" /> STOCK TECHNICAL RESEARCH &amp; INDICATOR SCHOOL
+            </div>
+            <h1>Stock Market Technical Analysis &amp; Strategy School</h1>
+            <p>
+              Understand technical indicators (RVOL, VCP, SMA Rebound, RSI Momentum, Donchian Breakout), learn price-action rules, and test every setup on official NSE stock market history.
+            </p>
+          </div>
+          <div className="options-mode">
+            <BookOpen size={15} /> 100% Research &amp; Backtesting Only
+          </div>
+        </section>
 
-  const applyExample = (nextStrategy: StrategyId, nextSpot: number, nextStrike: number, nextPremium: number, nextSecond = 110) => { setStrategy(nextStrategy); setSpot(nextSpot); setStrike(nextStrike); setPremium(nextPremium); setSecondStrike(nextSecond); setExpiryPrice(nextSpot); };
-
-  return <div className="backtrack-page bt-learn-page"><TopBar /><main className="backtrack-content bt-stack options-page">
-    <section className="bt-heading-row options-heading"><div><h1>Learning centre</h1><p>Understand the tools traders use, then test the idea on historical NSE data.</p></div><div className="options-mode"><BookOpen size={15} /> Education mode</div></section>
-
-    <nav className="learning-mode-switch" aria-label="Learning topics"><button type="button" className={learningMode === "indicators" ? "is-active" : ""} onClick={() => setLearningMode("indicators")}><TrendingUp size={16} /><span><strong>Indicators</strong><small>Read price, momentum, trend and risk</small></span></button><button type="button" className={learningMode === "options" ? "is-active" : ""} onClick={() => setLearningMode("options")}><SlidersHorizontal size={16} /><span><strong>Options</strong><small>Explore payoff, hedges and spreads</small></span></button></nav>
-
-    {learningMode === "indicators" ? <IndicatorSchool /> : <>
-      <section className="options-path bt-panel" aria-label="Options learning path"><div className="options-path-title"><div><span className="bt-eyebrow">YOUR LEARNING PATH</span><h2>Learn by changing one idea at a time.</h2></div><Link href="#lesson" className="bt-link">Open lesson <ArrowRight size={13} /></Link></div><div className="options-path-steps">{(["basics", "curves", "hedging"] as LessonId[]).map((item, index) => <button type="button" key={item} className={lesson === item ? "is-active" : ""} onClick={() => setLesson(item)}><span className="options-step-number">{index + 1}</span><span><strong>{item === "basics" ? "Basics" : item === "curves" ? "Payoff curves" : "Hedging"}</strong><small>{item === "basics" ? "Rights, obligations, and intrinsic value" : item === "curves" ? "Read profit, loss, and break-even" : "Shape the risk of an existing holding"}</small></span><ChevronRight size={15} /></button>)}</div></section>
-
-    <section className="options-lab-layout"><section className="bt-panel options-builder"><div className="bt-panel-head"><div><span className="bt-eyebrow">STRATEGY BUILDER</span><h2>Choose a lesson example</h2></div><SlidersHorizontal size={16} className="bt-muted-icon" /></div><p className="options-muted">Every value is hypothetical. Change the inputs and watch the curve respond.</p><label className="options-select-label">Strategy<select aria-label="Options strategy" value={strategy} onChange={(event) => { const next = event.target.value as StrategyId; setStrategy(next); setExpiryPrice(spot); }} onInput={(event) => { const next = event.currentTarget.value as StrategyId; setStrategy(next); setExpiryPrice(spot); }}><optgroup label="Directional buyers"><option value="long-call">Long call</option><option value="long-put">Long put</option></optgroup><optgroup label="Hedging and income"><option value="covered-call">Covered call</option><option value="protective-put">Protective put</option></optgroup><optgroup label="Defined-risk spreads"><option value="bull-call-spread">Bull call spread</option><option value="bear-put-spread">Bear put spread</option></optgroup></select></label><div className="options-field-stack"><NumberField label="Underlying (spot)" hint="Reference price today" value={spot} onChange={(value) => { setSpot(value); setExpiryPrice(value); }} min={1} max={100000} step={1} /><NumberField label="Primary strike" hint="Exercise price" value={strike} onChange={setStrike} min={1} max={100000} step={1} />{(strategy === "bull-call-spread" || strategy === "bear-put-spread") && <NumberField label="Second strike" hint="Short leg strike" value={secondStrike} onChange={setSecondStrike} min={1} max={100000} step={1} />}<NumberField label="Premium" hint="Per unit, paid (+) or received (−)" value={premium} onChange={setPremium} min={0} max={100000} step={0.05} /><NumberField label="Lot size" hint="Units in this example" value={lotSize} onChange={setLotSize} min={1} max={100000} step={1} /></div><div className="options-example-title">Try a guided example</div><div className="options-example-list"><button type="button" onClick={() => applyExample("long-call", 100, 100, 2.5)}><span>1</span><div><strong>Simple call</strong><small>Learn premium and break-even</small></div></button><button type="button" onClick={() => applyExample("protective-put", 100, 95, 2.5)}><span>2</span><div><strong>Protective put</strong><small>Put a floor under a holding</small></div></button><button type="button" onClick={() => applyExample("bull-call-spread", 100, 100, 3, 110)}><span>3</span><div><strong>Defined-risk spread</strong><small>Trade some upside for a cap</small></div></button></div></section>
-
-      <section className="bt-panel options-curve-panel"><div className="bt-panel-head"><div><span className="bt-eyebrow">PAYOFF AT EXPIRY</span><h2>{selectedStrategy.name}</h2><p className="options-muted">{selectedStrategy.short}</p></div><span className="options-curve-toggle">P&amp;L per example</span></div><div className="options-legend"><span><i className="profit-dot" /> Profit</span><span><i className="loss-dot" /> Loss</span><span><i className="break-dot" /> Break-even {breakEven === null ? "not reached" : `₹${breakEven.toLocaleString("en-IN")}`}</span></div><PayoffChart points={points} zeroY={zeroY} selected={expiryPrice} setSelected={setExpiryPrice} breakEven={breakEven} /><div className="options-summary"><div><span>Max profit in shown range</span><strong className="is-profit">{displayMaxProfit}</strong></div><div><span>Worst loss in shown range</span><strong className="is-loss">{money(maxLoss)}</strong></div><div><span>At ₹{selectedPoint.price.toLocaleString("en-IN")}</span><strong className={selectedPoint.pnl >= 0 ? "is-profit" : "is-loss"}>{money(selectedPoint.pnl)}</strong></div></div><p className="options-chart-footnote">The curve is theoretical payoff at expiry. It excludes taxes, brokerage, volatility changes, early exercise, and execution costs.</p></section>
-
-      <aside className="options-side"><section className="bt-panel options-explainer"><div className="bt-panel-head"><div><span className="bt-eyebrow">WHAT HAPPENS AT EXPIRY?</span><h2>Read the selected strategy</h2></div><CircleHelp size={16} className="bt-muted-icon" /></div><p>{selectedStrategy.note}</p><div className="options-outcomes"><div><span className="outcome-dot green" /><div><strong>Above the useful zone</strong><small>The position is in-the-money when its intrinsic value covers the net premium and any other leg.</small></div></div><div><span className="outcome-dot indigo" /><div><strong>Near the strike</strong><small>Small changes in the underlying can change the payoff quickly around the break-even area.</small></div></div><div><span className="outcome-dot red" /><div><strong>Outside the useful zone</strong><small>The option can expire worthless; a buyer can lose the premium paid.</small></div></div></div><p className="options-risk-note"><ShieldCheck size={15} /> {selectedStrategy.risk}</p></section><section className="bt-panel options-checklist"><h2>Trade checklist</h2><p>Build the habit before studying any setup.</p>{["Can I explain the payoff in one sentence?", "Do I know the maximum loss and break-even?", "What happens if expiry arrives sooner than expected?", "Is this a hedge, a view, or just a guess?", "Would I still be comfortable with the risk?"].map((item) => <label key={item}><input type="checkbox" /> <span>{item}</span></label>)}</section></aside></section>
-
-    <section id="lesson" className="bt-panel options-lesson"><div className="options-lesson-tabs" role="tablist" aria-label="Options lessons">{(["basics", "curves", "hedging"] as LessonId[]).map((item) => <button type="button" role="tab" aria-selected={lesson === item} className={lesson === item ? "is-active" : ""} key={item} onClick={() => setLesson(item)}>{item === "basics" ? "1. Basics" : item === "curves" ? "2. Curves" : "3. Hedging"}</button>)}</div><div className="options-lesson-content"><div><span className="bt-eyebrow">LESSON {lesson === "basics" ? "01" : lesson === "curves" ? "02" : "03"}</span><h2>{lessonContent[lesson].title}</h2><p>{lessonContent[lesson].description}</p></div><ul>{lessonContent[lesson].bullets.map((bullet) => <li key={bullet}><Check size={15} /> {bullet}</li>)}</ul></div><div className="options-leg-strip"><span><Info size={14} /> Current example legs</span>{legs.map((leg) => <b key={leg.label}>{leg.side === 1 ? "+" : "−"} {leg.label}</b>)}</div></section>
-
-    <section className="options-glossary"><div><span className="bt-eyebrow">KEEP GOING</span><h2>Four words worth remembering</h2><p>Return here as you experiment. Clear definitions are more useful than complicated jargon.</p></div><div className="options-glossary-grid">{[["Intrinsic value", "What the option would be worth if exercised at this price."], ["Time value", "The part of the premium that reflects time and uncertainty."], ["Implied volatility", "The market’s estimate of how much the underlying may move."], ["Hedge ratio", "How much an option position offsets a move in another position."]].map(([title, text]) => <div key={title}><strong>{title}</strong><p>{text}</p></div>)}</div></section>
-      <div className="options-footer-disclaimer"><ShieldCheck size={18} /><div><strong>Educational use only.</strong><span>This lab teaches concepts with hypothetical inputs. It is not investment advice, a recommendation, a live quote, or a broker/order-placement tool.</span></div><span>Not a broker. Not an advisor.</span></div>
-    </>}
-  </main></div>;
+        <IndicatorSchool />
+      </main>
+    </div>
+  );
 }

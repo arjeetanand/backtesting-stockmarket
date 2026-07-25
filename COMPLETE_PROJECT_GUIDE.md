@@ -258,6 +258,10 @@ Recorded results for the current work:
 
 Market Scanner is the stock-and-sector discovery surface: choose the universe, strategy, and date range; compare sectors on the heatmap; select a sector to inspect its ranked stocks; search or sort the full leaderboard; export the matching rows; then open a stock in Research with the same strategy and dates. Breakout candidates provide the same Research handoff and can be bookmarked.
 
+### Dhan-inspired, research-only parity
+
+Backtrack intentionally borrows the useful analysis patterns associated with Dhan/TradingView/ScanX—chart-linked strategy tests, multiple indicators, screeners, saved templates, and bar replay—without broker connections, live quotes, webhooks, or order execution. Research results can now hand the exact stock, timeframe, and historical range into Replay for a candle-by-candle paper session. The backend remains the source of truth for candles, signals, fills, trades, equity, drawdown, and metrics.
+
 ## 9. Error register: found issues and resolutions
 
 “Fixed” means code or runtime configuration was changed and the relevant check passed. “Environment” means the application was not the cause. “Open” means it remains known and should not be mistaken for a successful validation.

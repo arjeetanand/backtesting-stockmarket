@@ -57,6 +57,13 @@ export default function ReplayPage() {
   const initialCapital = 100000;
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    queueMicrotask(() => {
+      if (params.get("symbol")) setSymbol(params.get("symbol")!.toUpperCase());
+      if (params.get("timeframe") && ["1day", "1week", "1month"].includes(params.get("timeframe")!)) setTimeframe(params.get("timeframe")!);
+      if (params.get("start")) setStart(params.get("start")!);
+      if (params.get("end")) setEnd(params.get("end")!);
+    });
     const savedSessionId = window.localStorage.getItem("backtrack:replay-session");
     if (!savedSessionId) {
       setRestored(true);
@@ -81,7 +88,8 @@ export default function ReplayPage() {
       try {
         const next = await getMarketAvailability(cleanSymbol);
         setAvailability(next);
-        if (next.earliest && next.latest) {
+        const hasQueryRange = new URLSearchParams(window.location.search).has("start") || new URLSearchParams(window.location.search).has("end");
+        if (next.earliest && next.latest && !hasQueryRange) {
           setStart(next.earliest.slice(0, 10));
           setEnd(next.latest.slice(0, 10));
         }

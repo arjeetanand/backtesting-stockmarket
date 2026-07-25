@@ -74,6 +74,8 @@ Market Scanner supports date-scoped NIFTY 50/NIFTY 500/imported-universe scans t
 
 Pattern Finder's outcome visualization is a trigger-by-trigger bar chart, not a decorative line. Green bars reached the target during the holding window; red bars did not. The summary shows the filtered hit rate, best peak move, median exit return, and weakest peak move, while hovering a bar reveals its trigger date and peak/final outcomes.
 
+The Dhan-inspired part of the product is deliberately historical: Research can hand the same symbol, timeframe, and date range to Replay for candle-by-candle paper analysis. There is no DhanHQ connection, live quote stream, webhook, or order path in Backtrack.
+
 ## Research chart workflow
 
 `/research` is the main stock-to-results surface:
