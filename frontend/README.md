@@ -68,6 +68,12 @@ The Data page intentionally has one simple bulk workflow:
 
 The search starts only after text is entered and asks the backend for a small result set. It does not scan full date coverage on every keystroke. Each NSE archive is bulk-loaded for all supported stocks, so there is no per-stock import button.
 
+## Market Scanner workflow
+
+Market Scanner supports date-scoped NIFTY 50/NIFTY 500/imported-universe scans through the shared strategy engine. Use the sector heatmap to compare strategy return, alpha versus buy-and-hold, or win rate; select a sector to rank its stocks by return, alpha, win rate, and drawdown. The leaderboard can be searched, ranked by a chosen metric, expanded beyond the top results, and exported as CSV. Every selected stock links into Research with the scanned strategy and dates; breakout candidates link to a historical test as well.
+
+Pattern Finder's outcome visualization is a trigger-by-trigger bar chart, not a decorative line. Green bars reached the target during the holding window; red bars did not. The summary shows the filtered hit rate, best peak move, median exit return, and weakest peak move, while hovering a bar reveals its trigger date and peak/final outcomes.
+
 ## Research chart workflow
 
 `/research` is the main stock-to-results surface:

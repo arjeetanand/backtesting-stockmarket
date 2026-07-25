@@ -256,6 +256,8 @@ Recorded results for the current work:
 - `npm --prefix frontend run lint` still fails with 16 errors and 16 warnings from existing repository-wide findings. See the error register below; this is separate from the passing production build.
 - The browser pass exercised the non-destructive controls across Replay, Scanner, Robustness, ML Lab, Comparison, Options, Settings, Analytics entry points, saved tests, Watchlist, Data, Strategy, Research, Strategy Import, and Pattern Finder. The destructive “Clear testing history” action was not clicked because it would delete persisted user data.
 
+Market Scanner is the stock-and-sector discovery surface: choose the universe, strategy, and date range; compare sectors on the heatmap; select a sector to inspect its ranked stocks; search or sort the full leaderboard; export the matching rows; then open a stock in Research with the same strategy and dates. Breakout candidates provide the same Research handoff and can be bookmarked.
+
 ## 9. Error register: found issues and resolutions
 
 “Fixed” means code or runtime configuration was changed and the relevant check passed. “Environment” means the application was not the cause. “Open” means it remains known and should not be mistaken for a successful validation.

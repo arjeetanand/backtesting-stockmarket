@@ -35,6 +35,7 @@ type SectorItem = {
 };
 
 type HeatmapMetric = "strategy" | "alpha" | "win_rate";
+type LeaderboardSort = "strategy_return" | "alpha" | "win_rate" | "drawdown" | "sharpe";
 
 type StockLeaderboardItem = {
   symbol: string;
@@ -135,10 +136,14 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 60_0
 
 export default function MarketScannerPage() {
   const [activeTab, setActiveTab] = useState<"heatmap" | "breakout">("heatmap");
+  const today = new Date().toISOString().slice(0, 10);
+  const defaultScanStart = new Date(new Date(`${today}T00:00:00`).setFullYear(new Date(`${today}T00:00:00`).getFullYear() - 2)).toISOString().slice(0, 10);
 
   // Screener state
   const [universe, setUniverse] = useState("nifty500");
   const [strategyType, setStrategyType] = useState("sma_crossover");
+  const [scanStart, setScanStart] = useState(defaultScanStart);
+  const [scanEnd, setScanEnd] = useState(today);
   const [scannerResult, setScannerResult] = useState<{
     universe: string;
     strategy_type: string;
@@ -164,6 +169,9 @@ export default function MarketScannerPage() {
   const [scannerTimeSec, setScannerTimeSec] = useState<number | null>(null);
   const [selectedSector, setSelectedSector] = useState<string | null>(null);
   const [heatmapMetric, setHeatmapMetric] = useState<HeatmapMetric>("strategy");
+  const [leaderboardQuery, setLeaderboardQuery] = useState("");
+  const [leaderboardSort, setLeaderboardSort] = useState<LeaderboardSort>("strategy_return");
+  const [showAllStocks, setShowAllStocks] = useState(false);
 
   const runUniverseScan = async () => {
     setLoadingScanner(true);
@@ -173,7 +181,7 @@ export default function MarketScannerPage() {
       const res = await fetchWithTimeout(`${API_BASE_URL}/market-scanner/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ universe, strategy_type: strategyType }),
+        body: JSON.stringify({ universe, strategy_type: strategyType, start: `${scanStart}T00:00:00`, end: `${scanEnd}T23:59:59` }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail ?? "Failed to run market scanner.");
@@ -232,12 +240,17 @@ export default function MarketScannerPage() {
   };
 
   useEffect(() => {
-    if (activeTab === "heatmap" && !scannerResult) {
-      void runUniverseScan();
-    } else if (activeTab === "breakout" && !breakoutResult) {
-      void runBreakoutScan();
-    }
-  }, [activeTab]);
+    queueMicrotask(() => {
+      if (activeTab === "heatmap" && !scannerResult) {
+        void runUniverseScan();
+      } else if (activeTab === "breakout" && !breakoutResult) {
+        void runBreakoutScan();
+      }
+    });
+    // The scan callbacks intentionally capture the current filter values.
+    // Re-running them when their function identities change would loop scans.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, breakoutResult, scannerResult]);
 
   const setupCounts = useMemo(() => {
     const list = breakoutResult?.setups ?? [];
@@ -250,6 +263,17 @@ export default function MarketScannerPage() {
     };
   }, [breakoutResult]);
 
+  const breakoutSummary = useMemo(() => {
+    const setups = breakoutResult?.setups ?? [];
+    return {
+      candidates: breakoutResult?.total_candidates ?? 0,
+      uniqueStocks: new Set(setups.map((item) => item.symbol)).size,
+      highConviction: setups.filter((item) => item.conviction_score >= 70).length,
+      sectors: new Set(setups.map((item) => item.sector)).size,
+      averageRvol: setups.length ? setups.reduce((sum, item) => sum + item.rvol, 0) / setups.length : 0,
+    };
+  }, [breakoutResult]);
+
   const filteredSetups = breakoutResult?.setups.filter((item) => {
     if (selectedSetupFilter === "all") return true;
     if (selectedSetupFilter === "52w") return item.setup_type.includes("52W");
@@ -259,7 +283,18 @@ export default function MarketScannerPage() {
     return true;
   });
 
-  const visibleLeaderboard = scannerResult?.leaderboard.slice(0, 6) ?? [];
+  const filteredLeaderboard = useMemo(() => {
+    const query = leaderboardQuery.trim().toLowerCase();
+    const rows = (scannerResult?.leaderboard ?? []).filter((item) => !query || `${item.symbol} ${item.company_name} ${item.sector}`.toLowerCase().includes(query));
+    return [...rows].sort((a, b) => {
+      if (leaderboardSort === "alpha") return (b.strategy_return - b.buy_hold_return) - (a.strategy_return - a.buy_hold_return);
+      if (leaderboardSort === "win_rate") return b.win_rate - a.win_rate;
+      if (leaderboardSort === "drawdown") return a.max_drawdown - b.max_drawdown;
+      if (leaderboardSort === "sharpe") return b.sharpe_ratio - a.sharpe_ratio;
+      return b.strategy_return - a.strategy_return;
+    });
+  }, [leaderboardQuery, leaderboardSort, scannerResult?.leaderboard]);
+  const visibleLeaderboard = showAllStocks ? filteredLeaderboard : filteredLeaderboard.slice(0, 12);
   const heatmapSectors = scannerResult?.sector_heatmap ?? [];
   const heatmapValues = heatmapSectors.map((item) => heatmapValue(item, heatmapMetric));
   const heatmapMin = Math.min(...heatmapValues, 0);
@@ -279,6 +314,19 @@ export default function MarketScannerPage() {
     ? visibleLeaderboard.reduce((sum, item) => sum + item.buy_hold_return, 0) / visibleLeaderboard.length
     : null;
   const universeLabel = universe === "nifty50" ? "NIFTY 50" : universe === "nifty500" ? "NIFTY 500" : "All imported";
+
+  const exportLeaderboard = () => {
+    if (!scannerResult?.leaderboard.length) return;
+    const headers = ["Symbol", "Company", "Sector", "Bars", "Strategy Return", "Buy & Hold", "Alpha", "Win Rate", "Max Drawdown", "Sharpe", "Trades"];
+    const rows = filteredLeaderboard.map((item) => [item.symbol, item.company_name, item.sector, item.bars, item.strategy_return, item.buy_hold_return, item.strategy_return - item.buy_hold_return, item.win_rate, item.max_drawdown, item.sharpe_ratio, item.trade_count]);
+    const csv = [headers, ...rows].map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `backtrack-${universe}-${strategyType}-${scanStart}-to-${scanEnd}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="backtrack-page bt-scanner-page">
@@ -304,7 +352,7 @@ export default function MarketScannerPage() {
 
         {/* Tab Selection Row */}
         <div className="scanner-tab-bar bt-scanner-tabs">
-          <button
+                          <button
             type="button"
             className={`scanner-tab-btn ${activeTab === "heatmap" ? "is-active" : ""}`}
             onClick={() => setActiveTab("heatmap")}
@@ -316,7 +364,7 @@ export default function MarketScannerPage() {
             className={`scanner-tab-btn ${activeTab === "breakout" ? "is-active" : ""}`}
             onClick={() => setActiveTab("breakout")}
           >
-            <Zap size={16} /> Automated Breakout Scanner
+            <Zap size={16} /> Breakout setups
             {breakoutResult && (
               <span className="scanner-tab-badge">{breakoutResult.total_candidates}</span>
             )}
@@ -348,6 +396,11 @@ export default function MarketScannerPage() {
                     {UNIFIED_STRATEGY_OPTIONS.map((strategy) => <option key={strategy.id} value={strategy.id}>{strategy.title}</option>)}
                   </select>
                 </label>
+
+                <div className="scanner-rail-dates">
+                  <label className="scanner-rail-field"><span>History from</span><input className="bt-field-input" type="date" value={scanStart} max={scanEnd} onChange={(event) => setScanStart(event.target.value)} /></label>
+                  <label className="scanner-rail-field"><span>History to</span><input className="bt-field-input" type="date" value={scanEnd} min={scanStart} max={today} onChange={(event) => setScanEnd(event.target.value)} /></label>
+                </div>
 
                 <div className="scanner-rail-rule">
                   <span>Evaluation scope</span>
@@ -466,7 +519,7 @@ export default function MarketScannerPage() {
                                 <span><small>Alpha</small><b className={item.strategy_return >= item.buy_hold_return ? "text-pos" : "text-neg"}>{pct(item.strategy_return - item.buy_hold_return)}</b></span>
                                 <span><small>Win rate</small><b>{pct(item.win_rate)}</b></span>
                                 <span><small>Drawdown</small><b className="text-neg">{lossPct(item.max_drawdown)}</b></span>
-                                <Link href={`/research?symbol=${encodeURIComponent(item.symbol)}&source=scanner`} className="scanner-sector-research-link">Research <span>↗</span></Link>
+                                <Link href={`/research?symbol=${encodeURIComponent(item.symbol)}&strategy=${encodeURIComponent(strategyType)}&start=${encodeURIComponent(scanStart)}&end=${encodeURIComponent(scanEnd)}&source=scanner`} className="scanner-sector-research-link">Research <span>↗</span></Link>
                               </div>
                             ))}
                           </div>
@@ -477,6 +530,11 @@ export default function MarketScannerPage() {
                     </section>
 
                     <div className="scanner-stock-grid">
+                      <div className="scanner-leaderboard-tools" aria-label="Leaderboard controls">
+                        <label><span>Find a stock or sector</span><input className="bt-field-input" value={leaderboardQuery} onChange={(event) => setLeaderboardQuery(event.target.value)} placeholder="RELIANCE, banking…" /></label>
+                        <label><span>Rank by</span><select className="bt-field-input" value={leaderboardSort} onChange={(event) => setLeaderboardSort(event.target.value as LeaderboardSort)}><option value="strategy_return">Strategy return</option><option value="alpha">Alpha vs buy &amp; hold</option><option value="win_rate">Win rate</option><option value="drawdown">Lowest drawdown</option><option value="sharpe">Sharpe ratio</option></select></label>
+                        <button type="button" className="bt-secondary-btn" onClick={exportLeaderboard} disabled={!filteredLeaderboard.length}><Database size={13} /> Export CSV</button>
+                      </div>
                       {visibleLeaderboard.map((item) => {
                         const maxReturn = Math.max(Math.abs(item.strategy_return), Math.abs(item.buy_hold_return), 0.01);
                         return (
@@ -495,7 +553,7 @@ export default function MarketScannerPage() {
                         );
                       })}
                     </div>
-                    <div className="scanner-reference-footer"><span>Showing {visibleLeaderboard.length} of {scannerResult.leaderboard.length} instruments in the local leaderboard.</span><span>Avg B&amp;H: <strong>{pct(averageBuyHoldReturn ?? undefined)}</strong></span></div>
+                    <div className="scanner-reference-footer"><span>Showing {visibleLeaderboard.length} of {filteredLeaderboard.length} matching instruments. {filteredLeaderboard.length > 12 && <button type="button" className="scanner-inline-action" onClick={() => setShowAllStocks((current) => !current)}>{showAllStocks ? "Show top 12" : "Show all"}</button>}</span><span>Avg B&amp;H: <strong>{pct(averageBuyHoldReturn ?? undefined)}</strong></span></div>
                   </>
                 )}
               </div>
@@ -824,6 +882,21 @@ export default function MarketScannerPage() {
               </div>
             )}
 
+            {!loadingBreakout && breakoutResult && (
+              <>
+                <section className="bt-panel scanner-breakout-explainer" aria-label="How to use breakout setups">
+                  <div><strong>{breakoutSummary.candidates} matching setups</strong><p>This is a signal count, not a win prediction. One stock can appear more than once when it meets multiple technical rules. Start with high-conviction setups, then open Research to test the idea across history.</p></div>
+                  <span className="bt-field-help">Daily NSE history · paper research only</span>
+                </section>
+                <section className="bt-scanner-kpis" aria-label="Breakout scan summary">
+                  <div className="bt-scanner-kpi"><span>Setup signals</span><strong>{breakoutSummary.candidates}</strong><small>after conviction filter</small></div>
+                  <div className="bt-scanner-kpi"><span>Unique stocks</span><strong>{breakoutSummary.uniqueStocks}</strong><small>deduplicated symbols</small></div>
+                  <div className="bt-scanner-kpi is-positive"><span>High conviction</span><strong>{breakoutSummary.highConviction}</strong><small>score ≥ 70</small></div>
+                  <div className="bt-scanner-kpi"><span>Average RVOL</span><strong>{breakoutSummary.averageRvol.toFixed(1)}x</strong><small>volume vs 20D average</small></div>
+                </section>
+              </>
+            )}
+
             {filteredSetups && !loadingBreakout && (
               <div className="breakout-grid">
                 {filteredSetups.length === 0 ? (
@@ -883,10 +956,13 @@ export default function MarketScannerPage() {
                           style={{ padding: "4px 8px", fontSize: "10px", gap: "4px", flexShrink: 0 }}
                           onClick={() => void addToWatchlist(setup)}
                           disabled={bookmarkingSym === setup.symbol}
-                        >
-                          <BookmarkCheck size={12} />
-                          {bookmarkingSym === setup.symbol ? "Bookmarking…" : "Bookmark Setup"}
-                        </button>
+                          >
+                            <BookmarkCheck size={12} />
+                            {bookmarkingSym === setup.symbol ? "Bookmarking…" : "Bookmark Setup"}
+                          </button>
+                          <Link href={`/research?symbol=${encodeURIComponent(setup.symbol)}&strategy=donchian_breakout&source=breakout-scanner`} className="bt-secondary-btn" style={{ padding: "4px 8px", fontSize: "10px", gap: "4px", flexShrink: 0, textDecoration: "none" }}>
+                            Test history ↗
+                          </Link>
                       </div>
                     </div>
                   ))

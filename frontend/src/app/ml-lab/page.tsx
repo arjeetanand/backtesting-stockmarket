@@ -173,7 +173,26 @@ export default function MlLabPage() {
 
   useEffect(() => {
     void fetchHistory();
+    void runExperiment();
   }, []);
+
+  const applyMlPreset = (pSymbol: string, pHorizon: string) => {
+    setSymbol(pSymbol);
+    setHorizon(pHorizon);
+    void runExperiment({
+      symbol: pSymbol.toUpperCase(),
+      start: start.includes("T") ? start : `${start}T00:00:00Z`,
+      end: end.includes("T") ? end : `${end}T23:59:59Z`,
+      timeframe,
+      horizon_days: Number(pHorizon),
+      train_ratio: 0.6,
+      validation_ratio: 0.2,
+      test_ratio: 0.2,
+      models,
+      commission_pct: commissionPct,
+      slippage_pct: slippagePct,
+    });
+  };
 
   const runExperiment = async (customPayload?: object) => {
     if (!symbol.trim() || models.length === 0) {
@@ -183,15 +202,23 @@ export default function MlLabPage() {
     setLoading(true);
     setError(null);
     try {
+      const cleanStart = start.includes("T") ? start : `${start}T00:00:00Z`;
+      const cleanEnd = end.includes("T") ? end : `${end}T23:59:59Z`;
+
+      const totalRatio = trainRatio + valRatio + testRatio;
+      const normTrain = Math.round((trainRatio / totalRatio) * 100) / 100;
+      const normVal = Math.round((valRatio / totalRatio) * 100) / 100;
+      const normTest = Math.round((1.0 - normTrain - normVal) * 100) / 100;
+
       const body = customPayload ?? {
         symbol: symbol.trim().toUpperCase(),
-        start,
-        end,
+        start: cleanStart,
+        end: cleanEnd,
         timeframe,
         horizon_days: Number(horizon),
-        train_ratio: trainRatio,
-        validation_ratio: valRatio,
-        test_ratio: testRatio,
+        train_ratio: normTrain,
+        validation_ratio: normVal,
+        test_ratio: normTest,
         models,
         commission_pct: commissionPct,
         slippage_pct: slippagePct,
@@ -343,12 +370,39 @@ export default function MlLabPage() {
         <div className="ml-preflight-grid">
         {/* Main Controls Panel */}
         <section className="bt-panel ml-control-panel">
-          <div className="bt-panel-head">
-            <div>
-              <span className="bt-eyebrow">EXPERIMENT SETUP</span>
-              <h2>Build a clean historical test</h2>
+          {/* Quick Start Presets */}
+          <div style={{ marginBottom: "16px", padding: "12px 14px", borderRadius: "8px", background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px", fontSize: "11px", fontWeight: "700", color: "#4f46e5", textTransform: "uppercase" }}>
+              <Sparkles size={13} className="text-amber-500" />
+              <span>1-Click Preset Experiments:</span>
             </div>
-            <span className="bt-panel-note">Past-only features · chronological split</span>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+              {[
+                { label: "RELIANCE 5d", symbol: "RELIANCE", horizon: "5" },
+                { label: "PNB 5d", symbol: "PNB", horizon: "5" },
+                { label: "TCS 1d", symbol: "TCS", horizon: "1" },
+                { label: "SBIN 20d", symbol: "SBIN", horizon: "20" },
+                { label: "CANBK 5d", symbol: "CANBK", horizon: "5" },
+              ].map((preset) => (
+                <button
+                  type="button"
+                  key={preset.label}
+                  onClick={() => applyMlPreset(preset.symbol, preset.horizon)}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: "6px",
+                    background: "#ffffff",
+                    border: "1px solid #cbd5e1",
+                    color: "#334155",
+                    fontSize: "12px",
+                    fontWeight: "600",
+                    cursor: "pointer",
+                  }}
+                >
+                  ⚡ {preset.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="ml-control-grid">
