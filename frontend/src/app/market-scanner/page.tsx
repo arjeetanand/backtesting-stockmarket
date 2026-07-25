@@ -112,7 +112,7 @@ function heatmapTone(value: number, min: number, max: number): string {
   const midpoint = min < 0 && max > 0 ? 0 : (min + max) / 2;
   const span = Math.max(Math.abs(max - midpoint), Math.abs(min - midpoint), 0.0001);
   const intensity = clamp(Math.abs(value - midpoint) / span, 0, 1);
-  const alpha = (0.1 + intensity * 0.28).toFixed(2);
+  const alpha = (0.18 + intensity * 0.42).toFixed(2);
   return value >= midpoint ? `rgba(16, 185, 129, ${alpha})` : `rgba(244, 63, 94, ${alpha})`;
 }
 
@@ -299,7 +299,16 @@ export default function MarketScannerPage() {
   const heatmapValues = heatmapSectors.map((item) => heatmapValue(item, heatmapMetric));
   const heatmapMin = Math.min(...heatmapValues, 0);
   const heatmapMax = Math.max(...heatmapValues, 0);
-  const maxSectorStockCount = Math.max(...heatmapSectors.map((item) => item.stock_count), 1);
+  const heatmapRows = useMemo(() => {
+    const rows: SectorItem[][] = [[], [], []];
+    const totals = [0, 0, 0];
+    [...heatmapSectors].sort((a, b) => b.stock_count - a.stock_count).forEach((sector) => {
+      const rowIndex = totals.indexOf(Math.min(...totals));
+      rows[rowIndex].push(sector);
+      totals[rowIndex] += sector.stock_count;
+    });
+    return rows.filter((row) => row.length > 0);
+  }, [heatmapSectors]);
   const selectedSectorItem = heatmapSectors.find((item) => item.sector === selectedSector) ?? null;
   const selectedSectorStocks = selectedSectorItem
     ? (scannerResult?.leaderboard ?? [])
@@ -475,17 +484,16 @@ export default function MarketScannerPage() {
                       </div>
 
                       <div className="scanner-sector-treemap" role="list" aria-label="Sector performance heatmap">
-                        {heatmapSectors.map((sector) => {
+                        {heatmapRows.map((row, rowIndex) => <div className="scanner-sector-row" key={`sector-row-${rowIndex}`}>
+                        {row.map((sector) => {
                           const value = heatmapValue(sector, heatmapMetric);
-                          const span = clamp(Math.ceil((sector.stock_count / maxSectorStockCount) * 4), 1, 4);
-                          const rowSpan = clamp(Math.ceil((sector.stock_count / maxSectorStockCount) * 2), 1, 2);
                           const isSelected = selectedSector === sector.sector;
                           return (
                             <button
                               type="button"
                               key={sector.sector}
                               className={`scanner-sector-tile ${isSelected ? "is-selected" : ""}`}
-                              style={{ gridColumn: `span ${span}`, gridRow: `span ${rowSpan}`, background: heatmapTone(value, heatmapMin, heatmapMax) }}
+                              style={{ flexGrow: Math.max(1, sector.stock_count), background: heatmapTone(value, heatmapMin, heatmapMax) }}
                               onClick={() => setSelectedSector(sector.sector)}
                               aria-pressed={isSelected}
                               aria-label={`${sector.sector}: ${pct(value)} ${heatmapMetric.replace("_", " ")}, ${sector.stock_count} stocks. Select to inspect.`}
@@ -496,6 +504,7 @@ export default function MarketScannerPage() {
                             </button>
                           );
                         })}
+                        </div>)}
                       </div>
 
                       {selectedSectorItem ? (
