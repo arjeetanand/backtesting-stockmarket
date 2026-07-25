@@ -114,6 +114,8 @@ The strategy catalogue is the single frontend source of truth. `STRATEGY_LIBRARY
 
 The Market Scanner uses the local scanner API and real leaderboard values only. Its sector heatmap is a treemap-style surface: tile area represents scanned-stock breadth, tile color can be switched between strategy return, strategy alpha versus buy-and-hold, and win rate, and clicking a sector opens its ranked stocks with a derived research score, return, alpha, win rate, drawdown, and a Research handoff. This follows the interaction model documented by [TradingView's heatmap guide](https://www.tradingview.com/support/solutions/43000766446-tradingview-heatmaps-from-global-trends-to-details/) while staying honest about the local data: market-cap sizing is not claimed because the cache does not provide market-cap fundamentals. The legacy detailed table remains available in source for traceability but is not the primary composition. ML Lab uses the same visual language with a narrow model-configuration rail and a wide diagnostics surface. Both routes keep explicit loading, unavailable, empty, and result states and must never show seeded prices or fabricated time series.
 
+Breakout candidates follow one explicit handoff: **Bookmark Setup** saves the historical setup to **Daily Watchlist**, shows an in-page confirmation with a Watchlist link, and **Test history** opens Research with the scanner symbol, strategy, timeframe, and dates. Research handoffs override a previously restored local Research session so a stale symbol or result cannot silently replace the selected scanner candidate. Watchlist values are evaluated against the latest imported daily bars; they are not live quotes.
+
 ## Local swarm modules
 
 The five frontend agents are deterministic TypeScript modules, not paid remote agents:
@@ -131,6 +133,7 @@ The five frontend agents are deterministic TypeScript modules, not paid remote a
 ```bash
 npm --prefix frontend run build
 npm --prefix frontend run lint
+npm --prefix frontend test
 ```
 
 When changing a rendered page, verify loading, empty, error, success, desktop, and narrow mobile states. Never use mock market prices as a fallback for a failed API request.
@@ -144,3 +147,6 @@ When changing a rendered page, verify loading, empty, error, success, desktop, a
   policy to allow `DELETE` in addition to `GET` and `POST`.
 - Missing history remains an actionable import/unavailable state; it must never
   be replaced with mock prices.
+- Financial charts expose loading, error, unavailable timeframe, empty, and ready
+  states with explicit next-step copy. Unsupported intraday timeframes remain
+  unavailable for the official daily NSE path.

@@ -117,10 +117,12 @@ export default function ResearchPage() {
   };
 
   useEffect(() => {
-    try {
-      const isImportedStrategyFlow = new URLSearchParams(window.location.search).get("source") === "youtube-template";
-      if (isImportedStrategyFlow) {
-        setRestored(true);
+    queueMicrotask(() => {
+      try {
+      const source = new URLSearchParams(window.location.search).get("source");
+      const isHandoffFlow = source === "youtube-template" || source === "scanner" || source === "breakout-scanner";
+      if (isHandoffFlow) {
+        queueMicrotask(() => setRestored(true));
         return;
       }
       const saved = window.localStorage.getItem("backtrack:research-session");
@@ -164,9 +166,10 @@ export default function ResearchPage() {
       }
     } catch {
       window.localStorage.removeItem("backtrack:research-session");
-    } finally {
-      setRestored(true);
-    }
+      } finally {
+        setRestored(true);
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -282,42 +285,72 @@ export default function ResearchPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("source") !== "youtube-template") return;
-    setImportedFlow(true);
-    const importedStrategy = params.get("strategy") ?? "sma_crossover";
-    const selected = UNIFIED_STRATEGIES.find((item) => item.strategyId === importedStrategy) ?? UNIFIED_STRATEGIES[0];
-    const importedSymbol = (params.get("symbol") ?? "RELIANCE").trim().toUpperCase();
-    const importedTimeframe = params.get("timeframe") ?? "1day";
-    const importedCapital = Math.max(1000, Number(params.get("capital") ?? 100000) || 100000);
-    const importedStart = params.get("start") ?? defaultStart;
-    const importedEnd = params.get("end") ?? today;
-    const importedFormula = params.get("formula") ?? selected.description;
-    const importedAnalysis: HypothesisAnalysis = {
-      generated_by: "Curated community strategy template",
-      model: "Backtrack strategy catalogue",
-      summary: `${selected.name} is ready to test on ${importedSymbol}. Formula: ${importedFormula}`,
-      assumptions: ["This rule set is a transparent template assembled from a widely used public strategy family.", "Signals are calculated on each candle and executed on the next candle; commission and slippage are included."],
-      risks: ["A historical result is not a forecast or investment advice.", "Results depend on the stock, timeframe, date range, costs, and market regime."],
-      suggested_backtest: { symbol: importedSymbol, timeframe: importedTimeframe, fast_window: selected.defaults.fast, slow_window: selected.defaults.slow, rationale: selected.description },
-    };
-    setSymbol(importedSymbol);
-    setStrategyId(selected.strategyId);
-    setTimeframe(importedTimeframe);
-    setInitialCapital(importedCapital);
-    setRequestedStart(importedStart);
-    setRequestedEnd(importedEnd);
-    setHypothesis(importedFormula);
-    setAnalysis(importedAnalysis);
-    setError(null);
-    void withTimeout(getMarketAvailability(importedSymbol), "The NSE catalogue check is taking longer than expected. Check the API connection and try again.", 10000).then((localData) => {
-      setAvailability(localData);
-      if (localData.bars > 0) {
-        setStartDate(importedStart);
-        setEndDate(importedEnd);
-        setAutoRunPending(true);
-      } else {
-        void ensureResearchData(importedSymbol, importedStart, importedEnd);
-      }
-    }).catch((requestError) => setError(requestError instanceof Error ? requestError.message : "Could not check local NSE history."));
+    queueMicrotask(() => {
+      setImportedFlow(true);
+      const importedStrategy = params.get("strategy") ?? "sma_crossover";
+      const selected = UNIFIED_STRATEGIES.find((item) => item.strategyId === importedStrategy) ?? UNIFIED_STRATEGIES[0];
+      const importedSymbol = (params.get("symbol") ?? "RELIANCE").trim().toUpperCase();
+      const importedTimeframe = params.get("timeframe") ?? "1day";
+      const importedCapital = Math.max(1000, Number(params.get("capital") ?? 100000) || 100000);
+      const importedStart = params.get("start") ?? defaultStart;
+      const importedEnd = params.get("end") ?? today;
+      const importedFormula = params.get("formula") ?? selected.description;
+      const importedAnalysis: HypothesisAnalysis = {
+        generated_by: "Curated community strategy template",
+        model: "Backtrack strategy catalogue",
+        summary: `${selected.name} is ready to test on ${importedSymbol}. Formula: ${importedFormula}`,
+        assumptions: ["This rule set is a transparent template assembled from a widely used public strategy family.", "Signals are calculated on each candle and executed on the next candle; commission and slippage are included."],
+        risks: ["A historical result is not a forecast or investment advice.", "Results depend on the stock, timeframe, date range, costs, and market regime."],
+        suggested_backtest: { symbol: importedSymbol, timeframe: importedTimeframe, fast_window: selected.defaults.fast, slow_window: selected.defaults.slow, rationale: selected.description },
+      };
+      setSymbol(importedSymbol);
+      setStrategyId(selected.strategyId);
+      setTimeframe(importedTimeframe);
+      setInitialCapital(importedCapital);
+      setRequestedStart(importedStart);
+      setRequestedEnd(importedEnd);
+      setHypothesis(importedFormula);
+      setAnalysis(importedAnalysis);
+      setError(null);
+      void withTimeout(getMarketAvailability(importedSymbol), "The NSE catalogue check is taking longer than expected. Check the API connection and try again.", 10000).then((localData) => {
+        setAvailability(localData);
+        if (localData.bars > 0) {
+          setStartDate(importedStart);
+          setEndDate(importedEnd);
+          setAutoRunPending(true);
+        } else {
+          void ensureResearchData(importedSymbol, importedStart, importedEnd);
+        }
+      }).catch((requestError) => setError(requestError instanceof Error ? requestError.message : "Could not check local NSE history."));
+    });
+    // Scanner and imported-strategy handoffs are applied once when this route opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const source = params.get("source");
+    if (source !== "scanner" && source !== "breakout-scanner") return;
+    queueMicrotask(() => {
+      const handoffSymbol = (params.get("symbol") ?? "RELIANCE").trim().toUpperCase();
+      const handoffStrategy = params.get("strategy") ?? "sma_crossover";
+      const handoffTimeframe = params.get("timeframe");
+      setSymbol(handoffSymbol);
+      setStrategyId(STRATEGY_LIBRARY.some((item) => item.strategyId === handoffStrategy) ? handoffStrategy : "sma_crossover");
+      if (handoffTimeframe && TIMEFRAMES.some((item) => item.value === handoffTimeframe)) setTimeframe(handoffTimeframe);
+      if (params.get("start")) setRequestedStart(params.get("start")!);
+      if (params.get("end")) setRequestedEnd(params.get("end")!);
+      setAnalysis(null);
+      setAvailability(null);
+      setStartDate("");
+      setEndDate("");
+      setImportJob(null);
+      setAutoRunPending(false);
+      setChatHistory([]);
+      invalidateRun();
+      setError(null);
+    });
+    // Scanner handoffs intentionally override the locally saved Research session.
   }, []);
 
   const parseHypothesis = async (nextHypothesis = hypothesis) => {
@@ -418,8 +451,12 @@ export default function ResearchPage() {
 
   useEffect(() => {
     if (!autoRunPending || runningBacktest || !analysis || !availability?.bars || !startDate || !endDate) return;
-    setAutoRunPending(false);
-    void runBacktest();
+    queueMicrotask(() => {
+      setAutoRunPending(false);
+      void runBacktest();
+    });
+    // The pending flag is consumed by this effect and the run function is intentionally stable for that transition.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoRunPending, runningBacktest, analysis, availability, startDate, endDate, strategyId, timeframe, initialCapital]);
 
   const primaryAction = () => {
@@ -520,7 +557,7 @@ export default function ResearchPage() {
 
       {analysis && !backtest && (!importJob || importJob.status === "complete") && <section className="bt-panel bt-research-chart-panel" aria-label="Historical price chart">
         <div className="bt-row-between"><div><div className="bt-row"><BarChart3 size={16} style={{ color: "#4f46e5" }} /><h3>Historical price and volume</h3></div><p className="text-xs text-slate-500" style={{ marginTop: "6px" }}>Real local NSE candles for {symbol.trim().toUpperCase()} · {timeframe === "1day" ? "daily" : `${timeframe} derived from daily NSE candles`} · {startDate} to {endDate}.</p></div><span className="data-source">{marketBars.length ? `${marketBars.length} candles loaded` : "Waiting for candles"}</span></div>
-        <FinancialChart candles={marketChart.candles} indicators={marketChart.indicators} tradeMarkers={marketChart.tradeMarkers} trades={marketChart.trades} loading={marketDataLoading} error={marketDataError} empty={!marketDataLoading && !marketDataError && marketChart.candles.length === 0} emptyMessage="No local candles were returned for this range. Import the official NSE history before running a test." title={`${symbol.trim().toUpperCase()} · ${timeframe}`} description="Historical local NSE OHLCV candles. This chart does not display live prices." />
+        <FinancialChart candles={marketChart.candles} indicators={marketChart.indicators} tradeMarkers={marketChart.tradeMarkers} trades={marketChart.trades} loading={marketDataLoading} unavailable={timeframe === "1hour"} error={marketDataError} empty={!marketDataLoading && !marketDataError && marketChart.candles.length === 0} emptyMessage="No local candles were returned for this range. Import the official NSE history before running a test." title={`${symbol.trim().toUpperCase()} · ${timeframe}`} description="Historical local NSE OHLCV candles. This chart does not display live prices." />
       </section>}
 
       {backtest && <section className="bt-panel bt-research-chart-panel" aria-label="Backtest price chart">

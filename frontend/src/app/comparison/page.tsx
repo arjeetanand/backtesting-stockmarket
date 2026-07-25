@@ -76,52 +76,59 @@ export default function ExperimentComparisonPage() {
   const [loadedFromResearch, setLoadedFromResearch] = useState(false);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const querySymbol = params.get("symbol");
-    if (querySymbol) setSymbol(querySymbol.toUpperCase());
-    if (params.get("start")) setStart(params.get("start")!);
-    if (params.get("end")) setEnd(params.get("end")!);
-    if (params.get("timeframe")) setTimeframe(params.get("timeframe")!);
-    if (params.get("capital")) setInitialCapital(Math.max(1, Number(params.get("capital")) || 100000));
-    if (params.get("position")) setPositionSize(Math.max(1, Number(params.get("position")) || 10000));
-    if (params.get("stop")) setStopLoss(Math.max(0, Number(params.get("stop")) || 0));
-    if (params.get("target")) setTakeProfit(Math.max(0, Number(params.get("target")) || 0));
-    const queryStrategy = params.get("strategy");
-    if (queryStrategy && STRATEGIES.some((item) => item.id === queryStrategy)) setSelectedStrategies([queryStrategy]);
-    setLoadedFromResearch(params.get("source") === "research");
+    queueMicrotask(() => {
+      const params = new URLSearchParams(window.location.search);
+      const querySymbol = params.get("symbol");
+      if (querySymbol) setSymbol(querySymbol.toUpperCase());
+      if (params.get("start")) setStart(params.get("start")!);
+      if (params.get("end")) setEnd(params.get("end")!);
+      if (params.get("timeframe")) setTimeframe(params.get("timeframe")!);
+      if (params.get("capital")) setInitialCapital(Math.max(1, Number(params.get("capital")) || 100000));
+      if (params.get("position")) setPositionSize(Math.max(1, Number(params.get("position")) || 10000));
+      if (params.get("stop")) setStopLoss(Math.max(0, Number(params.get("stop")) || 0));
+      if (params.get("target")) setTakeProfit(Math.max(0, Number(params.get("target")) || 0));
+      const queryStrategy = params.get("strategy");
+      if (queryStrategy && STRATEGIES.some((item) => item.id === queryStrategy)) setSelectedStrategies([queryStrategy]);
+      setLoadedFromResearch(params.get("source") === "research");
+    });
   }, []);
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
-    setError(null);
-    Promise.allSettled([
-      withTimeout(getMarketAvailability(symbol), "Could not load local NSE history before the connection timed out."),
-      withTimeout(Promise.all([fetch(`${API_BASE_URL}/backtests`), fetch(`${API_BASE_URL}/research/artifacts/custom_backtest`)]), "Saved tests could not be loaded before the connection timed out."),
-    ]).then(([availabilityResult, savedResult]) => {
-      if (!active) return;
-      if (availabilityResult.status === "fulfilled") setAvailability(availabilityResult.value);
-      else setError(availabilityResult.reason instanceof Error ? availabilityResult.reason.message : "Could not load local NSE history. Check that the API is running and import this symbol first.");
-      if (savedResult.status === "fulfilled") {
-        const [smaResponse, customResponse] = savedResult.value;
-        const savedSma = smaResponse.ok ? (smaResponse.json() as Promise<BacktestPayload[]>) : Promise.resolve([]);
-        const savedCustom = customResponse.ok ? (customResponse.json() as Promise<BacktestPayload[]>) : Promise.resolve([]);
-        Promise.all([savedSma, savedCustom]).then(([sma, custom]) => {
-          if (!active) return;
-          setSavedRuns([
-            ...sma.map((result) => ({ id: result.run_id, strategyId: "sma_crossover", title: "Saved SMA crossover", result, source: "saved" as const })),
-            ...custom.filter((result) => !result.symbol || result.symbol === symbol).map((result) => ({ id: result.run_id, strategyId: "custom", title: `Saved ${result.strategy_id ?? "strategy"}`, result, source: "saved" as const })),
-          ]);
-        }).catch(() => undefined);
-      }
-      setLoading(false);
-    }).catch(() => { if (active) { setError("Could not load local NSE history. Check that the API is running and import this symbol first."); setLoading(false); } });
+    queueMicrotask(() => {
+      setLoading(true);
+      setError(null);
+      Promise.allSettled([
+        withTimeout(getMarketAvailability(symbol), "Could not load local NSE history before the connection timed out."),
+        withTimeout(Promise.all([fetch(`${API_BASE_URL}/backtests`), fetch(`${API_BASE_URL}/research/artifacts/custom_backtest`)]), "Saved tests could not be loaded before the connection timed out."),
+      ]).then(([availabilityResult, savedResult]) => {
+        if (!active) return;
+        if (availabilityResult.status === "fulfilled") setAvailability(availabilityResult.value);
+        else setError(availabilityResult.reason instanceof Error ? availabilityResult.reason.message : "Could not load local NSE history. Check that the API is running and import this symbol first.");
+        if (savedResult.status === "fulfilled") {
+          const [smaResponse, customResponse] = savedResult.value;
+          const savedSma = smaResponse.ok ? (smaResponse.json() as Promise<BacktestPayload[]>) : Promise.resolve([]);
+          const savedCustom = customResponse.ok ? (customResponse.json() as Promise<BacktestPayload[]>) : Promise.resolve([]);
+          Promise.all([savedSma, savedCustom]).then(([sma, custom]) => {
+            if (!active) return;
+            setSavedRuns([
+              ...sma.map((result) => ({ id: result.run_id, strategyId: "sma_crossover", title: "Saved SMA crossover", result, source: "saved" as const })),
+              ...custom.filter((result) => !result.symbol || result.symbol === symbol).map((result) => ({ id: result.run_id, strategyId: "custom", title: `Saved ${result.strategy_id ?? "strategy"}`, result, source: "saved" as const })),
+            ]);
+          }).catch(() => undefined);
+        }
+        setLoading(false);
+      }).catch(() => { if (active) { setError("Could not load local NSE history. Check that the API is running and import this symbol first."); setLoading(false); } });
+    });
     return () => { active = false; };
   }, [symbol]);
 
   useEffect(() => {
-    if (availability?.earliest && !new URLSearchParams(window.location.search).get("start")) setStart(availability.earliest.slice(0, 10));
-    if (availability?.latest && !new URLSearchParams(window.location.search).get("end")) setEnd(availability.latest.slice(0, 10));
+    queueMicrotask(() => {
+      const params = new URLSearchParams(window.location.search);
+      if (availability?.earliest && !params.get("start")) setStart(availability.earliest.slice(0, 10));
+      if (availability?.latest && !params.get("end")) setEnd(availability.latest.slice(0, 10));
+    });
   }, [availability]);
 
   const visibleStrategies = useMemo(() => STRATEGIES.filter((strategy) => `${strategy.title} ${strategy.family} ${strategy.description}`.toLowerCase().includes(search.toLowerCase())), [search]);

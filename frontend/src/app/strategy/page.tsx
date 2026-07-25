@@ -56,25 +56,6 @@ export default function StrategyPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const requestedStrategy = params.get("strategy");
-    const requestedTemplate = templates.find((item) => item.strategyId === requestedStrategy);
-    if (requestedTemplate) {
-      setSelectedTemplate(requestedTemplate.name);
-      updateTemplate(requestedTemplate);
-    }
-    if (params.get("symbol")) setSymbol(params.get("symbol")!.toUpperCase());
-    const requestedTimeframe = params.get("timeframe");
-    if (requestedTimeframe && TIMEFRAME_OPTIONS.some((item) => item.value === requestedTimeframe)) setTimeframe(requestedTimeframe as "1day" | "1week" | "1month");
-    if (params.get("start")) setStart(params.get("start")!);
-    if (params.get("end")) setEnd(params.get("end")!);
-    if (params.get("capital")) setCapital(params.get("capital")!);
-    // This page may be opened from the catalogue. Start with a clean result,
-    // but leave every parameter editable before the user runs it.
-    setResult(null);
-  }, []);
-
   const selected = templates.find((item) => item.name === selectedTemplate) ?? templates[0];
   const filteredTemplates = useMemo(() => templates.filter((item) => `${item.name} ${item.type}`.toLowerCase().includes(templateQuery.toLowerCase())), [templateQuery]);
   const validationChecks = useMemo(() => {
@@ -103,6 +84,25 @@ export default function StrategyPage() {
     setEntryNodes([{ kind: "operator", value: "AND" }, { kind: "indicator", value: `RSI(${template.rsiOversold === 30 ? 14 : 14})` }, { kind: "comparison", value: "<" }, { kind: "literal", value: String(template.rsiOversold) }, { kind: "operator", value: "CROSS_ABOVE" }, { kind: "indicator", value: `EMA_${template.fastEma}` }, { kind: "indicator", value: `EMA_${template.slowEma}` }]);
     setExitNodes([{ kind: "indicator", value: "RSI(14)" }, { kind: "comparison", value: ">" }, { kind: "literal", value: String(template.rsiOverbought) }]);
   };
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      const params = new URLSearchParams(window.location.search);
+      const requestedStrategy = params.get("strategy");
+      const requestedTemplate = templates.find((item) => item.strategyId === requestedStrategy);
+      if (requestedTemplate) updateTemplate(requestedTemplate);
+      if (params.get("symbol")) setSymbol(params.get("symbol")!.toUpperCase());
+      const requestedTimeframe = params.get("timeframe");
+      if (requestedTimeframe && TIMEFRAME_OPTIONS.some((item) => item.value === requestedTimeframe)) setTimeframe(requestedTimeframe as "1day" | "1week" | "1month");
+      if (params.get("start")) setStart(params.get("start")!);
+      if (params.get("end")) setEnd(params.get("end")!);
+      if (params.get("capital")) setCapital(params.get("capital")!);
+      // This page may be opened from the catalogue. Start with a clean result,
+      // but leave every parameter editable before the user runs it.
+      setResult(null);
+    });
+    // The URL is read once when the route opens; the selected template remains user-editable.
+  }, []);
 
   const resetStrategy = () => {
     setSymbol(defaultTemplate.defaults?.symbol ?? "RELIANCE"); setTitle(`${defaultTemplate.name} research test`); setStart("2020-01-01"); setEnd("2024-12-31"); setTimeframe(defaultTemplate.defaults?.timeframe ?? "1day"); setCapital("100000"); setSelectedTemplate(defaultTemplate.name); setIndicators(initialIndicators); setEntryNodes(initialEntry); setExitNodes(initialExit); setRisk(initialRisk); setResult(null); setError(null); setMessage("New strategy workspace ready.");

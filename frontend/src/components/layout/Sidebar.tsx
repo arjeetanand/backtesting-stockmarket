@@ -18,7 +18,6 @@ import {
   Sparkles,
   Search,
   BookmarkCheck,
-  SlidersHorizontal,
 } from "lucide-react";
 
 const mainNav = [

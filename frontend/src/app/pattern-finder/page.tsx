@@ -2,9 +2,7 @@
 
 import { useMemo, useState } from "react";
 import {
-  AlertCircle,
   AlertTriangle,
-  ArrowUpRight,
   CheckCircle2,
   HelpCircle,
   Info,
@@ -14,7 +12,6 @@ import {
   Target,
   TrendingDown,
   TrendingUp,
-  Volume2,
   XCircle,
   Zap,
 } from "lucide-react";

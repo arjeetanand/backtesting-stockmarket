@@ -64,15 +64,17 @@ export default function ReplayPage() {
       if (params.get("start")) setStart(params.get("start")!);
       if (params.get("end")) setEnd(params.get("end")!);
     });
-    const savedSessionId = window.localStorage.getItem("backtrack:replay-session");
-    if (!savedSessionId) {
-      setRestored(true);
-      return;
-    }
-    void getReplaySession(savedSessionId)
-      .then(setSession)
-      .catch(() => window.localStorage.removeItem("backtrack:replay-session"))
-      .finally(() => setRestored(true));
+    queueMicrotask(() => {
+      const savedSessionId = window.localStorage.getItem("backtrack:replay-session");
+      if (!savedSessionId) {
+        setRestored(true);
+        return;
+      }
+      void getReplaySession(savedSessionId)
+        .then(setSession)
+        .catch(() => window.localStorage.removeItem("backtrack:replay-session"))
+        .finally(() => setRestored(true));
+    });
   }, []);
 
   useEffect(() => {
@@ -83,7 +85,10 @@ export default function ReplayPage() {
 
   useEffect(() => {
     const cleanSymbol = symbol.trim();
-    if (!cleanSymbol) { setAvailability(null); return; }
+    if (!cleanSymbol) {
+      queueMicrotask(() => setAvailability(null));
+      return;
+    }
     const timer = window.setTimeout(async () => {
       try {
         const next = await getMarketAvailability(cleanSymbol);

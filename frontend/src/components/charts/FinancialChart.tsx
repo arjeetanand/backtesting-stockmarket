@@ -27,6 +27,7 @@ import {
   type NormalizedCandle,
   type TradeMarker,
 } from "@/lib/chart-data";
+import { getChartViewState, type ChartViewState } from "@/lib/chart-state";
 
 const INDICATOR_COLORS = ["#4f46e5", "#0ea5e9", "#d97706", "#db2777", "#7c3aed", "#0891b2"];
 const visuallyHidden: CSSProperties = {
@@ -49,6 +50,7 @@ export interface FinancialChartProps {
   selectedTradeId?: string | null;
   onTradeSelect?: (tradeId: string | null) => void;
   loading?: boolean;
+  unavailable?: boolean;
   empty?: boolean;
   error?: string | Error | null;
   emptyMessage?: string;
@@ -107,8 +109,8 @@ function formatTimestamp(timestamp: string | number): string {
   return new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "2-digit" }).format(date);
 }
 
-function ChartStatus({ kind, message }: { kind: "loading" | "empty" | "error"; message: string }) {
-  const isError = kind === "error";
+function ChartStatus({ kind, message }: { kind: Exclude<ChartViewState, "ready">; message: string }) {
+  const isError = kind === "error" || kind === "unavailable";
   return (
     <div
       role={isError ? "alert" : "status"}
@@ -117,8 +119,8 @@ function ChartStatus({ kind, message }: { kind: "loading" | "empty" | "error"; m
     >
       <div style={{ display: "grid", justifyItems: "center", gap: 8, maxWidth: 420 }}>
         {kind === "loading" && <Loader2 size={22} aria-hidden="true" className="spin" />}
-        {kind === "error" && <BarChart3 size={22} aria-hidden="true" />}
-        <strong>{kind === "loading" ? "Loading chart data…" : kind === "error" ? "Chart data could not be displayed" : "No chart data"}</strong>
+        {(kind === "error" || kind === "unavailable") && <BarChart3 size={22} aria-hidden="true" />}
+        <strong>{kind === "loading" ? "Loading chart data…" : kind === "error" ? "Chart data could not be displayed" : kind === "unavailable" ? "Chart data is unavailable" : "No chart data"}</strong>
         <span style={{ fontSize: 12, lineHeight: 1.5 }}>{message}</span>
       </div>
     </div>
@@ -149,6 +151,7 @@ export function FinancialChart({
   selectedTradeId,
   onTradeSelect,
   loading = false,
+  unavailable = false,
   empty = false,
   error = null,
   emptyMessage = "Provide historical candles for the selected range to inspect price action.",
@@ -188,6 +191,7 @@ export function FinancialChart({
   const selectedTrade = effectiveSelectedTradeId ? data.trades.find((trade) => trade.id === effectiveSelectedTradeId) ?? null : null;
   const errorMessage = error instanceof Error ? error.message : error;
   const showEmpty = empty || data.candles.length === 0;
+  const viewState = getChartViewState({ loading, error: errorMessage, unavailable, empty: showEmpty, hasCandles: data.candles.length > 0 });
   const minVisible = Math.min(12, data.candles.length || 1);
   const chartHeight = Math.max(height, 280) + (showVolume ? 84 : 0) + groupIndicatorPanes(data.indicators).length * 128;
   const chartClassName = ["bt-interactive-chart", className].filter(Boolean).join(" ");
@@ -205,7 +209,7 @@ export function FinancialChart({
   };
 
   useEffect(() => {
-    if (!chartContainerRef.current || loading || errorMessage || showEmpty) return;
+    if (!chartContainerRef.current || viewState !== "ready") return;
     const container = chartContainerRef.current;
     const chart = createChart(container, {
       width: container.clientWidth,
@@ -354,11 +358,11 @@ export function FinancialChart({
       chart.remove();
       chartRef.current = null;
     };
-  }, [chartHeight, data, effectiveSelectedTradeId, errorMessage, height, loading, selectedTrade?.entry.price, selectedTrade?.entry.timestamp, selectedTrade?.exit, setSelectedTrade, showEmpty, showVolume, visibleCandles]);
+  }, [chartHeight, data, effectiveSelectedTradeId, height, selectedTrade?.entry.price, selectedTrade?.entry.timestamp, selectedTrade?.exit, setSelectedTrade, showVolume, viewState, visibleCandles]);
 
   const reset = () => setVisibleCount(defaultVisibleCandles);
   const fit = () => setVisibleCount(Math.max(1, data.candles.length));
-  const chartNavigator = !loading && !errorMessage && !showEmpty
+  const chartNavigator = viewState === "ready"
     ? `${visibleCandles.length} of ${data.candles.length} candles · ${effectiveSelectedTradeId ? `Selected trade ${effectiveSelectedTradeId}` : "Click a trade marker to highlight it"}`
     : null;
 
@@ -371,14 +375,14 @@ export function FinancialChart({
           <small>{description}</small>
         </div>
         <div className="bt-chart-controls" aria-label="Financial chart range controls">
-          <button type="button" onClick={fit} disabled={showEmpty || loading} className={safeVisibleCount === data.candles.length ? "is-active" : ""}>Fit</button>
-          <button type="button" onClick={() => zoom("out")} disabled={showEmpty || loading || safeVisibleCount >= data.candles.length} aria-label="Zoom out"><ZoomOut size={14} /></button>
-          <button type="button" onClick={() => zoom("in")} disabled={showEmpty || loading || safeVisibleCount <= minVisible} aria-label="Zoom in"><ZoomIn size={14} /></button>
-          <button type="button" onClick={reset} disabled={showEmpty || loading} aria-label="Reset chart range"><RotateCcw size={14} /></button>
-          <button type="button" onClick={fit} disabled={showEmpty || loading} aria-label="Fit all candles"><Maximize2 size={14} /></button>
+          <button type="button" onClick={fit} disabled={viewState !== "ready"} className={safeVisibleCount === data.candles.length ? "is-active" : ""}>Fit</button>
+          <button type="button" onClick={() => zoom("out")} disabled={viewState !== "ready" || safeVisibleCount >= data.candles.length} aria-label="Zoom out"><ZoomOut size={14} /></button>
+          <button type="button" onClick={() => zoom("in")} disabled={viewState !== "ready" || safeVisibleCount <= minVisible} aria-label="Zoom in"><ZoomIn size={14} /></button>
+          <button type="button" onClick={reset} disabled={viewState !== "ready"} aria-label="Reset chart range"><RotateCcw size={14} /></button>
+          <button type="button" onClick={fit} disabled={viewState !== "ready"} aria-label="Fit all candles"><Maximize2 size={14} /></button>
         </div>
       </div>
-      {!loading && !errorMessage && !showEmpty && <div className="bt-chart-legend" aria-label="How to read this chart">
+      {viewState === "ready" && <div className="bt-chart-legend" aria-label="How to read this chart">
         <strong>How to read it</strong>
         {showVolume && <span><i style={{ background: "#94a3b8" }} />Volume</span>}
         {data.indicators.map((indicator) => <span key={indicator.id}><i style={{ background: indicator.color ?? "#4f46e5" }} />{indicator.label}{indicator.placement === "pane" ? " · separate pane" : ""}</span>)}
@@ -386,12 +390,14 @@ export function FinancialChart({
         {data.tradeMarkers.some((marker) => marker.kind === "exit") && <span><i className="is-sell" />Sell / exit</span>}
         <small>Hover a candle for OHLC. Select a marker or trade to highlight it.</small>
       </div>}
-      {loading
+      {viewState === "loading"
         ? <ChartStatus kind="loading" message="Historical candles and chart overlays are being prepared." />
-        : errorMessage
-          ? <ChartStatus kind="error" message={errorMessage} />
-          : showEmpty
-            ? <ChartStatus kind="empty" message={emptyMessage} />
+        : viewState === "error"
+          ? <ChartStatus kind="error" message={errorMessage ?? "Retry the request or check the local API connection."} />
+          : viewState === "unavailable"
+            ? <ChartStatus kind="unavailable" message="This timeframe needs a supported local data source. Import the required official NSE history or choose Daily, Weekly, or Monthly." />
+            : viewState === "empty"
+              ? <ChartStatus kind="empty" message={emptyMessage} />
             : <div ref={chartContainerRef} role="img" aria-label={`${title}. ${description}`} style={{ minHeight: chartHeight }} />}
       <span style={visuallyHidden} aria-live="polite">{hoveredCandle ? `${formatTimestamp(hoveredCandle.timestamp)} open ${formatPrice(hoveredCandle.open)}, high ${formatPrice(hoveredCandle.high)}, low ${formatPrice(hoveredCandle.low)}, close ${formatPrice(hoveredCandle.close)}, volume ${formatVolume(hoveredCandle.volume)}` : ""}</span>
       {chartNavigator && <div className="bt-chart-navigator" aria-label="Chart range summary"><Maximize2 size={13} aria-hidden="true" /><span>{chartNavigator}</span><small>Historical only · no live prices</small></div>}

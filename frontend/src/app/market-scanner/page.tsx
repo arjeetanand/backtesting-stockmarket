@@ -215,9 +215,13 @@ export default function MarketScannerPage() {
   };
 
   const [bookmarkingSym, setBookmarkingSym] = useState<string | null>(null);
+  const [bookmarkMessage, setBookmarkMessage] = useState<string | null>(null);
+  const [bookmarkError, setBookmarkError] = useState<string | null>(null);
 
   const addToWatchlist = async (setup: BreakoutSetup) => {
     setBookmarkingSym(setup.symbol);
+    setBookmarkMessage(null);
+    setBookmarkError(null);
     try {
       const res = await fetch(`${API_BASE_URL}/watchlist/add`, {
         method: "POST",
@@ -231,9 +235,9 @@ export default function MarketScannerPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail ?? "Failed to add setup.");
-      alert(`Bookmarked ${setup.symbol} to your Daily Watchlist!`);
+      setBookmarkMessage(`${setup.symbol} was added to your Daily Watchlist. Refresh it after the next daily import to review its latest local bar.`);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Error adding to watchlist.");
+      setBookmarkError(err instanceof Error ? err.message : "Error adding to watchlist.");
     } finally {
       setBookmarkingSym(null);
     }
@@ -295,7 +299,7 @@ export default function MarketScannerPage() {
     });
   }, [leaderboardQuery, leaderboardSort, scannerResult?.leaderboard]);
   const visibleLeaderboard = showAllStocks ? filteredLeaderboard : filteredLeaderboard.slice(0, 12);
-  const heatmapSectors = scannerResult?.sector_heatmap ?? [];
+  const heatmapSectors = useMemo(() => scannerResult?.sector_heatmap ?? [], [scannerResult?.sector_heatmap]);
   const heatmapValues = heatmapSectors.map((item) => heatmapValue(item, heatmapMetric));
   const heatmapMin = Math.min(...heatmapValues, 0);
   const heatmapMax = Math.max(...heatmapValues, 0);
@@ -893,6 +897,8 @@ export default function MarketScannerPage() {
 
             {!loadingBreakout && breakoutResult && (
               <>
+                {bookmarkError && <div className="bt-alert-error" role="alert"><AlertCircle size={15} /> {bookmarkError}</div>}
+                {bookmarkMessage && <div className="bt-alert-success" role="status">{bookmarkMessage} <Link href="/watchlist" className="bt-link">Open Daily Watchlist →</Link></div>}
                 <section className="bt-panel scanner-breakout-explainer" aria-label="How to use breakout setups">
                   <div><strong>{breakoutSummary.candidates} matching setups</strong><p>This is a signal count, not a win prediction. One stock can appear more than once when it meets multiple technical rules. Start with high-conviction setups, then open Research to test the idea across history.</p></div>
                   <span className="bt-field-help">Daily NSE history · paper research only</span>

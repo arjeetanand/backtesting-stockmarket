@@ -171,11 +171,6 @@ export default function MlLabPage() {
     }
   };
 
-  useEffect(() => {
-    void fetchHistory();
-    void runExperiment();
-  }, []);
-
   const applyMlPreset = (pSymbol: string, pHorizon: string) => {
     setSymbol(pSymbol);
     setHorizon(pHorizon);
@@ -240,6 +235,16 @@ export default function MlLabPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void fetchHistory();
+      void runExperiment();
+    }, 0);
+    return () => window.clearTimeout(timer);
+    // Initial ML history and experiment intentionally run once per page entry.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const chart = useMemo(() => {
     if (!result?.test.predictions.length) return null;

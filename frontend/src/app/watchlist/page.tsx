@@ -5,14 +5,8 @@ import {
   AlertCircle,
   BookmarkCheck,
   CheckCircle2,
-  Database,
-  Flame,
-  Layers,
   RefreshCw,
-  ShieldAlert,
-  Sparkles,
   Trash2,
-  TrendingUp,
   XCircle,
 } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
@@ -69,7 +63,7 @@ export default function WatchlistPage() {
   };
 
   useEffect(() => {
-    void fetchWatchlist();
+    queueMicrotask(() => void fetchWatchlist());
   }, []);
 
   const totalCount = items.length;
@@ -90,7 +84,7 @@ export default function WatchlistPage() {
             </div>
             <h1>Daily Watchlist &amp; Setup Tracker</h1>
             <p>
-              Monitor bookmarked breakout candidates in real time. Track entry prices, target gains (+15%), and stop-loss levels (-5%) as new market data is imported.
+              Monitor bookmarked breakout candidates against the latest imported daily NSE bars. Track entry prices, target gains (+15%), and stop-loss levels (-5%) without implying live quotes.
             </p>
           </div>
           <div className="bt-heading-actions">
@@ -160,7 +154,7 @@ export default function WatchlistPage() {
             <div style={{ padding: "30px", textAlign: "center", color: "#64748b" }}>
               <BookmarkCheck size={32} style={{ color: "#94a3b8", marginBottom: "8px" }} />
               <p>Your watchlist is currently empty.</p>
-              <small>Navigate to the <strong>Market Scanner</strong> page and click <strong>"Bookmark Setup"</strong> on any candidate card to add it here.</small>
+              <small>Open <a href="/market-scanner" className="bt-link">Market Scanner</a>, run a historical breakout scan, then choose <strong>&quot;Bookmark Setup&quot;</strong> on a candidate card.</small>
             </div>
           ) : (
             <div className="bt-table-wrap">

@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Sparkles, TrendingUp } from "lucide-react";
+import { BookOpen, Sparkles } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import IndicatorSchool from "@/components/learning/IndicatorSchool";
 

@@ -40,8 +40,10 @@ export default function BacktestResultPage() {
     return result.equity_curve.map((point) => ({ date: point.timestamp.slice(0, 10), strategy: point.equity, benchmark: initial }));
   }, [result]);
   const drawdown = useMemo(() => {
-    let peak = 0;
-    return curve.map((point) => { peak = Math.max(peak, point.strategy); return { date: point.date, drawdown: peak ? ((point.strategy - peak) / peak) * 100 : 0 }; });
+    return curve.map((point, index) => {
+      const peak = curve.slice(0, index + 1).reduce((highest, current) => Math.max(highest, current.strategy), 0);
+      return { date: point.date, drawdown: peak ? ((point.strategy - peak) / peak) * 100 : 0 };
+    });
   }, [curve]);
 
   if (loading) return <div className="backtrack-page"><TopBar /><main className="backtrack-content"><div className="bt-panel" style={{ padding: "32px" }}><Loader2 size={18} className="spin" /> Loading the saved backtest…</div></main></div>;
