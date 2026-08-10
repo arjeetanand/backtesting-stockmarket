@@ -5,24 +5,71 @@ import Link from "next/link";
 import {
   AlertCircle,
   BookmarkCheck,
+  Check,
+  Clock3,
   Database,
   Flame,
   Globe,
   HelpCircle,
   Info,
   Layers,
+  ListChecks,
+  Pencil,
   Play,
   RefreshCw,
+  Save,
   ShieldCheck,
   Sparkles,
+  Trash2,
   TrendingUp,
   Zap,
 } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import { getUnifiedComparisonList } from "@/lib/strategy-library";
+import {
+  getScannerCatalog,
+  normalizeScannerCatalog,
+  runHistoricalScan,
+  runScreenerScan,
+  scannerApiErrorMessage,
+  type ScannerFormula,
+  type ScannerUniverse,
+  type ScreenerRunResponse,
+} from "@/lib/scanner-api";
+import {
+  addScannerRecentRun,
+  createScannerId,
+  readScannerStorage,
+  removeScannerPreset,
+  upsertScannerPreset,
+  writeScannerStorage,
+  type ScannerPreset,
+  type ScannerStorageState,
+} from "@/lib/scanner-storage";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 const UNIFIED_STRATEGY_OPTIONS = getUnifiedComparisonList();
+
+const FALLBACK_CATALOG: ScannerFormula[] = normalizeScannerCatalog({
+  formulas: UNIFIED_STRATEGY_OPTIONS.map((strategy) => ({
+    id: strategy.id,
+    name: strategy.title,
+    category: strategy.family,
+    description: strategy.description,
+    required_fields: [],
+    timeframe: "1day",
+    status: "legacy historical strategy",
+    strategy_type: strategy.id,
+  })),
+}).formulas;
+
+const FALLBACK_UNIVERSES: ScannerUniverse[] = [
+  { id: "nifty50", label: "NIFTY 50", description: "Configured NIFTY 50 constituents.", constituentCount: 50, asOf: null },
+  { id: "sensex", label: "Sensex", description: "Configured BSE Sensex constituents when available locally.", constituentCount: 30, asOf: null },
+  { id: "banknifty", label: "Bank Nifty", description: "Configured Bank Nifty constituents when available locally.", constituentCount: 12, asOf: null },
+  { id: "nifty500", label: "NIFTY 500", description: "Configured NIFTY 500 constituents.", constituentCount: 500, asOf: null },
+  { id: "all", label: "All imported stocks", description: "All locally imported symbols.", constituentCount: null, asOf: null },
+];
 
 type SectorItem = {
   sector: string;
@@ -140,10 +187,24 @@ export default function MarketScannerPage() {
   const defaultScanStart = new Date(new Date(`${today}T00:00:00`).setFullYear(new Date(`${today}T00:00:00`).getFullYear() - 2)).toISOString().slice(0, 10);
 
   // Screener state
-  const [universe, setUniverse] = useState("nifty500");
+  const [universe, setUniverse] = useState("nifty50");
+  const [formulaId, setFormulaId] = useState("sma_golden_cross");
+  const [formulaParameters, setFormulaParameters] = useState<Record<string, string | number | boolean>>({});
   const [strategyType, setStrategyType] = useState("sma_crossover");
   const [scanStart, setScanStart] = useState(defaultScanStart);
   const [scanEnd, setScanEnd] = useState(today);
+  const [scannerCatalog, setScannerCatalog] = useState<{ formulas: ScannerFormula[]; universes: ScannerUniverse[] }>({ formulas: FALLBACK_CATALOG, universes: FALLBACK_UNIVERSES });
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [screenerResult, setScreenerResult] = useState<ScreenerRunResponse | null>(null);
+  const [loadingScreener, setLoadingScreener] = useState(false);
+  const [screenerError, setScreenerError] = useState<string | null>(null);
+  const [lastScreenerConfigKey, setLastScreenerConfigKey] = useState<string | null>(null);
+  const [storageState, setStorageState] = useState<ScannerStorageState>(() => typeof window === "undefined" ? { version: 1, presets: [], recentRuns: [] } : readScannerStorage(window.localStorage));
+  const [presetName, setPresetName] = useState("");
+  const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
+  const [editingPresetName, setEditingPresetName] = useState("");
+  const [storageMessage, setStorageMessage] = useState<string | null>(null);
   const [scannerResult, setScannerResult] = useState<{
     universe: string;
     strategy_type: string;
@@ -173,23 +234,106 @@ export default function MarketScannerPage() {
   const [leaderboardSort, setLeaderboardSort] = useState<LeaderboardSort>("strategy_return");
   const [showAllStocks, setShowAllStocks] = useState(false);
 
-  const runUniverseScan = async () => {
+  const activeFormula = scannerCatalog.formulas.find((formula) => formula.id === formulaId) ?? FALLBACK_CATALOG[0];
+  const scannerConfigKey = useMemo(() => JSON.stringify({ universe, formulaId, formulaParameters, scanStart, scanEnd }), [formulaId, formulaParameters, scanEnd, scanStart, universe]);
+  const screenerIsStale = Boolean(screenerResult && scannerConfigKey !== lastScreenerConfigKey);
+  const availableUniverses = scannerCatalog.universes.length ? scannerCatalog.universes : FALLBACK_UNIVERSES;
+
+  useEffect(() => {
+    let cancelled = false;
+    void getScannerCatalog().then((catalog) => {
+      if (cancelled) return;
+      const nextCatalog = { formulas: catalog.formulas.length ? catalog.formulas : FALLBACK_CATALOG, universes: catalog.universes.length ? catalog.universes : FALLBACK_UNIVERSES };
+      setScannerCatalog(nextCatalog);
+      setFormulaId((current) => nextCatalog.formulas.some((formula) => formula.id === current) ? current : nextCatalog.formulas[0]?.id ?? current);
+      if (catalog.formulas.length && !catalog.formulas.some((formula) => formula.id === formulaId)) {
+        setFormulaId(catalog.formulas[0].id);
+        setStrategyType(catalog.formulas[0].strategyType ?? catalog.formulas[0].id);
+      }
+      setCatalogError(null);
+    }).catch((error: unknown) => {
+      if (cancelled) return;
+      setCatalogError(scannerApiErrorMessage(error, "The screener catalog timed out. The compatibility catalog is available.", "Could not load the screener catalog."));
+    }).finally(() => {
+      if (!cancelled) setCatalogLoading(false);
+    });
+    return () => { cancelled = true; };
+    // Catalog loading is an initialization request; formula changes must not refetch it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const persistScannerState = (nextState: ScannerStorageState) => {
+    setStorageState(nextState);
+    writeScannerStorage(nextState, window.localStorage);
+  };
+
+  const loadScannerConfig = (config: Pick<ScannerPreset, "universe" | "formulaId" | "parameters" | "start" | "end">) => {
+    setUniverse(config.universe);
+    setFormulaId(config.formulaId);
+    setFormulaParameters(config.parameters);
+    setStrategyType(scannerCatalog.formulas.find((formula) => formula.id === config.formulaId)?.strategyType ?? config.formulaId);
+    setScanStart(config.start);
+    setScanEnd(config.end);
+    setStorageMessage("Configuration loaded. Press Run scan when you are ready.");
+  };
+
+  const saveCurrentPreset = () => {
+    const name = presetName.trim();
+    if (!name) {
+      setStorageMessage("Give this saved scan a name first.");
+      return;
+    }
+    const now = new Date().toISOString();
+    const nextState = upsertScannerPreset(storageState, { id: createScannerId("preset"), name, universe, formulaId, parameters: formulaParameters, start: scanStart, end: scanEnd, updatedAt: now });
+    persistScannerState(nextState);
+    setPresetName("");
+    setStorageMessage(`Saved scan “${name}”. Loading it will not run a scan automatically.`);
+  };
+
+  const renameSavedPreset = (preset: ScannerPreset) => {
+    const name = editingPresetName.trim();
+    if (!name) return;
+    persistScannerState(upsertScannerPreset(storageState, { ...preset, name, updatedAt: new Date().toISOString() }));
+    setEditingPresetId(null);
+    setEditingPresetName("");
+  };
+
+  const rememberRecentRun = (result: ScreenerRunResponse) => {
+    const nextState = addScannerRecentRun(storageState, { id: createScannerId("run"), universe: result.universe, formulaId: result.formulaId, parameters: formulaParameters, matchCount: result.totalMatches, dataAsOf: result.dataAsOf, coverageStatus: result.coverageStatus, start: scanStart, end: scanEnd, createdAt: new Date().toISOString() });
+    persistScannerState(nextState);
+  };
+
+  const runScreener = async () => {
+    const requestedConfigKey = scannerConfigKey;
+    const t0 = performance.now();
+    setLoadingScreener(true);
+    setScreenerError(null);
+    setStorageMessage(null);
+    try {
+      const result = await runScreenerScan({ universe, formulaId, parameters: formulaParameters, start: scanStart, end: scanEnd });
+      setScreenerResult(result);
+      setLastScreenerConfigKey(requestedConfigKey);
+      setScannerTimeSec(Number(((performance.now() - t0) / 1000).toFixed(1)));
+      rememberRecentRun(result);
+      setSelectedSector(null);
+    } catch (err) {
+      setScreenerError(scannerApiErrorMessage(err, "The screener timed out. Try a smaller universe or check the local cache.", "Error running the selected screener formula."));
+    } finally {
+      setLoadingScreener(false);
+    }
+  };
+
+  const runHistoricalResearchScan = async () => {
     setLoadingScanner(true);
     setScannerError(null);
     const t0 = performance.now();
     try {
-      const res = await fetchWithTimeout(`${API_BASE_URL}/market-scanner/run`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ universe, strategy_type: strategyType, start: `${scanStart}T00:00:00`, end: `${scanEnd}T23:59:59` }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail ?? "Failed to run market scanner.");
+      const data = await runHistoricalScan({ universe, strategyType, start: scanStart, end: scanEnd });
       setScannerResult(data);
       setSelectedSector(null);
       setScannerTimeSec(Number(((performance.now() - t0) / 1000).toFixed(1)));
     } catch (err) {
-      setScannerError(apiErrorMessage(err, "The universe scan took too long. Try NIFTY 50 or a shorter local dataset.", "Error running scanner."));
+      setScannerError(scannerApiErrorMessage(err, "The historical scan took too long. Try NIFTY 50 or a shorter local dataset.", "Error running historical scanner."));
     } finally {
       setLoadingScanner(false);
     }
@@ -242,19 +386,6 @@ export default function MarketScannerPage() {
       setBookmarkingSym(null);
     }
   };
-
-  useEffect(() => {
-    queueMicrotask(() => {
-      if (activeTab === "heatmap" && !scannerResult) {
-        void runUniverseScan();
-      } else if (activeTab === "breakout" && !breakoutResult) {
-        void runBreakoutScan();
-      }
-    });
-    // The scan callbacks intentionally capture the current filter values.
-    // Re-running them when their function identities change would loop scans.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, breakoutResult, scannerResult]);
 
   const setupCounts = useMemo(() => {
     const list = breakoutResult?.setups ?? [];
@@ -320,13 +451,10 @@ export default function MarketScannerPage() {
       .sort((a, b) => stockResearchScore(b) - stockResearchScore(a) || b.strategy_return - a.strategy_return)
       .slice(0, 10)
     : [];
-  const averageStrategyReturn = visibleLeaderboard.length
-    ? visibleLeaderboard.reduce((sum, item) => sum + item.strategy_return, 0) / visibleLeaderboard.length
-    : null;
   const averageBuyHoldReturn = visibleLeaderboard.length
     ? visibleLeaderboard.reduce((sum, item) => sum + item.buy_hold_return, 0) / visibleLeaderboard.length
     : null;
-  const universeLabel = universe === "nifty50" ? "NIFTY 50" : universe === "nifty500" ? "NIFTY 500" : "All imported";
+  const universeLabel = availableUniverses.find((item) => item.id === universe)?.label ?? (universe === "nifty500" ? "NIFTY 500" : "All imported");
 
   const exportLeaderboard = () => {
     if (!scannerResult?.leaderboard.length) return;
@@ -390,25 +518,44 @@ export default function MarketScannerPage() {
             <section className="scanner-reference-layout" aria-label="Market scanner workspace">
               <aside className="bt-panel scanner-filter-rail">
                 <div className="scanner-rail-heading">
-                  <span className="bt-eyebrow">TECHNICAL CRITERIA</span>
-                  <h2>Market filters</h2>
-                  <p>Run the same local NSE cache through a focused universe and strategy.</p>
+                  <span className="bt-eyebrow">SCREEN NOW</span>
+                  <h2>Choose a formula</h2>
+                  <p>Build a local NSE screener configuration, then run it explicitly when you are ready.</p>
                 </div>
 
                 <label className="scanner-rail-field">
-                  <span>Target universe</span>
-                  <select className="bt-field-input" value={universe} onChange={(event) => setUniverse(event.target.value)}>
-                    <option value="nifty50">NIFTY 50</option>
-                    <option value="nifty500">NIFTY 500</option>
-                    <option value="all">All imported stocks</option>
+                  <span>Formula library</span>
+                  <select className="bt-field-input" value={formulaId} onChange={(event) => { setFormulaId(event.target.value); setFormulaParameters({}); }}>
+                    {scannerCatalog.formulas.map((formula) => <option key={formula.id} value={formula.id}>{formula.name}</option>)}
                   </select>
                 </label>
                 <label className="scanner-rail-field">
-                  <span>Strategy template</span>
-                  <select className="bt-field-input" value={strategyType} onChange={(event) => setStrategyType(event.target.value)}>
-                    {UNIFIED_STRATEGY_OPTIONS.map((strategy) => <option key={strategy.id} value={strategy.id}>{strategy.title}</option>)}
+                  <span>Target universe</span>
+                  <select className="bt-field-input" value={universe} onChange={(event) => setUniverse(event.target.value)}>
+                    {availableUniverses.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
                   </select>
                 </label>
+
+                {activeFormula && (
+                  <div className="scanner-formula-summary" role="status">
+                    <strong>{activeFormula.category}</strong>
+                    <span>{activeFormula.description}</span>
+                    <small>{activeFormula.timeframe} · {activeFormula.status}</small>
+                  </div>
+                )}
+
+                {activeFormula?.parameters.map((parameter) => (
+                  <label className="scanner-rail-field" key={parameter.id}>
+                    <span>{parameter.label}</span>
+                    {parameter.options?.length ? (
+                      <select className="bt-field-input" value={String(formulaParameters[parameter.id] ?? parameter.default ?? "")} onChange={(event) => setFormulaParameters((current) => ({ ...current, [parameter.id]: event.target.value }))}>
+                        {parameter.options.map((option) => <option key={String(option.value)} value={String(option.value)}>{option.label}</option>)}
+                      </select>
+                    ) : (
+                      <input className="bt-field-input" type={parameter.type === "number" ? "number" : "text"} value={String(formulaParameters[parameter.id] ?? parameter.default ?? "")} min={parameter.min} max={parameter.max} onChange={(event) => setFormulaParameters((current) => ({ ...current, [parameter.id]: parameter.type === "number" ? Number(event.target.value) : event.target.value }))} />
+                    )}
+                  </label>
+                ))}
 
                 <div className="scanner-rail-dates">
                   <label className="scanner-rail-field"><span>History from</span><input className="bt-field-input" type="date" value={scanStart} max={scanEnd} onChange={(event) => setScanStart(event.target.value)} /></label>
@@ -416,47 +563,86 @@ export default function MarketScannerPage() {
                 </div>
 
                 <div className="scanner-rail-rule">
-                  <span>Evaluation scope</span>
-                  <strong>{universeLabel}</strong>
+                  <span>Configuration status</span>
+                  <strong>{screenerIsStale ? "Changed · rerun required" : screenerResult ? "Results match filters" : "Ready to run"}</strong>
                 </div>
-                <button type="button" className="bt-primary scanner-rail-run" onClick={() => void runUniverseScan()} disabled={loadingScanner}>
-                  {loadingScanner ? <RefreshCw size={13} className="spin" /> : <Play size={13} />}
-                  {loadingScanner ? "Scanning…" : "Run scan"}
+                <button type="button" className="bt-primary scanner-rail-run" onClick={() => void runScreener()} disabled={loadingScreener}>
+                  {loadingScreener ? <RefreshCw size={13} className="spin" /> : <Play size={13} />}
+                  {loadingScreener ? "Running…" : "Run scan"}
                 </button>
 
+                <div className="scanner-rail-source"><ShieldCheck size={13} /><span>Formula catalog from the API<br />official NSE daily cache only</span></div>
+
                 <div className="scanner-saved-scans">
-                  <div className="scanner-saved-heading"><BookmarkCheck size={13} /><span>SAVED SCANS</span></div>
-                  <button type="button" onClick={() => { setUniverse("nifty50"); setStrategyType("sma_crossover"); }}>
-                    <span className="scanner-saved-check">{universe === "nifty50" && strategyType === "sma_crossover" ? "✓" : ""}</span>
-                    <span><strong>Bluechip crossover</strong><small>NIFTY 50 · SMA</small></span>
-                  </button>
-                  <button type="button" onClick={() => { setUniverse("nifty500"); setStrategyType("rsi_mean_reversion"); }}>
-                    <span className="scanner-saved-check">{universe === "nifty500" && strategyType === "rsi_mean_reversion" ? "✓" : ""}</span>
-                    <span><strong>Mean reversion</strong><small>NIFTY 500 · RSI</small></span>
-                  </button>
-                  <button type="button" onClick={() => { setUniverse("all"); setStrategyType("donchian_breakout"); }}>
-                    <span className="scanner-saved-check">{universe === "all" && strategyType === "donchian_breakout" ? "✓" : ""}</span>
-                    <span><strong>Breakout momentum</strong><small>Imported · 52W high</small></span>
-                  </button>
+                  <div className="scanner-saved-heading"><ListChecks size={13} /><span>FORMULA LIBRARY</span></div>
+                  <small className="scanner-storage-note">{catalogLoading ? "Loading catalog…" : catalogError ? "Compatibility catalog · API unavailable" : `${scannerCatalog.formulas.length} formulas available`}</small>
+                  <small className="scanner-storage-note">{activeFormula?.requiredFields.length ? `Needs: ${activeFormula.requiredFields.join(", ")}` : "Technical fields are validated by the backend."}</small>
                 </div>
 
-                <div className="scanner-rail-source"><ShieldCheck size={13} /><span>Official NSE history<br />from the local cache</span></div>
+                <div className="scanner-saved-scans">
+                  <div className="scanner-saved-heading"><BookmarkCheck size={13} /><span>MY SAVED SCANS</span></div>
+                  <div className="scanner-save-row">
+                    <input className="bt-field-input" aria-label="Saved scan name" value={presetName} onChange={(event) => setPresetName(event.target.value)} placeholder="Name this configuration" />
+                    <button type="button" className="bt-secondary-btn" onClick={saveCurrentPreset}><Save size={12} /> Save</button>
+                  </div>
+                  {storageMessage && <small className="scanner-storage-note" role="status">{storageMessage}</small>}
+                  {storageState.presets.length === 0 ? <small className="scanner-storage-note">No saved scans yet. Save a configuration to reuse it later.</small> : storageState.presets.map((preset) => (
+                    <div className="scanner-saved-item" key={preset.id}>
+                      {editingPresetId === preset.id ? <input className="bt-field-input" aria-label={`Rename ${preset.name}`} value={editingPresetName} onChange={(event) => setEditingPresetName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") renameSavedPreset(preset); }} /> : <button type="button" className="scanner-saved-load" onClick={() => loadScannerConfig(preset)}><strong>{preset.name}</strong><small>{preset.universe} · {preset.formulaId}</small></button>}
+                      {editingPresetId === preset.id ? <button type="button" className="scanner-icon-btn" aria-label={`Save new name for ${preset.name}`} onClick={() => renameSavedPreset(preset)}><Check size={12} /></button> : <button type="button" className="scanner-icon-btn" aria-label={`Rename ${preset.name}`} onClick={() => { setEditingPresetId(preset.id); setEditingPresetName(preset.name); }}><Pencil size={12} /></button>}
+                      <button type="button" className="scanner-icon-btn" aria-label={`Delete ${preset.name}`} onClick={() => persistScannerState(removeScannerPreset(storageState, preset.id))}><Trash2 size={12} /></button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="scanner-saved-scans">
+                  <div className="scanner-saved-heading"><Clock3 size={13} /><span>RECENT RUNS</span></div>
+                  {storageState.recentRuns.length === 0 ? <small className="scanner-storage-note">Previous explicit runs will appear here.</small> : storageState.recentRuns.slice(0, 5).map((run) => (
+                    <button type="button" className="scanner-saved-load" key={run.id} onClick={() => loadScannerConfig(run)}><strong>{run.formulaId} · {run.matchCount} matches</strong><small>{run.universe} · {run.dataAsOf ?? "data date unavailable"}</small></button>
+                  ))}
+                </div>
               </aside>
 
               <div className="scanner-results-workspace">
                 <div className="scanner-reference-kpis" aria-label="Scanner summary">
-                  <div className="scanner-reference-kpi"><span>MATCHING RESULTS</span><strong>{scannerResult?.total_scanned?.toLocaleString("en-IN") ?? "—"}</strong><small>{universeLabel} symbols scanned</small></div>
-                  <div className="scanner-reference-kpi is-positive"><span>AVG STRATEGY RETURN</span><strong>{pct(averageStrategyReturn ?? undefined)}</strong><small>top returned instruments</small></div>
-                  <div className="scanner-reference-kpi"><span>SCANNED SECTORS</span><strong>{scannerResult?.sectors_count?.toLocaleString("en-IN") ?? "—"}</strong><small>groups in local cache</small></div>
-                  <div className="scanner-reference-kpi"><span>SCAN TIME</span><strong>{scannerTimeSec ? `${scannerTimeSec}s` : "—"}</strong><small>vectorized local run</small></div>
+                  <div className="scanner-reference-kpi"><span>MATCHING RESULTS</span><strong>{screenerResult?.totalMatches.toLocaleString("en-IN") ?? "—"}</strong><small>{universeLabel} formula matches</small></div>
+                  <div className="scanner-reference-kpi is-positive"><span>DATA COVERAGE</span><strong>{screenerResult?.coverageStatus ?? "—"}</strong><small>{screenerResult ? `${screenerResult.availableSymbols} symbols available` : "shown after an explicit run"}</small></div>
+                  <div className="scanner-reference-kpi"><span>DATA AS OF</span><strong>{screenerResult?.dataAsOf ?? "—"}</strong><small>latest local daily bar</small></div>
+                  <div className="scanner-reference-kpi"><span>SCAN TIME</span><strong>{scannerTimeSec ? `${scannerTimeSec}s` : "—"}</strong><small>explicit local run</small></div>
                 </div>
 
+                {catalogError && <div className="bt-alert-warning scanner-reference-alert" role="status"><Info size={15} /> {catalogError} The compatibility formula list is available; scan endpoints still require the backend contract.</div>}
                 {scannerError && (
                   <div className="bt-alert-error scanner-reference-alert" role="alert"><AlertCircle size={15} /> {scannerError}</div>
                 )}
+                {screenerError && <div className="bt-alert-error scanner-reference-alert" role="alert"><AlertCircle size={15} /> {screenerError}</div>}
 
-                {loadingScanner && (
-                  <div className="bt-panel scanner-reference-empty"><RefreshCw size={18} className="spin" /><strong>Evaluating the selected universe…</strong><span>Grouping strategy performance from official NSE history.</span></div>
+                {loadingScreener && (
+                  <div className="bt-panel scanner-reference-empty" role="status" aria-live="polite"><RefreshCw size={18} className="spin" /><strong>Running {activeFormula?.name ?? "formula"}…</strong><span>This starts only after you press Run scan. The page will not keep retrying in the background.</span></div>
+                )}
+
+                {!loadingScreener && !screenerResult && !screenerError && (
+                  <div className="bt-panel scanner-reference-empty"><ListChecks size={21} /><strong>Ready for an explicit scan</strong><span>Choose a formula and universe, review the dates, then press Run scan. Changing filters never starts a request.</span></div>
+                )}
+
+                {!loadingScreener && screenerResult && (
+                  <section className="scanner-heatmap-surface" aria-labelledby="screener-results-title">
+                    <div className="scanner-heatmap-head">
+                      <div>
+                        <span className="bt-eyebrow">FORMULA RESULTS</span>
+                        <h2 id="screener-results-title">{activeFormula?.name ?? screenerResult.formulaId} matches</h2>
+                        <p>{screenerResult.totalMatches} matching symbols from {universeLabel}. This is a current local-data screen, not a backtest or live quote.</p>
+                      </div>
+                      {screenerIsStale && <span className="bt-field-help" role="status">Filters changed · rerun required</span>}
+                    </div>
+                    {screenerResult.missingSymbols.length > 0 && <div className="bt-alert-warning scanner-reference-alert" role="status"><Info size={15} /> {screenerResult.missingSymbols.length} requested symbols have no local bars. Import the required NSE archive before treating the screen as complete.</div>}
+                    {screenerResult.matches.length === 0 ? <div className="scanner-reference-empty"><Database size={21} /><strong>No matches in the available local data</strong><span>{screenerResult.coverageStatus === "unavailable" ? "The selected universe is unavailable locally." : "Try another formula or import more official NSE daily history."}</span><Link href="/data" className="bt-secondary-btn"><Database size={13} /> Manage stock data</Link></div> : (
+                      <div className="scanner-screener-match-list" role="list" aria-label="Formula matches">
+                        {screenerResult.matches.map((match) => <article className="scanner-screener-match" key={match.symbol} role="listitem"><div><strong>{match.symbol}</strong><small>{match.companyName} · {match.sector}</small></div><span className="scanner-screener-score">{match.score === null ? "Match" : `${match.score.toFixed(1)} score`}</span><p>{match.reason}</p><small>{match.dataAsOf ?? screenerResult.dataAsOf ?? "Local date unavailable"}{match.close === null ? "" : ` · Close ₹${match.close.toLocaleString("en-IN")}`}</small></article>)}
+                      </div>
+                    )}
+                    <div className="scanner-reference-footer"><span>{screenerResult.availableSymbols} symbols available · {screenerResult.coverageStatus} coverage · {screenerResult.dataAsOf ?? "data date unavailable"}</span><button type="button" className="bt-secondary-btn" onClick={() => void runHistoricalResearchScan()} disabled={loadingScanner}><Database size={13} /> {loadingScanner ? "Running history…" : "Historical research scan"}</button></div>
+                  </section>
                 )}
 
                 {!loadingScanner && scannerResult?.total_scanned === 0 && (
@@ -610,7 +796,7 @@ export default function MarketScannerPage() {
                   <button
                     type="button"
                     className="bt-primary"
-                    onClick={() => void runUniverseScan()}
+                    onClick={() => void runHistoricalResearchScan()}
                     disabled={loadingScanner}
                   >
                     {loadingScanner ? <RefreshCw size={14} className="spin" /> : <Play size={14} />}
@@ -839,8 +1025,6 @@ export default function MarketScannerPage() {
                     step="5"
                     value={minConviction}
                     onChange={(e) => setMinConviction(Number(e.target.value))}
-                    onMouseUp={(e) => void runBreakoutScan(Number((e.target as HTMLInputElement).value))}
-                    onTouchEnd={(e) => void runBreakoutScan(Number((e.target as HTMLInputElement).value))}
                   />
                 </div>
               </div>

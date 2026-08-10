@@ -4,12 +4,12 @@ Last reviewed: 2026-07-25
 
 This handbook is a practical map of the current Backtrack system. It combines the existing product, backend, frontend, handover, testing, UX, and QA documentation without replacing them. Use the linked documents for deeper detail:
 
-- [README.md](README.md) — setup, product boundary, primary workflows, and limitations.
-- [PROJECT_GUIDE.md](PROJECT_GUIDE.md) — page-by-page user behavior.
-- [backend/README.md](backend/README.md) — FastAPI, importer, SQLite, and API details.
-- [frontend/README.md](frontend/README.md) — Next.js routes, chart contracts, and frontend structure.
-- [handover.md](handover.md) — engineering source of truth for persistence and domain behavior.
-- [TESTING.md](TESTING.md) — test and release contract.
+- [README.md](../README.md) — setup, product boundary, primary workflows, and limitations.
+- [PROJECT_GUIDE.md](../PROJECT_GUIDE.md) — page-by-page user behavior.
+- [backend/README.md](../backend/README.md) — FastAPI, importer, SQLite, and API details.
+- [frontend/README.md](../frontend/README.md) — Next.js routes, chart contracts, and frontend structure.
+- [handover.md](../handover.md) — engineering source of truth for persistence and domain behavior.
+- [TESTING.md](../TESTING.md) — test and release contract.
 - [UX_AUDIT.md](UX_AUDIT.md) — UX findings and prioritized follow-up work.
 - [QA_ERROR_LOG.md](QA_ERROR_LOG.md) — end-to-end QA issues and environment notes.
 - [AI_ML_INTERVIEW_GUIDE.md](AI_ML_INTERVIEW_GUIDE.md) — interview preparation, ML concepts, examples, and project stories.

@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "as_of": "2025-06-30",
+  "source": "Backtrack technical screener catalog",
+  "data_boundary": "official_nse_daily_ohlcv",
+  "formulas": [
+    {
+      "formula_id": "sma_golden_cross",
+      "name": "SMA 20/50 bullish crossover",
+      "category": "Trend",
+      "description": "The 20-day simple moving average crossed above the 50-day average on the latest bar.",
+      "required_fields": ["close"],
+      "parameters": [{"name": "fast_window", "type": "integer", "default": 20, "minimum": 2, "maximum": 200}, {"name": "slow_window", "type": "integer", "default": 50, "minimum": 3, "maximum": 500}],
+      "timeframe": "1day",
+      "status": "supported"
+    },
+    {
+      "formula_id": "sma_death_cross",
+      "name": "SMA 20/50 bearish crossover",
+      "category": "Trend",
+      "description": "The 20-day simple moving average crossed below the 50-day average on the latest bar.",
+      "required_fields": ["close"],
+      "parameters": [{"name": "fast_window", "type": "integer", "default": 20, "minimum": 2, "maximum": 200}, {"name": "slow_window", "type": "integer", "default": 50, "minimum": 3, "maximum": 500}],
+      "timeframe": "1day",
+      "status": "supported"
+    },
+    {
+      "formula_id": "price_above_sma",
+      "name": "Price above SMA 50",
+      "category": "Trend",
+      "description": "The latest close is above its 50-day simple moving average.",
+      "required_fields": ["close"],
+      "parameters": [{"name": "window", "type": "integer", "default": 50, "minimum": 2, "maximum": 500}],
+      "timeframe": "1day",
+      "status": "supported"
+    },
+    {
+      "formula_id": "rsi_oversold",
+      "name": "RSI below oversold threshold",
+      "category": "Momentum",
+      "description": "The latest 14-period RSI is below the configured oversold threshold.",
+      "required_fields": ["close"],
+      "parameters": [{"name": "period", "type": "integer", "default": 14, "minimum": 2, "maximum": 100}, {"name": "threshold", "type": "number", "default": 30, "minimum": 5, "maximum": 50}],
+      "timeframe": "1day",
+      "status": "supported"
+    },
+    {
+      "formula_id": "rsi_overbought",
+      "name": "RSI above overbought threshold",
+      "category": "Momentum",
+      "description": "The latest 14-period RSI is above the configured overbought threshold.",
+      "required_fields": ["close"],
+      "parameters": [{"name": "period", "type": "integer", "default": 14, "minimum": 2, "maximum": 100}, {"name": "threshold", "type": "number", "default": 70, "minimum": 50, "maximum": 95}],
+      "timeframe": "1day",
+      "status": "supported"
+    },
+    {
+      "formula_id": "momentum",
+      "name": "20-day momentum",
+      "category": "Momentum",
+      "description": "The latest close is higher than the close by the configured lookback period.",
+      "required_fields": ["close"],
+      "parameters": [{"name": "window", "type": "integer", "default": 20, "minimum": 2, "maximum": 252}, {"name": "minimum_return_pct", "type": "number", "default": 0, "minimum": -100, "maximum": 500}],
+      "timeframe": "1day",
+      "status": "supported"
+    },
+    {
+      "formula_id": "high_volume",
+      "name": "High volume versus 20-day average",
+      "category": "Price and volume",
+      "description": "The latest volume is above the configured multiple of its 20-day average.",
+      "required_fields": ["volume"],
+      "parameters": [{"name": "window", "type": "integer", "default": 20, "minimum": 2, "maximum": 100}, {"name": "threshold", "type": "number", "default": 1.5, "minimum": 0.1, "maximum": 20}],
+      "timeframe": "1day",
+      "status": "supported"
+    },
+    {
+      "formula_id": "breakout_4w_high",
+      "name": "20-day high breakout",
+      "category": "Breakouts",
+      "description": "The latest high or close breaks above the prior 20-day high.",
+      "required_fields": ["high", "close"],
+      "parameters": [{"name": "window", "type": "integer", "default": 20, "minimum": 2, "maximum": 252}],
+      "timeframe": "1day",
+      "status": "supported"
+    },
+    {
+      "formula_id": "breakout_52w_high",
+      "name": "52-week high breakout",
+      "category": "Breakouts",
+      "description": "The latest high or close breaks above the prior 252-trading-day high.",
+      "required_fields": ["high", "close"],
+      "parameters": [{"name": "window", "type": "integer", "default": 252, "minimum": 20, "maximum": 504}],
+      "timeframe": "1day",
+      "status": "supported"
+    },
+    {
+      "formula_id": "near_52w_high",
+      "name": "Within 5% of 52-week high",
+      "category": "Breakouts",
+      "description": "The latest close is within the configured percentage of the rolling 52-week high.",
+      "required_fields": ["high", "close"],
+      "parameters": [{"name": "threshold_pct", "type": "number", "default": 5, "minimum": 0, "maximum": 50}],
+      "timeframe": "1day",
+      "status": "supported"
+    },
+    {
+      "formula_id": "near_52w_low",
+      "name": "Within 5% of 52-week low",
+      "category": "Breakouts",
+      "description": "The latest close is within the configured percentage of the rolling 52-week low.",
+      "required_fields": ["low", "close"],
+      "parameters": [{"name": "threshold_pct", "type": "number", "default": 5, "minimum": 0, "maximum": 50}],
+      "timeframe": "1day",
+      "status": "supported"
+    },
+    {
+      "formula_id": "bullish_engulfing",
+      "name": "Bullish engulfing",
+      "category": "Candlesticks",
+      "description": "The latest bullish candle engulfs the prior bearish candle using only OHLC values.",
+      "required_fields": ["open", "close"],
+      "parameters": [],
+      "timeframe": "1day",
+      "status": "supported"
+    },
+    {
+      "formula_id": "bearish_engulfing",
+      "name": "Bearish engulfing",
+      "category": "Candlesticks",
+      "description": "The latest bearish candle engulfs the prior bullish candle using only OHLC values.",
+      "required_fields": ["open", "close"],
+      "parameters": [],
+      "timeframe": "1day",
+      "status": "supported"
+    },
+    {
+      "formula_id": "hammer",
+      "name": "Hammer candle",
+      "category": "Candlesticks",
+      "description": "The latest OHLC candle has a small body and a materially longer lower shadow.",
+      "required_fields": ["open", "high", "low", "close"],
+      "parameters": [{"name": "shadow_multiple", "type": "number", "default": 2, "minimum": 1, "maximum": 10}],
+      "timeframe": "1day",
+      "status": "supported"
+    },
+    {
+      "formula_id": "shooting_star",
+      "name": "Shooting star candle",
+      "category": "Candlesticks",
+      "description": "The latest OHLC candle has a small body and a materially longer upper shadow.",
+      "required_fields": ["open", "high", "low", "close"],
+      "parameters": [{"name": "shadow_multiple", "type": "number", "default": 2, "minimum": 1, "maximum": 10}],
+      "timeframe": "1day",
+      "status": "supported"
+    },
+    {
+      "formula_id": "rvol_surge",
+      "name": "Relative volume above 2x",
+      "category": "Price and volume",
+      "description": "The latest volume is at least twice its 20-day average.",
+      "required_fields": ["volume"],
+      "parameters": [{"name": "window", "type": "integer", "default": 20, "minimum": 2, "maximum": 100}, {"name": "threshold", "type": "number", "default": 2, "minimum": 0.1, "maximum": 20}],
+      "timeframe": "1day",
+      "status": "supported"
+    }
+  ]
+}

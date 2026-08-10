@@ -5,9 +5,9 @@ from __future__ import annotations
 import csv
 import io
 from dataclasses import asdict
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Annotated, Any, cast
+from typing import Annotated, Any, Protocol, cast
 from uuid import uuid4
 
 import pandas as pd
@@ -19,8 +19,19 @@ from quant_research.api.schemas import (
     CatalogueRefreshResponse,
     CustomBacktestRequest,
     DataInventoryItem,
+    FiiDiiChartPoint,
+    FiiDiiImportJobResponse,
+    FiiDiiImportRequest,
+    FiiDiiImportStatusResponse,
+    FiiDiiIndexPoint,
+    FiiDiiResponse,
+    FiiDiiRowResponse,
+    FiiDiiSummaryResponse,
     HealthResponse,
     HypothesisRequest,
+    InsightSectorResponse,
+    InsightsResponse,
+    InsightStockResponse,
     InstrumentResponse,
     MarketAvailabilityResponse,
     MarketDataResponse,
@@ -38,10 +49,18 @@ from quant_research.api.schemas import (
     ReplayStepRequest,
     ResearchDataEnsureRequest,
     RobustnessAnalysisRequest,
+    ScreenerCatalogResponse,
+    ScreenerFormulaParameterResponse,
+    ScreenerFormulaResponse,
+    ScreenerRunRequest,
+    ScreenerRunResponse,
+    ScreenerUniverseResponse,
     SmaBacktestRequest,
     WatchlistAddRequest,
     YouTubeStrategyRequest,
 )
+from quant_research.config import load_scanner_catalog, load_universe_catalog, resolve_universe_symbols
+from quant_research.config.loader import UniverseDefinition
 from quant_research.data_providers.base import MarketDataProviderError
 from quant_research.domain.backtesting.models import BacktestResult
 from quant_research.domain.backtesting.vector_engine import run_rule_backtest
@@ -52,7 +71,10 @@ from quant_research.domain.validity.auditor import audit_validity
 from quant_research.llm.ollama import OllamaError
 from quant_research.repositories.artifacts import SqliteArtifactStore
 from quant_research.repositories.market_cache import SqliteMarketCache
+from quant_research.services.fii_dii import FiiDiiImportError, NseFiiDiiImporter
 from quant_research.services.hypotheses import HypothesisAnalysis, HypothesisCommand, HypothesisService
+from quant_research.services.market_insights import run_current_screener
+from quant_research.services.market_scanner import SECTOR_MAP
 from quant_research.services.ml_research import MlExperimentCommand, MlResearchService, ModelName
 from quant_research.services.nifty500_catalogue import Nifty500CatalogueError, Nifty500CatalogueImporter
 from quant_research.services.nse_import import (
@@ -70,6 +92,214 @@ from quant_research.services.research import (
 from quant_research.services.youtube_strategy import extract_strategy
 
 
+class ScreenerRunner(Protocol):
+    """Boundary implemented by the screener-engine agent."""
+
+    def run(
+        self,
+        *,
+        request: ScreenerRunRequest,
+        symbols: list[str],
+        cache: SqliteMarketCache,
+    ) -> dict[str, Any]: ...
+
+
+_INSIGHT_PERIODS: dict[str, tuple[int, str]] = {
+    "1d": (1, "1 day"),
+    "1w": (5, "1 week"),
+    "1m": (21, "1 month"),
+    "3m": (63, "3 months"),
+}
+
+
+def _insight_freshness(data_as_of: date | None) -> str:
+    if data_as_of is None:
+        return "unavailable"
+    return "fresh" if (date.today() - data_as_of).days <= 5 else "stale"
+
+
+def _insights_for_universe(cache: SqliteMarketCache, universe: UniverseDefinition, period: str) -> InsightsResponse:
+    if period not in _INSIGHT_PERIODS:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="period must be one of: 1d, 1w, 1m, 3m")
+    period_days, period_label = _INSIGHT_PERIODS[period]
+    symbols, membership_status = resolve_universe_symbols(universe, cache)
+    symbols = sorted(set(symbols))
+    requested_members = len(symbols)
+    available_symbols: list[str] = []
+    missing_symbols: list[str] = []
+    stocks: list[InsightStockResponse] = []
+    summary = cache.summary()
+    anchor = summary.latest or datetime.now(tz=UTC)
+    start = anchor - timedelta(days=period_days * 3 + 30)
+    instruments = {item.symbol: item for item in cache.search_instruments(limit=max(50, len(symbols)))}
+
+    for symbol in symbols:
+        bars = cache.get(symbol, "1day", start, anchor + timedelta(days=1))
+        if len(bars) <= period_days:
+            missing_symbols.append(symbol)
+            continue
+        current = bars[-1]
+        previous = bars[-1 - period_days]
+        if previous.close <= 0:
+            missing_symbols.append(symbol)
+            continue
+        instrument = instruments.get(symbol)
+        available_symbols.append(symbol)
+        stocks.append(
+            InsightStockResponse(
+                symbol=symbol,
+                company_name=instrument.company_name if instrument else symbol,
+                sector=instrument.industry if instrument and instrument.industry else SECTOR_MAP.get(symbol, "Unclassified"),
+                close=round(float(current.close), 6),
+                previous_close=round(float(previous.close), 6),
+                return_pct=round((float(current.close) / float(previous.close) - 1.0) * 100.0, 4),
+                data_as_of=current.timestamp.date(),
+                bars_used=period_days + 1,
+            )
+        )
+
+    stocks.sort(key=lambda item: (-item.return_pct, item.symbol))
+    sectors: list[InsightSectorResponse] = []
+    by_sector: dict[str, list[InsightStockResponse]] = {}
+    for stock in stocks:
+        by_sector.setdefault(stock.sector, []).append(stock)
+    for sector, items in sorted(by_sector.items()):
+        returns = [item.return_pct for item in items]
+        sectors.append(
+            InsightSectorResponse(
+                sector=sector,
+                stock_count=len(items),
+                available_count=len(items),
+                average_return_pct=round(sum(returns) / len(returns), 4) if returns else None,
+                median_return_pct=round(sorted(returns)[len(returns) // 2] if len(returns) % 2 else (sorted(returns)[len(returns) // 2 - 1] + sorted(returns)[len(returns) // 2]) / 2, 4) if returns else None,
+                advancing=sum(1 for value in returns if value > 0),
+                declining=sum(1 for value in returns if value < 0),
+                unchanged=sum(1 for value in returns if value == 0),
+            )
+        )
+
+    returns = [item.return_pct for item in stocks]
+    all_dates = [item.data_as_of for item in stocks]
+    data_as_of = max(all_dates) if all_dates else None
+    if not symbols:
+        result_status = "unavailable"
+        coverage_status = "unavailable"
+        message = "This universe has no local constituent membership. Import the official constituent catalogue before running Insights."
+    elif not stocks:
+        result_status = "empty"
+        coverage_status = "empty"
+        message = "No local daily OHLCV candles cover this period. Import the missing official NSE archive range and retry."
+    elif len(stocks) < len(symbols):
+        result_status = "partial"
+        coverage_status = "partial"
+        message = f"{len(stocks)} of {len(symbols)} members have enough local daily candles for {period_label}."
+    else:
+        result_status = "complete"
+        coverage_status = "complete"
+        message = f"Local official NSE daily candles cover all {len(stocks)} members for {period_label}."
+    if membership_status == "unavailable":
+        result_status = "unavailable"
+        coverage_status = "unavailable"
+        message = "The selected universe membership is not available locally. Import the official constituent catalogue before running Insights."
+
+    return InsightsResponse(
+        universe=universe.universe_id,
+        period=period,
+        period_days=period_days,
+        source="official_nse_daily_ohlcv_local_cache",
+        result_status=result_status,
+        message=message,
+        data_as_of=data_as_of,
+        freshness_status=_insight_freshness(data_as_of),
+        coverage_status=coverage_status,
+        requested_members=requested_members,
+        available_members=len(stocks),
+        available_symbols=available_symbols,
+        missing_symbols=missing_symbols,
+        advancing=sum(1 for value in returns if value > 0),
+        declining=sum(1 for value in returns if value < 0),
+        unchanged=sum(1 for value in returns if value == 0),
+        average_return_pct=round(sum(returns) / len(returns), 4) if returns else None,
+        median_return_pct=round(sorted(returns)[len(returns) // 2] if len(returns) % 2 else (sorted(returns)[len(returns) // 2 - 1] + sorted(returns)[len(returns) // 2]) / 2, 4) if returns else None,
+        stocks=stocks,
+        sectors=sectors,
+    )
+
+
+def _fii_dii_response(cache: SqliteMarketCache, start: date, end: date, scope: str, segment: str) -> FiiDiiResponse:
+    rows = cache.get_fii_dii_rows(start, end, scope, segment)
+    coverage_start, coverage_end, coverage_days = cache.fii_dii_coverage(scope, segment)
+    by_day: dict[date, dict[str, float]] = {}
+    for row in rows:
+        by_day.setdefault(row.trading_day, {})[row.participant] = row.net_value
+
+    chart = [
+        FiiDiiChartPoint(
+            date=trading_day,
+            label=trading_day.strftime("%d %b"),
+            fii_net=values.get("FII"),
+            dii_net=values.get("DII"),
+        )
+        for trading_day, values in sorted(by_day.items())
+    ]
+    nifty50 = [FiiDiiIndexPoint(date=item.trading_day, close=item.close) for item in cache.get_index_closes(start, end)]
+
+    latest_day = max(by_day) if by_day else None
+    coverage_note = None
+    if rows and coverage_start and coverage_start > start:
+        coverage_note = (
+            "Only the locally archived NSE sessions are shown. NSE's public FII/DII report currently exposes the latest session; "
+            "historical sessions must already be captured in the local archive."
+        )
+    summaries: list[FiiDiiSummaryResponse] = []
+    if latest_day:
+        week_start = latest_day - timedelta(days=latest_day.weekday())
+        month_start = latest_day.replace(day=1)
+        periods = [
+            ("daily", "Daily", latest_day, latest_day),
+            ("weekly", "Weekly", week_start, latest_day),
+            ("monthly", "Monthly", month_start, latest_day),
+        ]
+        for period, label, period_start, period_end in periods:
+            period_rows = [row for row in rows if period_start <= row.trading_day <= period_end]
+            summaries.append(FiiDiiSummaryResponse(
+                period=period,
+                label=label,
+                start=period_start,
+                end=period_end,
+                fii_net=round(sum(row.net_value for row in period_rows if row.participant == "FII"), 2),
+                dii_net=round(sum(row.net_value for row in period_rows if row.participant == "DII"), 2),
+            ))
+
+    return FiiDiiResponse(
+        scope=scope,
+        segment=segment,
+        start=start,
+        end=end,
+        rows=[
+            FiiDiiRowResponse(
+                date=row.trading_day,
+                participant=row.participant,
+                scope=row.scope,
+                segment=row.segment,
+                buy_value=row.buy_value,
+                sell_value=row.sell_value,
+                net_value=row.net_value,
+                source=row.source,
+            )
+            for row in reversed(rows)
+        ],
+        summaries=summaries,
+        chart=chart,
+        nifty50=nifty50,
+        coverage_start=coverage_start,
+        coverage_end=coverage_end,
+        coverage_days=coverage_days,
+        coverage_note=coverage_note,
+        source_url=NseFiiDiiImporter.report_page_url,
+    )
+
+
 def create_api_router(
     research: ResearchService,
     hypotheses: HypothesisService,
@@ -78,10 +308,13 @@ def create_api_router(
     nifty500_catalogue: Nifty500CatalogueImporter | None = None,
     artifacts: SqliteArtifactStore | None = None,
     ml_research: MlResearchService | None = None,
+    fii_dii_importer: NseFiiDiiImporter | None = None,
+    screener_runner: ScreenerRunner | None = None,
 ) -> APIRouter:
     """Build routes bound to one fully configured application service."""
     router = APIRouter(prefix="/api/v1")
     import_jobs: dict[str, dict[str, Any]] = {}
+    fii_dii_jobs: dict[str, dict[str, Any]] = {}
 
     def save_import_job(job_id: str, payload: dict[str, Any]) -> None:
         import_jobs[job_id] = payload
@@ -90,6 +323,14 @@ def create_api_router(
 
     def get_import_job(job_id: str) -> dict[str, Any] | None:
         return import_jobs.get(job_id) or (artifacts.get("import_job", job_id) if artifacts is not None else None)
+
+    def save_fii_dii_job(job_id: str, payload: dict[str, Any]) -> None:
+        fii_dii_jobs[job_id] = payload
+        if artifacts is not None:
+            artifacts.save("fii_dii_import_job", job_id, payload)
+
+    def get_fii_dii_job(job_id: str) -> dict[str, Any] | None:
+        return fii_dii_jobs.get(job_id) or (artifacts.get("fii_dii_import_job", job_id) if artifacts is not None else None)
 
     def selected_symbols(payload: NseImportRequest) -> list[str]:
         if payload.preset == "custom":
@@ -132,6 +373,33 @@ def create_api_router(
             save_import_job(job_id, {**(get_import_job(job_id) or {}), "status": "complete", "stage": "Complete", "message": summary, **asdict(result)})
         except RuntimeError as exc:
             save_import_job(job_id, {**(get_import_job(job_id) or {}), "status": "failed", "stage": "Import failed", "message": str(exc)})
+
+    def run_fii_dii_import(job_id: str, payload: FiiDiiImportRequest) -> None:
+        if fii_dii_importer is None:
+            save_fii_dii_job(job_id, {"status": "failed", "scope": payload.scope, "message": "NSE FII/DII importer is not configured."})
+            return
+        try:
+            def progress(stage: str) -> None:
+                save_fii_dii_job(job_id, {
+                    **(get_fii_dii_job(job_id) or {}),
+                    "status": "running",
+                    "stage": stage,
+                    "message": stage,
+                })
+
+            save_fii_dii_job(job_id, {"status": "running", "scope": payload.scope, "stage": "Preparing import", "message": "Checking the official NSE report."})
+            stored, available_start, available_end = fii_dii_importer.import_reports(payload.start, payload.end, payload.scope, progress=progress)
+            save_fii_dii_job(job_id, {
+                **(get_fii_dii_job(job_id) or {}),
+                "status": "complete",
+                "stage": "Complete",
+                "message": f"Official NSE FII/DII import finished: {stored} rows saved.",
+                "stored_rows": stored,
+                "available_start": available_start,
+                "available_end": available_end,
+            })
+        except FiiDiiImportError as exc:
+            save_fii_dii_job(job_id, {**(get_fii_dii_job(job_id) or {}), "status": "failed", "stage": "Import failed", "message": str(exc)})
 
     def market_frame(symbol: str, timeframe: str, start: datetime, end: datetime) -> pd.DataFrame:
         return pd.DataFrame([bar.model_dump() for bar in market_bars(symbol, timeframe, start, end)]).rename(
@@ -363,6 +631,132 @@ def create_api_router(
         if current is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import job was not found.")
         return NseImportStatusResponse(job_id=job_id, **current)
+
+    @router.get("/screeners/catalog", response_model=ScreenerCatalogResponse, tags=["market-scanner"])
+    def screener_catalog() -> ScreenerCatalogResponse:
+        catalog = load_scanner_catalog()
+        return ScreenerCatalogResponse(
+            schema_version=catalog.schema_version,
+            as_of=date.fromisoformat(catalog.as_of),
+            source=catalog.source,
+            data_boundary=catalog.data_boundary,
+            formulas=[
+                ScreenerFormulaResponse(
+                    formula_id=formula.formula_id,
+                    name=formula.name,
+                    category=formula.category,
+                    description=formula.description,
+                    required_fields=formula.required_fields,
+                    parameters=[ScreenerFormulaParameterResponse(**parameter.model_dump()) for parameter in formula.parameters],
+                    timeframe=formula.timeframe,
+                    status=formula.status,
+                )
+                for formula in catalog.formulas
+            ],
+        )
+
+    @router.get("/screeners/universes", response_model=list[ScreenerUniverseResponse], tags=["market-scanner"])
+    def screener_universes() -> list[ScreenerUniverseResponse]:
+        catalog = load_universe_catalog()
+        cached_symbols = set(market_cache.get_available_symbols()) if market_cache is not None else set()
+        response: list[ScreenerUniverseResponse] = []
+        for universe in catalog.universes:
+            resolved, membership_status = resolve_universe_symbols(universe, market_cache) if market_cache is not None else (list(universe.symbols), "snapshot" if universe.symbols else "unavailable")
+            response.append(
+                ScreenerUniverseResponse(
+                    universe_id=universe.universe_id,
+                    name=universe.name,
+                    exchange=universe.exchange,
+                    as_of=date.fromisoformat(universe.as_of),
+                    source=universe.source,
+                    expected_members=universe.membership.expected_members,
+                    configured_members=len(resolved),
+                    available_members=len(set(resolved).intersection(cached_symbols)),
+                    membership_kind=universe.membership.kind,
+                    membership_status=membership_status,
+                    symbols=resolved,
+                )
+            )
+        return response
+
+    @router.post("/screeners/run", response_model=ScreenerRunResponse, tags=["market-scanner"])
+    def run_screener(payload: ScreenerRunRequest) -> ScreenerRunResponse:
+        if market_cache is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="The local market cache is not configured.")
+        catalog = load_scanner_catalog()
+        if not any(formula.formula_id == payload.formula_id for formula in catalog.formulas):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=f"Unknown scanner formula: {payload.formula_id}.")
+        universe = next((item for item in load_universe_catalog().universes if item.universe_id == payload.universe), None)
+        if universe is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown scanner universe: {payload.universe}.")
+        symbols, membership_status = resolve_universe_symbols(universe, market_cache)
+        cached_symbols = set(market_cache.get_available_symbols())
+        available_symbols = sorted(set(symbols).intersection(cached_symbols))
+        missing_symbols = sorted(set(symbols) - set(available_symbols))
+        if membership_status == "unavailable":
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="The selected universe membership is not available locally.")
+        try:
+            if screener_runner is not None:
+                result = screener_runner.run(request=payload, symbols=symbols, cache=market_cache)
+            else:
+                requested_end = datetime.combine(payload.as_of, datetime.min.time(), tzinfo=UTC) if payload.as_of else None
+                result = run_current_screener(market_cache, payload.universe, payload.formula_id, payload.parameters, requested_end)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+        return ScreenerRunResponse(
+            universe=payload.universe,
+            formula_id=payload.formula_id,
+            timeframe=payload.timeframe,
+            result_status=str(result.get("result_status", "complete")),
+            message=str(result.get("message", "Screener run completed using local daily data.")),
+            data_as_of=result.get("data_as_of"),
+            coverage_status="complete" if not missing_symbols else "partial",
+            requested_members=len(symbols),
+            available_members=len(available_symbols),
+            available_symbols=available_symbols,
+            missing_symbols=missing_symbols,
+            matches=[item for item in result.get("matches", []) if isinstance(item, dict)],
+        )
+
+    @router.get("/insights/fii-dii", response_model=FiiDiiResponse, tags=["insights"])
+    def fii_dii_data(
+        start: date,
+        end: date,
+        scope: Annotated[str, Query(pattern="^(combined|nse_only)$")] = "combined",
+        segment: Annotated[str, Query(pattern="^(equity|index_future|index_option|stock_future|stock_option)$")] = "equity",
+    ) -> FiiDiiResponse:
+        if start > end:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="start must be on or before end.")
+        if market_cache is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="The local market cache is not configured.")
+        return _fii_dii_response(market_cache, start, end, scope, segment)
+
+    @router.post("/insights/fii-dii/import", response_model=FiiDiiImportJobResponse, status_code=status.HTTP_202_ACCEPTED, tags=["insights"])
+    def start_fii_dii_import(payload: FiiDiiImportRequest, background_tasks: BackgroundTasks) -> FiiDiiImportJobResponse:
+        if payload.start > payload.end:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="start must be on or before end.")
+        if fii_dii_importer is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="The official NSE FII/DII importer is not configured.")
+        job_id = f"fii_dii_{uuid4().hex[:10]}"
+        save_fii_dii_job(job_id, {"status": "queued", "scope": payload.scope, "message": "Official NSE FII/DII import has been queued."})
+        background_tasks.add_task(run_fii_dii_import, job_id, payload)
+        return FiiDiiImportJobResponse(job_id=job_id, status="queued", scope=payload.scope, source_start=payload.start, source_end=payload.end)
+
+    @router.get("/insights/fii-dii/import/{job_id}", response_model=FiiDiiImportStatusResponse, tags=["insights"])
+    def fii_dii_import_status(job_id: str) -> FiiDiiImportStatusResponse:
+        current = get_fii_dii_job(job_id)
+        if current is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="FII/DII import job was not found.")
+        return FiiDiiImportStatusResponse(job_id=job_id, **current)
+
+    @router.get("/insights/{universe}", response_model=InsightsResponse, tags=["insights"])
+    def insights(universe: str, period: Annotated[str, Query(pattern="^(1d|1w|1m|3m|1D|1W|1M|3M)$")] = "1d") -> InsightsResponse:
+        if market_cache is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="The local market cache is not configured.")
+        definition = next((item for item in load_universe_catalog().universes if item.universe_id == universe), None)
+        if definition is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown insights universe: {universe}.")
+        return _insights_for_universe(market_cache, definition, period.lower())
 
     @router.post("/research/hypothesis", response_model=HypothesisAnalysis, tags=["research"])
     def analyse_hypothesis(payload: HypothesisRequest) -> HypothesisAnalysis:

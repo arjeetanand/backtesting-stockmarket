@@ -6,6 +6,10 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.cache/
+**/.cache/
+*.cache
+*.cache.*
 *.egg-info/
 .gitignore
 data/*.sqlite3
@@ -23,8 +27,14 @@ data/*.bak
 # NSE archives are downloaded on demand and kept locally; never commit them.
 data/**/*.zip
 data/*.zip
+# FII/DII JSON snapshots and Nifty index CSV archives are runtime data too.
+data/nse_archives/fii_dii/
+data/nse_archives/indices/
+
+# Frontend-local scratch/build output not covered by the nested frontend ignore file.
+frontend/private/
 .DS_Store
 data/.DS_Store
 *.md
-!COMPLETE_PROJECT_GUIDE.md
-!QA_ERROR_LOG.md
+!docs/
+!docs/*.md

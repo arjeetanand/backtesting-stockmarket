@@ -67,6 +67,25 @@ class WatchlistItem:
     created_at: str
 
 
+@dataclass(frozen=True, slots=True)
+class FiiDiiRow:
+    trading_day: date
+    participant: str
+    scope: str
+    segment: str
+    buy_value: float
+    sell_value: float
+    net_value: float
+    source: str
+
+
+@dataclass(frozen=True, slots=True)
+class IndexClose:
+    trading_day: date
+    close: float
+    source: str
+
+
 class SqliteMarketCache:
     """Small, dependency-free local store. It contains research data only."""
 
@@ -166,6 +185,40 @@ class SqliteMarketCache:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS fii_dii_rows (
+                    trading_day TEXT NOT NULL,
+                    participant TEXT NOT NULL,
+                    scope TEXT NOT NULL,
+                    segment TEXT NOT NULL,
+                    buy_value REAL NOT NULL,
+                    sell_value REAL NOT NULL,
+                    net_value REAL NOT NULL,
+                    source TEXT NOT NULL,
+                    PRIMARY KEY (trading_day, participant, scope, segment)
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS fii_dii_snapshots (
+                    snapshot_id TEXT PRIMARY KEY,
+                    fetched_at TEXT NOT NULL,
+                    source_url TEXT NOT NULL,
+                    payload TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS nifty50_closes (
+                    trading_day TEXT PRIMARY KEY,
+                    close REAL NOT NULL,
+                    source TEXT NOT NULL
+                )
+                """
+            )
             # These read paths are used by the data-management screen on every
             # visit. Keep the date-coverage and archive lookups indexed so a
             # large NSE catalogue does not turn the first render into a scan.
@@ -173,6 +226,7 @@ class SqliteMarketCache:
             connection.execute("CREATE INDEX IF NOT EXISTS idx_ohlcv_symbol_tf_ts ON ohlcv_bars (symbol, timeframe, timestamp)")
             connection.execute("CREATE INDEX IF NOT EXISTS idx_coverage_time_day_symbol ON nse_import_coverage (timeframe, trading_day, symbol)")
             connection.execute("CREATE INDEX IF NOT EXISTS idx_archive_status_day ON nse_archive_days (status, trading_day)")
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_fii_dii_scope_day ON fii_dii_rows (scope, segment, trading_day)")
 
     def get(self, symbol: str, timeframe: str = "1day", start: datetime | None = None, end: datetime | None = None) -> list[OHLCVBar]:
         if start is None:
@@ -538,6 +592,109 @@ class SqliteMarketCache:
             )
         self.refresh_summary()
         return len(records)
+
+    def store_fii_dii_snapshot(
+        self,
+        snapshot_id: str,
+        fetched_at: datetime,
+        source_url: str,
+        payload: str,
+        rows: list[FiiDiiRow],
+    ) -> int:
+        """Persist an official institutional-flow snapshot and normalized rows atomically."""
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO fii_dii_snapshots (snapshot_id, fetched_at, source_url, payload)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(snapshot_id) DO UPDATE SET
+                    fetched_at = excluded.fetched_at,
+                    source_url = excluded.source_url,
+                    payload = excluded.payload
+                """,
+                (snapshot_id, fetched_at.isoformat(), source_url, payload),
+            )
+            connection.executemany(
+                """
+                INSERT INTO fii_dii_rows
+                    (trading_day, participant, scope, segment, buy_value, sell_value, net_value, source)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(trading_day, participant, scope, segment) DO UPDATE SET
+                    buy_value = excluded.buy_value,
+                    sell_value = excluded.sell_value,
+                    net_value = excluded.net_value,
+                    source = excluded.source
+                """,
+                [
+                    (
+                        row.trading_day.isoformat(), row.participant, row.scope, row.segment,
+                        row.buy_value, row.sell_value, row.net_value, row.source,
+                    )
+                    for row in rows
+                ],
+            )
+        return len(rows)
+
+    def get_fii_dii_rows(
+        self,
+        start: date,
+        end: date,
+        scope: str = "combined",
+        segment: str = "equity",
+    ) -> list[FiiDiiRow]:
+        with self._connect() as connection:
+            records = connection.execute(
+                """
+                SELECT trading_day, participant, scope, segment, buy_value, sell_value, net_value, source
+                FROM fii_dii_rows
+                WHERE trading_day >= ? AND trading_day <= ? AND scope = ? AND segment = ?
+                ORDER BY trading_day ASC, participant ASC
+                """,
+                (start.isoformat(), end.isoformat(), scope, segment),
+            ).fetchall()
+        return [
+            FiiDiiRow(
+                trading_day=date.fromisoformat(str(record[0])), participant=str(record[1]), scope=str(record[2]),
+                segment=str(record[3]), buy_value=float(record[4]), sell_value=float(record[5]),
+                net_value=float(record[6]), source=str(record[7]),
+            )
+            for record in records
+        ]
+
+    def fii_dii_coverage(self, scope: str = "combined", segment: str = "equity") -> tuple[date | None, date | None, int]:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT MIN(trading_day), MAX(trading_day), COUNT(DISTINCT trading_day)
+                FROM fii_dii_rows WHERE scope = ? AND segment = ?
+                """,
+                (scope, segment),
+            ).fetchone()
+        return (
+            date.fromisoformat(str(row[0])) if row and row[0] else None,
+            date.fromisoformat(str(row[1])) if row and row[1] else None,
+            int(row[2] or 0) if row else 0,
+        )
+
+    def store_index_closes(self, closes: list[IndexClose]) -> int:
+        with self._connect() as connection:
+            connection.executemany(
+                """
+                INSERT INTO nifty50_closes (trading_day, close, source)
+                VALUES (?, ?, ?)
+                ON CONFLICT(trading_day) DO UPDATE SET close = excluded.close, source = excluded.source
+                """,
+                [(item.trading_day.isoformat(), item.close, item.source) for item in closes],
+            )
+        return len(closes)
+
+    def get_index_closes(self, start: date, end: date) -> list[IndexClose]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT trading_day, close, source FROM nifty50_closes WHERE trading_day >= ? AND trading_day <= ? ORDER BY trading_day",
+                (start.isoformat(), end.isoformat()),
+            ).fetchall()
+        return [IndexClose(date.fromisoformat(str(row[0])), float(row[1]), str(row[2])) for row in rows]
 
     @staticmethod
     def _nse_archive_row_records(trading_day: date, rows: list[dict[str, str]]) -> list[tuple[str, int, str | None, str | None, str]]:

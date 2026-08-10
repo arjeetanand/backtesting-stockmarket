@@ -21,6 +21,8 @@ Backtrack is a local, research-only Indian-market backtesting application. It us
 | Build rules | Create a rule strategy | Configure indicators, entries, exits, risk, fees, and slippage |
 | Use a YouTube strategy | Bring in an online idea | Extract a reviewable draft from a URL, captions, or pasted transcript; human review is required |
 | Manage stock data | Download and search history | Bulk NSE archive import with quick/custom date windows and local catalogue search |
+| Market Insights | Review the selected index | Switch NIFTY 50, Sensex, Bank Nifty, or NIFTY 500; inspect 1D/1W/1M/3M breadth, stock/sector heatmaps, and top movers from local daily candles |
+| Market Scanner | Find current technical matches | Choose a formula and universe, then explicitly run a scan; formula definitions and memberships come from appendable JSON configuration |
 | My tests | Reopen prior tests | Read persisted backtest results and details from SQLite |
 | Compare tests | Compare alternatives | Compare saved configurations and performance metrics |
 | Check reliability | Challenge stability | Run parameter sensitivity, Monte Carlo, walk-forward, and stress checks |
@@ -30,6 +32,7 @@ Backtrack is a local, research-only Indian-market backtesting application. It us
 | Replay a chart | Learn candle by candle | Reveal historical candles progressively and place simulated orders/journal entries |
 | Learn | Understand options basics | Calculate educational call/put payoff, max loss, and breakeven |
 | Analytics | Inspect performance | Review trade quality and available run analytics |
+| FII / DII Insights | Inspect institutional activity | Import official NSE FII/FPI-DII report snapshots, compare daily/weekly/monthly net cash flows, and review the local ledger |
 | Settings | Inspect local configuration | View API, local cache, Ollama, and provider status |
 
 ## Manage stock data

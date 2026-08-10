@@ -129,6 +129,190 @@ class NseImportStatusResponse(BaseModel):
     total_days: int | None = None
 
 
+class FiiDiiImportRequest(BaseModel):
+    start: date
+    end: date
+    scope: str = Field(default="combined", pattern="^(combined|nse_only)$")
+
+
+class FiiDiiImportJobResponse(BaseModel):
+    job_id: str
+    status: str
+    scope: str
+    source_start: date
+    source_end: date
+
+
+class FiiDiiImportStatusResponse(BaseModel):
+    job_id: str
+    status: str
+    message: str
+    scope: str | None = None
+    stored_rows: int | None = None
+    available_start: date | None = None
+    available_end: date | None = None
+    stage: str | None = None
+
+
+class FiiDiiRowResponse(BaseModel):
+    date: date
+    participant: str
+    scope: str
+    segment: str
+    buy_value: float
+    sell_value: float
+    net_value: float
+    source: str
+
+
+class FiiDiiSummaryResponse(BaseModel):
+    period: str
+    label: str
+    start: date
+    end: date
+    fii_net: float
+    dii_net: float
+
+
+class FiiDiiChartPoint(BaseModel):
+    date: date
+    label: str
+    fii_net: float | None = None
+    dii_net: float | None = None
+
+
+class FiiDiiIndexPoint(BaseModel):
+    date: date
+    close: float
+
+
+class FiiDiiResponse(BaseModel):
+    scope: str
+    segment: str
+    start: date
+    end: date
+    rows: list[FiiDiiRowResponse]
+    summaries: list[FiiDiiSummaryResponse]
+    chart: list[FiiDiiChartPoint]
+    nifty50: list[FiiDiiIndexPoint]
+    coverage_start: date | None
+    coverage_end: date | None
+    coverage_days: int
+    coverage_note: str | None = None
+    source_url: str
+    provisional: bool = True
+
+
+class ScreenerFormulaParameterResponse(BaseModel):
+    name: str
+    type: str
+    default: int | float | bool | str
+    minimum: int | float | None = None
+    maximum: int | float | None = None
+
+
+class ScreenerFormulaResponse(BaseModel):
+    formula_id: str
+    name: str
+    category: str
+    description: str
+    required_fields: list[str]
+    parameters: list[ScreenerFormulaParameterResponse]
+    timeframe: str
+    status: str
+
+
+class ScreenerCatalogResponse(BaseModel):
+    schema_version: int
+    as_of: date
+    source: str
+    data_boundary: str
+    formulas: list[ScreenerFormulaResponse]
+
+
+class ScreenerUniverseResponse(BaseModel):
+    universe_id: str
+    name: str
+    exchange: str
+    as_of: date
+    source: str
+    expected_members: int
+    configured_members: int
+    available_members: int
+    membership_kind: str
+    membership_status: str
+    symbols: list[str]
+
+
+class InsightStockResponse(BaseModel):
+    symbol: str
+    company_name: str
+    sector: str
+    close: float
+    previous_close: float
+    return_pct: float
+    data_as_of: date
+    bars_used: int
+
+
+class InsightSectorResponse(BaseModel):
+    sector: str
+    stock_count: int
+    available_count: int
+    average_return_pct: float | None
+    median_return_pct: float | None
+    advancing: int
+    declining: int
+    unchanged: int
+
+
+class InsightsResponse(BaseModel):
+    universe: str
+    period: str
+    period_days: int
+    source: str
+    result_status: str
+    message: str
+    data_as_of: date | None
+    freshness_status: str
+    coverage_status: str
+    requested_members: int
+    available_members: int
+    available_symbols: list[str]
+    missing_symbols: list[str]
+    advancing: int
+    declining: int
+    unchanged: int
+    average_return_pct: float | None
+    median_return_pct: float | None
+    stocks: list[InsightStockResponse]
+    sectors: list[InsightSectorResponse]
+
+
+class ScreenerRunRequest(BaseModel):
+    universe: str = Field(default="nifty50", pattern="^[a-z][a-z0-9_]*$")
+    formula_id: str = Field(..., min_length=1, pattern="^[a-z][a-z0-9_]*$")
+    parameters: dict[str, int | float | bool | str] = Field(default_factory=dict)
+    timeframe: str = Field(default="1day", pattern="^1day$")
+    as_of: date | None = None
+    end: datetime | None = None
+
+
+class ScreenerRunResponse(BaseModel):
+    universe: str
+    formula_id: str
+    timeframe: str
+    result_status: str
+    message: str
+    data_as_of: date | None
+    coverage_status: str
+    requested_members: int
+    available_members: int
+    available_symbols: list[str]
+    missing_symbols: list[str]
+    matches: list[dict[str, object]]
+
+
 class YouTubeStrategyRequest(BaseModel):
     url: str = Field(..., min_length=12, max_length=500)
     transcript: str | None = Field(default=None, max_length=100_000)

@@ -16,6 +16,7 @@ const pageTitles: Record<string, { title: string; category: string }> = {
   "/analytics": { title: "Understand a test", category: "" },
   "/ml-lab": { title: "ML Lab", category: "" },
   "/market-scanner": { title: "Market Scanner", category: "" },
+  "/insights": { title: "Market Insights", category: "" },
   "/watchlist": { title: "Daily Watchlist", category: "" },
   "/pattern-finder": { title: "Pattern Finder", category: "" },
   "/robustness": { title: "Check reliability", category: "" },
@@ -25,6 +26,7 @@ const pageTitles: Record<string, { title: string; category: string }> = {
   "/data": { title: "Manage stock data", category: "" },
   "/settings": { title: "Settings", category: "" },
   "/replay": { title: "Replay a chart", category: "" },
+  "/insights/fii-dii": { title: "FII / DII Insights", category: "" },
 };
 
 interface TopBarProps {

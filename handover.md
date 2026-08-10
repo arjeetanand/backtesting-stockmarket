@@ -142,6 +142,9 @@ Persistence is local single-user SQLite. There is no authentication, multi-user 
 | Chart Replay | `frontend/src/app/replay/page.tsx` | Candle replay, simulated ticket, positions, journal, and session persistence |
 | Options Learn | `frontend/src/app/options/page.tsx` | Educational payoff and breakeven calculator |
 | Analytics | `frontend/src/app/analytics/page.tsx` | Performance and trade-quality analysis |
+| Market Insights | `frontend/src/app/insights/page.tsx` and `frontend/src/components/insights/InsightsDashboard.tsx` | Index-aware daily breadth, stock/sector heatmaps, period selectors, coverage metadata, and top movers |
+| Market Scanner | `frontend/src/app/market-scanner/page.tsx` | Explicit current-snapshot scans, formula library, saved presets, recent runs, and separate historical research scan |
+| FII / DII Insights | `frontend/src/app/insights/fii-dii/page.tsx` | Official NSE institutional-flow cards, combo chart, filters, and ledger |
 | Settings | `frontend/src/app/settings/page.tsx` | Local configuration and provider status |
 
 Shared frontend infrastructure:
@@ -217,6 +220,10 @@ API schemas live in `src/quant_research/api/schemas.py`; route behavior lives in
 - `DELETE /research/artifacts/{kind}/{artifact_key}`
 
 `GET /market-data` returns validated local bars for the selected symbol, date range, and timeframe. The custom backtest response keeps its existing result fields and adds chart-ready candle `volume` plus stable signal `id` and `trade_id` metadata. Invalid strategy parameters and insufficient history return actionable `422` errors rather than an opaque server error.
+
+`GET /insights/fii-dii` returns locally normalized official NSE FII/FPI-DII rows, daily/weekly/monthly summaries, chart points, available Nifty 50 index closes, and a coverage note when the requested range is not locally complete. `POST /insights/fii-dii/import` and `GET /insights/fii-dii/import/{job_id}` manage the background report snapshot import. Raw snapshots are kept under `data/nse_archives/fii_dii/`; the SQLite cache owns normalized `fii_dii_rows`, `fii_dii_snapshots`, and `nifty50_closes` tables. The current public NSE FII/DII endpoint is latest-session only; historical sessions are not invented from date query parameters.
+
+`GET /screeners/catalog` and `GET /screeners/universes` expose the checked-in JSON formula and index-membership catalogues. `POST /screeners/run` performs an explicit current-snapshot formula evaluation, and `GET /insights/{universe}?period=1d|1w|1m|3m` returns local daily breadth, selected-index constituents, sector aggregates, top movers, data freshness, and coverage/missing-symbol metadata. Formula definitions live in `src/quant_research/config/scanner_catalog.json`; index membership lives in `src/quant_research/config/index_universes.json`. Scanner presets and recent-run metadata are browser-local and do not require a SQLite migration.
 
 ### Replay
 

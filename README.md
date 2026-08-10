@@ -15,11 +15,11 @@ It does not place real orders, connect to a broker, provide live quotes, or requ
 - Replays historical candles with simulated orders only.
 - Persists backtests, research artifacts, import jobs, and replay sessions locally.
 
-## First-time setup
+## Run locally
 
-Requirements: Python 3.12+, Node.js, and npm. Ollama is optional and is used only for local hypothesis assistance.
+Requirements: Python 3.12+, Node.js, and npm. Ollama is optional; it is used only for local hypothesis assistance and is not required for importing data or running backtests.
 
-From the repository root:
+From the repository root, create the environment and install dependencies once:
 
 ```bash
 python3.12 -m venv .venv
@@ -29,25 +29,36 @@ cp .env.example .env
 npm --prefix frontend install
 ```
 
-Start the API in one terminal:
+Start the backend in Terminal 1:
 
 ```bash
 source .venv/bin/activate
 ./scripts/dev-backend.sh 8000
 ```
 
-Start the UI in another terminal:
+Start the frontend in Terminal 2:
 
 ```bash
 ./scripts/dev-frontend.sh 3000 8000
 ```
 
-Open `http://localhost:3000`. API documentation is available at `http://localhost:8000/docs`.
+Open the application at `http://localhost:3000`. The API documentation is at `http://localhost:8000/docs`.
+
+Confirm that the backend is ready before using the UI:
+
+```bash
+curl http://127.0.0.1:8000/api/v1/health
+```
+
+The frontend shows explicit unavailable/error states when the backend is stopped; it does not use mock or fabricated prices. Stop either development server with `Ctrl+C`.
 
 Both launch scripts accept ports. For example, use `./scripts/dev-backend.sh 8001` and
 `./scripts/dev-frontend.sh 3001 8001` for a second frontend/backend pair. The frontend
 script sets `NEXT_PUBLIC_API_BASE_URL` to the backend port you pass; an explicitly set
 `NEXT_PUBLIC_API_BASE_URL` still takes precedence.
+
+Local `localhost` and `127.0.0.1` frontend ports are accepted by the backend CORS policy.
+If the dependencies are already installed, skip setup and run only the two server commands above. No NSE download is needed to start the app; use **Manage stock data** at `/data` to import the historical archive window required for your research.
 
 ## Download historical NSE data
 
@@ -75,7 +86,7 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 - [handover.md](handover.md) — engineering ownership, persistence contract, architecture, and handoff notes.
 - [TESTING.md](TESTING.md) — automated tests, UI smoke checks, data checks, and release checklist.
 - [AGENTS.md](AGENTS.md) — instructions for coding agents working in the repository.
-- [AI_ML_INTERVIEW_GUIDE.md](AI_ML_INTERVIEW_GUIDE.md) — AI/ML interview preparation using the Backtrack implementation.
+- [docs/](docs/) — planning, design, UX, QA, and knowledge-transfer reference documents.
 
 ## Main pages
 
@@ -95,6 +106,8 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 | `/pattern-finder` | Detect repeatable historical price patterns and test them locally |
 | `/options` | Educational options payoff and breakeven calculator |
 | `/analytics` | Performance and trade-quality views |
+| `/insights` | Local NSE index breadth, stock/sector heatmaps, and top movers |
+| `/insights/fii-dii` | Official NSE FII/FPI and DII institutional-flow chart and ledger |
 | `/settings` | Local data, Ollama, and application status |
 
 See [PROJECT_GUIDE.md](PROJECT_GUIDE.md) for the complete user guide.
@@ -141,6 +154,7 @@ npm --prefix frontend run build
 
 - NSE data is daily historical archive data, not a real-time feed.
 - The current research chart and strategy engine support the local `1day` NSE path; other timeframes remain explicit unavailable/configuration states until normalized data exists.
+- FII/DII Insights uses NSE's separate provisional FII/FPI-DII report, archives raw snapshots under `data/nse_archives/fii_dii/`, and never derives institutional flows from stock prices. NSE's public report currently exposes the latest session only; older days appear after they have been captured locally, and the UI labels incomplete coverage instead of fabricating a month.
 - Replay and backtesting are simulations, not trading execution.
 - Normalized backtest bars currently cover supported EQ/BE/ETF rows; raw rows are retained for future work.
 - Options calculations are educational and do not model the complete derivatives lifecycle.

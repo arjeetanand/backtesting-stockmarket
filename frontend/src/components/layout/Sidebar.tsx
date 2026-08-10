@@ -18,11 +18,14 @@ import {
   Sparkles,
   Search,
   BookmarkCheck,
+  Landmark,
+  Activity,
 } from "lucide-react";
 
 const mainNav = [
   { href: "/", label: "Home", icon: LayoutDashboard },
   { href: "/market-scanner", label: "Market Scanner", icon: Search },
+  { href: "/insights", label: "Market Insights", icon: Activity },
   { href: "/watchlist", label: "Daily Watchlist", icon: BookmarkCheck },
   { href: "/pattern-finder", label: "Pattern Finder", icon: Sparkles },
   { href: "/research", label: "Test a strategy", icon: FlaskConical },
@@ -30,6 +33,7 @@ const mainNav = [
   { href: "/comparison", label: "Compare tests", icon: BarChart3 },
   { href: "/ml-lab", label: "ML Lab", icon: BrainCircuit },
   { href: "/options", label: "Learn & Indicators", icon: BookOpenCheck },
+  { href: "/insights/fii-dii", label: "FII / DII Insights", icon: Landmark },
 ];
 
 const secondaryNav = [

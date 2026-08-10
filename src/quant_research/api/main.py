@@ -31,11 +31,15 @@ def create_app(
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(container.settings.cors_origins),
+        # The dev launchers accept arbitrary local ports (for example, a
+        # second frontend/backend pair on 3001/8001). Keep that workflow
+        # usable without requiring a .env edit for every port combination.
+        allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?$",
         allow_credentials=False,
         allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["*"],
     )
-    app.include_router(create_api_router(container.research, container.hypotheses, container.nse_importer, container.market_cache, container.nifty500_catalogue, container.artifacts, container.ml_research))
+    app.include_router(create_api_router(container.research, container.hypotheses, container.nse_importer, container.market_cache, container.nifty500_catalogue, container.artifacts, container.ml_research, container.fii_dii_importer))
     return app
 
 

@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "as_of": "2025-06-30",
+  "source": "NSE/NSE Indices constituent snapshots; NIFTY 500 uses the local catalogue boundary",
+  "universes": [
+    {
+      "universe_id": "nifty50",
+      "name": "NIFTY 50",
+      "exchange": "NSE",
+      "as_of": "2025-06-30",
+      "source": "NSE Indices NIFTY 50 constituent snapshot",
+      "sector_source": "official_nse_catalogue_industry",
+      "membership": {"kind": "snapshot", "expected_members": 50},
+      "symbols": [
+        "ADANIENT", "ADANIPORTS", "APOLLOHOSP", "ASIANPAINT", "AXISBANK", "BAJAJ-AUTO", "BAJFINANCE", "BAJAJFINSV", "BEL",
+        "BHARTIARTL", "CIPLA", "COALINDIA", "DRREDDY", "EICHERMOT", "ETERNAL", "GRASIM", "HCLTECH", "HDFCBANK", "HDFCLIFE",
+        "HEROMOTOCO", "HINDALCO", "HINDUNILVR", "ICICIBANK", "INDUSINDBK", "INFY", "ITC", "JIOFIN", "JSWSTEEL", "KOTAKBANK",
+        "LT", "M&M", "MARUTI", "NESTLEIND", "NTPC", "ONGC", "POWERGRID", "RELIANCE", "SBILIFE",
+        "SBIN", "SHRIRAMFIN", "SUNPHARMA", "TATACONSUM", "TATAMOTORS", "TATASTEEL", "TCS", "TECHM", "TITAN", "TRENT", "ULTRACEMCO", "WIPRO"
+      ]
+    },
+    {
+      "universe_id": "sensex",
+      "name": "Sensex",
+      "exchange": "BSE",
+      "as_of": "2025-06-30",
+      "source": "BSE Sensex constituent snapshot; symbols use NSE cash-market tickers where available",
+      "sector_source": "official_nse_catalogue_industry",
+      "membership": {"kind": "snapshot", "expected_members": 30},
+      "symbols": [
+        "ADANIPORTS", "ASIANPAINT", "AXISBANK", "BAJAJFINSV", "BAJFINANCE", "BEL", "BHARTIARTL", "ETERNAL", "HCLTECH", "HDFCBANK",
+        "HINDUNILVR", "ICICIBANK", "INFY", "ITC", "KOTAKBANK", "LT", "M&M", "MARUTI", "NTPC", "POWERGRID", "RELIANCE", "SBIN",
+        "SUNPHARMA", "TATASTEEL", "TCS", "TECHM", "TITAN", "TMPV", "TRENT", "ULTRACEMCO"
+      ]
+    },
+    {
+      "universe_id": "banknifty",
+      "name": "Bank Nifty",
+      "exchange": "NSE",
+      "as_of": "2025-06-30",
+      "source": "NSE Indices NIFTY Bank constituent snapshot",
+      "sector_source": "official_nse_catalogue_industry",
+      "membership": {"kind": "snapshot", "expected_members": 12},
+      "symbols": [
+        "AUBANK", "AXISBANK", "BANKBARODA", "CANBK", "FEDERALBNK", "HDFCBANK", "ICICIBANK", "IDFCFIRSTB", "INDUSINDBK", "KOTAKBANK", "PNB", "SBIN"
+      ]
+    },
+    {
+      "universe_id": "nifty500",
+      "name": "NIFTY 500",
+      "exchange": "NSE",
+      "as_of": "2025-06-30",
+      "source": "NSE Indices NIFTY 500 constituent snapshot; the local NSE catalogue is the runtime membership boundary",
+      "sector_source": "official_nse_catalogue_industry",
+      "membership": {"kind": "local_catalogue", "catalogue_universe": "nse_equities", "expected_members": 500},
+      "symbols": []
+    }
+  ]
+}
