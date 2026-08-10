@@ -51,7 +51,10 @@ class DailySyncService:
         start_date = missing_days[0]
         end_date = missing_days[-1]
 
-        res = self._importer.import_range(start=start_date, end=end_date)
+        # The official archive is exchange-wide.  A stable representative symbol
+        # lets the importer run its per-symbol coverage check while it persists
+        # every supported row from each archive day.
+        res = self._importer.import_daily_universe(["RELIANCE"], start=start_date, end=end_date)
         new_summary = self._cache.summary()
 
         return {
