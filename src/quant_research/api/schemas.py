@@ -1,6 +1,7 @@
 """Request and response schemas exposed by the HTTP API."""
 
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -485,6 +486,42 @@ class BreakoutScannerRequest(BaseModel):
     limit: int = Field(default=50, ge=1, le=200)
     start: datetime | None = None
     end: datetime | None = None
+
+
+class StructureZoneScanRequest(BaseModel):
+    universe: str = Field(default="nifty50", min_length=1, max_length=80)
+
+
+class StructureZoneResponse(BaseModel):
+    symbol: str
+    company_name: str
+    sector: str
+    direction: Literal["bullish", "bearish"]
+    zone_low: float
+    zone_high: float
+    source_candle_date: date
+    confirmed_date: date
+    data_as_of: date
+    break_level: float
+    impulse_atr: float
+    close: float
+    distance_pct: float
+    touch_sessions: int
+    bars_since_confirmation: int
+    state: Literal["untested", "retested", "testing"]
+
+
+class StructureZoneScanResponse(BaseModel):
+    universe: str
+    data_as_of: date | None
+    requested_symbols: int
+    available_symbols: int
+    scanned_symbols: int
+    missing_symbols: list[str]
+    insufficient_history_symbols: list[str]
+    coverage_status: Literal["complete", "partial", "unavailable"]
+    total_zones: int
+    zones: list[StructureZoneResponse]
 
 
 class WatchlistAddRequest(BaseModel):

@@ -58,6 +58,8 @@ from quant_research.api.schemas import (
     ScreenerRunResponse,
     ScreenerUniverseResponse,
     SmaBacktestRequest,
+    StructureZoneScanRequest,
+    StructureZoneScanResponse,
     WatchlistAddRequest,
     YouTubeStrategyRequest,
 )
@@ -1209,6 +1211,23 @@ def create_api_router(
             )
         except Exception as exc:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+
+    @router.post("/structure-zones/scan", response_model=StructureZoneScanResponse, tags=["market-scanner"])
+    def scan_structure_zones(payload: StructureZoneScanRequest) -> StructureZoneScanResponse:
+        """Find recent, still-valid daily structure zones in one configured local universe."""
+        if market_cache is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Market cache repository not available.")
+        universe = next((item for item in load_universe_catalog().universes if item.universe_id == payload.universe), None)
+        if universe is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown market universe: {payload.universe}.")
+        symbols, membership_status = resolve_universe_symbols(universe, market_cache)
+        if membership_status == "unavailable":
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="The selected universe membership is not available locally.")
+
+        from quant_research.services.structure_zone_scanner import StructureZoneScannerService
+
+        result = StructureZoneScannerService(market_cache).scan(symbols)
+        return StructureZoneScanResponse.model_validate({"universe": payload.universe, **result})
 
     @router.post("/data/sync-today", tags=["data"])
     def sync_today_market_data() -> dict[str, Any]:
