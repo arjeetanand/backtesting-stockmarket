@@ -10,7 +10,8 @@ Last reviewed: 2026-10-28
 - Verification: frontend lint and production build pass. Browser inspection at 390px, 767px,
   and 1440px confirmed the image loads and the document stays within the viewport.
 - Branch: `codex/backtrack-mascot-illustrations-20261028`, based on `origin/main` at `cd7ff7b`.
-  Pull request and commit details will be recorded after delivery.
+  Implementation commit: `b93be62`. [PR #7](https://github.com/arjeetanand/backtesting-stockmarket/pull/7)
+  tracks delivery to `main`; see it for live check and merge status.
 - Run locally from the repository root with `./run.sh`: UI `http://localhost:4003`, API
   `http://localhost:8001`; UI test ports are `5003` and `6003`.
 

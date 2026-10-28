@@ -16,4 +16,4 @@
 - [x] Frontend lint and production build pass.
 - [x] Review all 21 rendered routes at phone (390px), tablet (767px), and desktop (1440px) widths.
 - [x] Check route navigation and horizontal overflow; no route errors or document overflow found.
-- Pull request [#6](https://github.com/arjeetanand/backtesting-stockmarket/pull/6) tracks delivery to `main`; its page is the live record of review and merge status.
+- The base theme shipped in [PR #6](https://github.com/arjeetanand/backtesting-stockmarket/pull/6); this mascot follow-up is [PR #7](https://github.com/arjeetanand/backtesting-stockmarket/pull/7).
