@@ -473,3 +473,17 @@ Next owner/action:
 - Verification: frontend ESLint and the webpack production build pass; `git diff --check` passes. Live-browser sweep covered all 21 routes at 1185px: every route loaded a 1536px artwork source and had no document-width overflow. Home, Research, and Insights were visually inspected; no new console warnings appeared after eager loading was added.
 - Responsive media rules were source-checked, but the available browser control could not emulate 390px or 767px viewports. The checklist leaves those runtime checks pending.
 - Run with `./run.sh`; UI port `4003`, API port `8001`. Preview: `http://127.0.0.1:4003/`.
+
+## 16. Guided first-use workflow and contextual illustrations
+
+- Date: 2026-10-28.
+- Branch: `codex/backtrack-guided-workflow-20261028`.
+- Implementation commit: `7bed083` (`Guide users through the Backtrack workflow`).
+- PR: [#11](https://github.com/arjeetanand/backtesting-stockmarket/pull/11), targeting `main`.
+- Guide first use from local NSE history through rule review and simulation, saved results, and comparison. Make the specialist market and research tools secondary in navigation.
+- Place the full-resolution static PNG scenes beside the Home workflow and the relevant data, rule, empty-results, replay, or missing-data state. Keep route headers compact and avoid animation that implies the pictures show a moving workflow.
+- Update `README.md`, `PROJECT_GUIDE.md`, `frontend/README.md`, `DESIGN.md`, and `docs/UI_THEME_CHECKLIST.md`. No API or persistence behavior changed.
+- Verification: frontend lint and the webpack production build pass. Live-browser review covered the six key workflow pages and all 20 static routes at 1185px with no horizontal overflow; loaded illustrations retained their natural 1536×1024 source dimensions. The mobile More menu stays closed on direct specialist-route load and highlights its section.
+- Mobile viewport limitation: exact 390px and 767px rendering and menu operation could not be checked because the available browser session is fixed at desktop width.
+- Run with `./run.sh`; UI port `4003`, API port `8001`. Preview: `http://127.0.0.1:4003/`.
+- Next action: review the local preview; check the menu at 390px and 767px once viewport emulation is available.
