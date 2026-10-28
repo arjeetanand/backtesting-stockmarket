@@ -26,8 +26,8 @@
 - [x] Backend lint and full tests pass; `mypy src` reports 13 existing errors in four unchanged files (`market_cache.py`, `pattern_finder.py`, `breakout_scanner.py`, and `ml_research.py`).
 - [x] Frontend tests, lint, and production build pass; the local review gate and launcher descendant checks pass.
 - [x] Inspect the rendered UI in the browser at desktop and compact widths; a standalone Taste browser inspector could not launch Chrome.
-- [ ] Complete a clean `run.sh` restart after the active NSE import finishes; the current graceful shutdown is waiting for that background work.
+- [x] Let the active NSE import finish, then restart `./run.sh`; UI `http://127.0.0.1:4003/` returns HTTP 200 and API `/api/v1/health` reports `status: ok` with `local_nse_cache`.
 - [x] Consolidation commit `bf44580` is followed by redesign commit `a1cf1ae` on `codex/skill-guided-ui-20261028`.
-- [x] Push the branch and open [PR #1](https://github.com/arjeetanand/backtesting-stockmarket/pull/1); GitHub shows its current check and merge state.
+- [x] Push the branch and merge [PR #1](https://github.com/arjeetanand/backtesting-stockmarket/pull/1) into `main` as `147619b`.
 
 The npm install reported 14 dependency advisories (2 moderate, 9 high, 3 critical); the lockfile was not changed to apply automatic upgrades.
