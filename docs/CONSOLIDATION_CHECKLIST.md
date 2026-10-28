@@ -5,7 +5,7 @@
 - [x] Keep `backtesting-stockmarket` as the single active stock-research repository.
 - [x] Archive `StockML`; its chronological ML research capability is covered by Backtrack ML Lab on local NSE data.
 - [x] Archive `stockpulse`; its older BSE lookup prototype is outside the unified NSE research path.
-- [x] Archive `stock-news-sentiment-analysis` and `stock-news-analysis`; they are overlapping older scraper/FinBERT prototypes with generated artifacts.
+- [x] Archive `stock-news-sentiment-analysis` and [`Financial_news_analysis`](https://github.com/arjeetanand/Financial_news_analysis), the current account name for the listed stock-news analysis project; they are overlapping older scraper/FinBERT prototypes with generated artifacts.
 - [x] Preserve every archived GitHub repository; none were deleted and no legacy artifacts were copied.
 
 ## Unified local workspace
