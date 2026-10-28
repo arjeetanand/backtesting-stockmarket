@@ -521,7 +521,7 @@ Next owner/action:
 
 - Date: 2026-10-28.
 - Branch: `codex/order-flow-liquidity-20261028`, based on `main` at `5feadf4`; it includes the structure-zone prerequisite commit `403e7e9` and the flow-board implementation commit `8d46b4d`.
-- PR: pending.
+- PR: [#14](https://github.com/arjeetanand/backtesting-stockmarket/pull/14), targeting `main`.
 - Rank up to 20 positive and 20 negative estimates across all local NSE catalogue symbols, NIFTY 500, or NIFTY 50. Estimate signed pressure as each candle's close location in its high-low range multiplied by close × volume, summed over the latest 20 saved daily sessions. Display average traded value separately and select from the top three on either side.
 - Search any NSE catalogue symbol to inspect the latest active daily demand/supply candidates using the existing structure-zone rule. These are candidate price ranges, not actual resting orders or proof of institutional activity.
 - Verification: full Python test suite, Ruff, frontend Vitest (19 tests), ESLint, and webpack production build pass. The live desktop browser scanned all 2,585 cached catalogue symbols (2,407 ranked, 4 without bars, 174 with insufficient history), showed the top-three split, selected a demand candidate, and inspected a typed TCS symbol. The data snapshot's latest candle was 2026-10-27.
