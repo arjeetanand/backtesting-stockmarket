@@ -117,7 +117,8 @@ recoverable there. No legacy generated datasets or machine-specific paths were c
 The website uses a light-indigo frame, white research canvas, navy editorial headings, and
 pale periwinkle primary actions across its routes. Shared UI tokens and responsive rules
 are documented in [DESIGN.md](DESIGN.md); the theme keeps the existing local,
-historical-only research boundary.
+historical-only research boundary. The overview now features an original, locally served
+notebook-researcher illustration in the same palette.
 
 ## Research workflow
 

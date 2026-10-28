@@ -1,4 +1,4 @@
-# Intelligence Daily inspired UI theme
+# Intelligence Daily inspired UI theme and mascot
 
 ## Implementation
 
@@ -7,6 +7,9 @@
 - [x] Keep semantic result colors and the local historical-research product boundary.
 - [x] Document the theme in `DESIGN.md` and the repository READMEs.
 - [x] Add the `/time-machine` title to the shared top bar.
+- [x] Add an original notebook-researcher illustration to the overview, served as a local WebP with descriptive alt text.
+- [x] Keep the research overview readable at phone, tablet, and desktop widths.
+- [x] At 390px, 767px, and 1440px, confirm the image loads and document width stays within the viewport.
 
 ## Verification and delivery
 
