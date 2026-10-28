@@ -589,6 +589,161 @@ class MarketFlowScanResponse(BaseModel):
     selected: MarketFlowSymbolResponse | None
 
 
+class StockResearchRequest(BaseModel):
+    symbol: str = Field(..., min_length=1, max_length=50)
+
+    @field_validator("symbol")
+    @classmethod
+    def normalize_symbol(cls, value: str) -> str:
+        normalized = value.strip().upper().removesuffix(".NS")
+        if not normalized:
+            raise ValueError("symbol must not be blank")
+        return normalized
+
+
+class StockResearchTechnicalResponse(BaseModel):
+    close: float
+    sma20: float | None
+    sma50: float | None
+    sma200: float | None
+    rsi14: float | None
+    macd: float | None
+    macd_signal: float | None
+    macd_histogram: float | None
+    atr14: float | None
+    atr14_pct: float | None
+    prior20_high: float | None
+    prior20_low: float | None
+    high_52w: float
+    low_52w: float
+    volume_ratio_20: float | None
+    return_1m_pct: float | None
+    return_3m_pct: float | None
+    return_1y_pct: float | None
+    return_3y_pct: float | None
+
+
+class StockResearchSetupResponse(BaseModel):
+    status: Literal["stale_data", "triggered", "watch", "no_long_setup"]
+    direction: Literal["long_only"]
+    signal_close: float
+    entry_trigger: float | None
+    stop_loss: float | None
+    target_1r: float | None
+    target_2r: float | None
+    risk_per_share: float | None
+    reasons: list[str]
+    exit_rules: list[str]
+    level_note: str
+
+
+class StockResearchMetricsResponse(BaseModel):
+    trades: int
+    wins: int
+    losses: int
+    flats: int
+    win_rate_pct: float
+    expectancy_pct: float
+    profit_factor: float | None
+    total_return_pct: float
+    max_drawdown_pct: float
+    active_bars: int
+    period_start: date | None
+    period_end: date | None
+    bars: int
+
+
+class StockResearchGateResponse(BaseModel):
+    status: Literal["passed", "failed", "not_evaluable"]
+    minimum_history_years: int
+    minimum_oos_trades: int
+    minimum_win_rate_pct: float
+    reasons: list[str]
+
+
+class StockResearchTradeResponse(BaseModel):
+    signal_date: date
+    entry_date: date
+    exit_date: date
+    entry_price: float
+    exit_price: float
+    net_pnl: float
+    net_pnl_per_share: float
+    net_return_pct: float
+    outcome: Literal["win", "loss", "flat"]
+    exit_reason: str
+    bars_held: int
+
+
+class StockResearchChartPointResponse(BaseModel):
+    timestamp: date
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+    sma20: float | None
+    sma50: float | None
+    sma200: float | None
+
+
+class StockResearchRunLogResponse(BaseModel):
+    run_id: str
+    status: Literal["completed", "insufficient_data", "failed"]
+    started_at: datetime
+    finished_at: datetime
+    failure_reason: str | None
+
+
+class StockResearchResponse(BaseModel):
+    run_id: str
+    symbol: str
+    company_name: str | None
+    run_status: Literal["completed", "insufficient_data", "failed"]
+    message: str
+    data_source: str
+    data_as_of: date | None
+    history_start: date | None
+    bar_count: int
+    history_years: float
+    data_age_days: int | None
+    data_hash: str | None
+    technical: StockResearchTechnicalResponse | None
+    technical_reasons: list[str]
+    growth_note: str
+    setup: StockResearchSetupResponse | None
+    training_metrics: StockResearchMetricsResponse | None
+    out_of_sample_metrics: StockResearchMetricsResponse | None
+    validation_gate: StockResearchGateResponse
+    trades: list[StockResearchTradeResponse]
+    chart: list[StockResearchChartPointResponse]
+    cost_assumptions: dict[str, object] | None
+    run_log: StockResearchRunLogResponse
+
+
+class StockResearchRunSummaryResponse(BaseModel):
+    run_id: str
+    symbol: str
+    run_status: Literal["completed", "insufficient_data", "failed"]
+    logged_at: datetime | None
+    data_as_of: date | None
+    trades: int
+    wins: int
+    losses: int
+    validation_status: Literal["passed", "failed", "not_evaluable"]
+    failure_reason: str | None
+
+
+class StockResearchHistoryResponse(BaseModel):
+    total_runs: int
+    completed_runs: int
+    failed_attempts: int
+    qualified_runs: int
+    failed_gates: int
+    not_evaluable_runs: int
+    runs: list[StockResearchRunSummaryResponse]
+
+
 class WatchlistAddRequest(BaseModel):
     symbol: str = Field(..., min_length=1, max_length=50)
     company_name: str = Field(default="")

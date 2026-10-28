@@ -17,6 +17,7 @@ const pageTitles: Record<string, string> = {
   "/analytics": "Understand a test",
   "/ml-lab": "ML Lab",
   "/market-scanner": "Market Scanner",
+  "/stock-research": "Stock research",
   "/insights": "Market Insights",
   "/watchlist": "Daily Watchlist",
   "/pattern-finder": "Pattern Finder",

@@ -7,7 +7,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8
 
 type Instrument = { symbol: string; company_name: string; industry: string | null; series: string | null };
 
-export function SymbolCombobox({ value, onChange, label = "Symbol", className = "", disabled = false }: { value: string; onChange: (symbol: string) => void; label?: string; className?: string; disabled?: boolean }) {
+export function SymbolCombobox({ value, onChange, label = "Symbol", className = "", disabled = false, inputId, maxLength }: { value: string; onChange: (symbol: string) => void; label?: string; className?: string; disabled?: boolean; inputId?: string; maxLength?: number }) {
   const [query, setQuery] = useState(value);
   const [results, setResults] = useState<Instrument[]>([]);
   const [open, setOpen] = useState(false);
@@ -44,9 +44,9 @@ export function SymbolCombobox({ value, onChange, label = "Symbol", className = 
 
   const select = (symbol: string) => { onChange(symbol); setQuery(symbol); setOpen(false); };
   return <div className={`bt-symbol-combobox ${className}`}>
-    <label className="sr-only" htmlFor={listId}>{label}</label>
+    <label className="sr-only" htmlFor={inputId ?? listId}>{label}</label>
     <Search size={14} aria-hidden="true" />
-    <input id={listId} className="bt-field-input" value={query} autoComplete="off" disabled={disabled} onFocus={() => setOpen(true)} onChange={(event) => { const next = event.target.value.toUpperCase(); setQuery(next); onChange(next); setOpen(true); }} placeholder="Search NSE symbol or company" role="combobox" aria-expanded={open && !disabled} aria-controls={`${listId}-options`} />
+    <input id={inputId ?? listId} maxLength={maxLength} className="bt-field-input" value={query} autoComplete="off" disabled={disabled} onFocus={() => setOpen(true)} onChange={(event) => { const next = event.target.value.toUpperCase(); setQuery(next); onChange(next); setOpen(true); }} placeholder="Search NSE symbol or company" role="combobox" aria-expanded={open && !disabled} aria-controls={`${listId}-options`} />
     {open && !disabled && <div id={`${listId}-options`} className="bt-symbol-options" role="listbox">
       {loading && <p>Searching NSE catalogue… This normally takes a few seconds.</p>}
       {!loading && searchMessage && <p role="status">{searchMessage}</p>}
