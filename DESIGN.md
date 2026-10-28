@@ -3,16 +3,17 @@ name: Backtrack
 description: A calm local desk for reviewing ideas against historical NSE data.
 colors:
   primary: "#4f46e5"
-  frame: "#eef0f8"
+  frame: "#f0f1f8"
   canvas: "#ffffff"
   surface: "#f8f9fc"
-  selected: "#e4e7fb"
-  border: "#e3e6ef"
-  ink: "#172033"
-  muted: "#596579"
+  selected: "#e8eaf7"
+  border: "#e3e5ed"
+  ink: "#171a38"
+  muted: "#606779"
+  action: "#c3c9df"
   positive: "#047857"
   negative: "#be123c"
-  warning: "#a16207"
+  warning: "#8a5200"
 typography:
   display:
     fontFamily: "Space Grotesk, system-ui, sans-serif"
@@ -39,8 +40,8 @@ spacing:
   lg: "24px"
 components:
   button-primary:
-    backgroundColor: "{colors.primary}"
-    textColor: "{colors.canvas}"
+    backgroundColor: "{colors.action}"
+    textColor: "{colors.ink}"
     rounded: "{rounded.sm}"
     height: "38px"
   button-secondary:
@@ -74,6 +75,8 @@ components:
 
 Backtrack is a personal workspace for turning a stock idea into a reviewed rule and historical evidence. Its visual language is quiet and precise: a light-indigo frame, a white working sheet, clear data labels, and restrained accents that keep attention on the user's assumptions and results.
 
+The refreshed screens borrow the editorial reference's spacious white canvas, navy headings, and pale periwinkle actions, translated into Backtrack's indigo tokens. Layout and wording continue to present the existing local research tools; the reference adds no product behavior.
+
 The interface keeps the primary journey in one place and tucks secondary market and analysis tools into grouped navigation. A visible checkpoint sequence describes the actual app flow; it must not imply that separate AI agents ran. Local model output and deterministic fallback rules remain clearly labelled drafts.
 
 **Key Characteristics:**
@@ -83,10 +86,11 @@ The interface keeps the primary journey in one place and tucks secondary market 
 
 ## Colors
 
-Use indigo for the primary action and selected states. Keep the frame cool and pale; use semantic colors only for results and warnings.
+Use saturated indigo for links, focus, and selected states. Keep the frame cool and pale, the main action pale periwinkle, and semantic colors reserved for results and warnings.
 
 ### Primary
-- **Working indigo** (`{colors.primary}`): Main action, keyboard focus, selected navigation, and links.
+- **Working indigo** (`{colors.primary}`): Keyboard focus, selected navigation, and links.
+- **Primary action wash** (`{colors.action}`): Pale periwinkle with navy text for the next action.
 
 ### Neutral
 - **Cool frame** (`{colors.frame}`): App chrome around the white work sheet.
@@ -118,7 +122,7 @@ Use indigo for the primary action and selected states. Keep the frame cool and p
 - **Headline** (600, 23–28px): Page titles.
 - **Title** (600, 14–17px): Panel and section titles.
 - **Body** (400, 13px, 1.55): Instructions and explanatory copy.
-- **Label** (500–700, 9–12px): Controls, statuses, and compact data labels.
+- **Label** (500–700, 11–12px): Controls, statuses, and supporting copy; dense chart ticks may use smaller type.
 
 ## Layout
 
@@ -138,7 +142,7 @@ Use 7px controls, 10px panels, and a 16px page sheet. Borders are thin and cool 
 
 ### Buttons
 - **Shape:** 7px corners, at least 38px high.
-- **Primary:** Solid indigo with white text; use for the next meaningful action.
+- **Primary:** Pale periwinkle with navy text; use for the next meaningful action. Reserve saturated indigo for links, selected states, and focus.
 - **Secondary:** White with a clear border; use for alternate actions.
 - **Hover / Focus:** Darken indigo slightly on hover. Keep a 3px visible indigo focus outline with 2px offset.
 

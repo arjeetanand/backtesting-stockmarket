@@ -107,7 +107,7 @@ frontend/src/
 
 Important files:
 
-- `src/app/globals.css` — shared design system and responsive styles.
+- `src/app/globals.css` — shared light-indigo theme and responsive styles; see the root `DESIGN.md` for its tokens and layout rules.
 - `src/lib/api.ts` — timeout-aware API requests.
 - `src/lib/backtest-api.ts` — backtest client and response types.
 - `src/lib/market-data.ts` — local market-data client.

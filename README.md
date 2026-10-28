@@ -72,6 +72,8 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 - [PROJECT_GUIDE.md](PROJECT_GUIDE.md) — user-facing page-by-page guide and workflows.
 - [backend/README.md](backend/README.md) — FastAPI, SQLite, NSE importer, API, and backend development.
 - [frontend/README.md](frontend/README.md) — Next.js UI, routes, local agents, styling, and frontend development.
+- [DESIGN.md](DESIGN.md) — shared palette, typography, layout, and component guidance.
+- [docs/UI_THEME_CHECKLIST.md](docs/UI_THEME_CHECKLIST.md) — theme implementation and delivery checklist.
 - [handover.md](handover.md) — engineering ownership, persistence contract, architecture, and handoff notes.
 - [TESTING.md](TESTING.md) — automated tests, UI smoke checks, data checks, and release checklist.
 - [AGENTS.md](AGENTS.md) — instructions for coding agents working in the repository.
@@ -109,6 +111,13 @@ covers chronological model evaluation using locally imported NSE data, while its
 market insights, strategy tests, robustness checks, and replay share the same workspace.
 Four older private stock prototypes were archived on GitHub after the audit; they remain
 recoverable there. No legacy generated datasets or machine-specific paths were copied.
+
+## Interface theme
+
+The website uses a light-indigo frame, white research canvas, navy editorial headings, and
+pale periwinkle primary actions across its routes. Shared UI tokens and responsive rules
+are documented in [DESIGN.md](DESIGN.md); the theme keeps the existing local,
+historical-only research boundary.
 
 ## Research workflow
 
