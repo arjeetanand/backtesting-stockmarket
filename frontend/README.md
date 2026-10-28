@@ -42,6 +42,7 @@ The home page is only a workflow chooser. Stock and date controls belong on Rese
 | `/backtests` | Saved test history |
 | `/backtests/[id]` | Detailed metrics and charts |
 | `/replay` | Historical candle replay with simulated orders |
+| `/time-machine` | Seeded daily-bar scenario sample from local NSE history |
 | `/comparison` | Compare saved tests |
 | `/robustness` | Robustness and walk-forward analysis |
 | `/bias-validity` | Bias and validity checks |
@@ -110,6 +111,7 @@ Important files:
 - `src/lib/api.ts` — timeout-aware API requests.
 - `src/lib/backtest-api.ts` — backtest client and response types.
 - `src/lib/market-data.ts` — local market-data client.
+- `src/lib/time-machine.ts` — typed local scenario-simulator request/response client.
 - `src/lib/chart-data.ts` — normalized financial-chart types and pure validation adapters.
 - `src/lib/research-chart.ts` — market/backtest chart payload adapters.
 - `src/lib/replay/` — replay API and state types.

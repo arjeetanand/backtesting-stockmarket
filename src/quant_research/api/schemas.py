@@ -325,6 +325,50 @@ class MarketDataResponse(BaseModel):
     quality: DataQualityReport
 
 
+class ScenarioSimulatorRequest(BaseModel):
+    """Bounded inputs for a local daily-bar scenario sample."""
+
+    symbol: str = Field(..., min_length=1, max_length=50)
+    entry_price: float | None = Field(default=None, ge=0.01, le=1_000_000_000.0, allow_inf_nan=False)
+    risk_pct: float = Field(default=1.0, ge=0.01, le=25.0, allow_inf_nan=False)
+    target_r: float = Field(default=2.0, ge=0.01, le=10.0, allow_inf_nan=False)
+    max_hold_sessions: int = Field(default=10, ge=1, le=20)
+    lookback_sessions: int = Field(default=60, ge=20, le=252)
+    seed: int = Field(default=19, ge=0, le=2_147_483_647)
+
+
+class ScenarioSummaryResponse(BaseModel):
+    samples: int
+    stop_loss: int
+    target: int
+    time_exit: int
+    average_r: float
+    median_r: float
+    p05_exit_price: float
+    median_exit_price: float
+    p95_exit_price: float
+
+
+class ScenarioSimulatorResponse(BaseModel):
+    symbol: str
+    as_of_date: date
+    entry_price: float
+    stop_price: float
+    target_price: float
+    risk_per_share: float
+    risk_pct: float
+    target_r: float
+    max_hold_sessions: int
+    lookback_sessions: int
+    simulations: int
+    seed: int
+    source_sessions: int
+    data_start: date
+    data_end: date
+    monte_carlo: ScenarioSummaryResponse
+    historical_outcomes: ScenarioSummaryResponse
+
+
 class SmaBacktestRequest(BaseModel):
     symbol: str = Field(..., min_length=1, max_length=50, examples=["AAPL"])
     start: datetime

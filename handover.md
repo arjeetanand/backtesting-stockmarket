@@ -196,6 +196,7 @@ Persistence is local single-user SQLite. There is no authentication, multi-user 
 | ML Lab | `frontend/src/app/ml-lab/page.tsx` | Chronological ML research experiments |
 | Pattern Finder | `frontend/src/app/pattern-finder/page.tsx` | Historical pattern detection and occurrence review |
 | Chart Replay | `frontend/src/app/replay/page.tsx` | Candle replay, simulated ticket, positions, journal, and session persistence |
+| Time Machine | `frontend/src/app/time-machine/page.tsx` | Seeded daily-bar scenarios and past-only fixed-rule outcomes |
 | Options Learn | `frontend/src/app/options/page.tsx` | Educational payoff and breakeven calculator |
 | Analytics | `frontend/src/app/analytics/page.tsx` | Performance and trade-quality analysis |
 | Market Insights | `frontend/src/app/insights/page.tsx` and `frontend/src/components/insights/InsightsDashboard.tsx` | Index-aware daily breadth, stock/sector heatmaps, period selectors, coverage metadata, and top movers |
@@ -214,6 +215,7 @@ Shared frontend infrastructure:
 - `frontend/src/lib/chart-data.ts`: API-independent normalized financial-chart contracts and validation.
 - `frontend/src/lib/research-chart.ts`: market/backtest payload adapters, indicator placement, and signal/trade mapping.
 - `frontend/src/lib/replay/`: replay API client and types.
+- `frontend/src/lib/time-machine.ts`: typed daily-bar scenario API contract and client.
 - `frontend/src/lib/robustness-api.ts`: robustness API client.
 - `frontend/src/lib/agents/`: five in-process TypeScript swarm modules.
 - `frontend/src/lib/strategy-library.ts`: known strategy definitions used by strategy selection and education. Price-action and ICT-style entries are explicitly labelled as configurable Backtrack interpretations.
@@ -254,6 +256,7 @@ API schemas live in `src/quant_research/api/schemas.py`; route behavior lives in
 - `POST /data/nse-import`
 - `GET /data/nse-import/{job_id}`
 - `GET /market-data`
+- `POST /scenario-simulator/run`
 
 ### Research and runs
 
@@ -276,6 +279,8 @@ API schemas live in `src/quant_research/api/schemas.py`; route behavior lives in
 - `DELETE /research/artifacts/{kind}/{artifact_key}`
 
 `GET /market-data` returns validated local bars for the selected symbol, date range, and timeframe. The custom backtest response keeps its existing result fields and adds chart-ready candle `volume` plus stable signal `id` and `trade_id` metadata. Invalid strategy parameters and insufficient history return actionable `422` errors rather than an opaque server error.
+
+`POST /scenario-simulator/run` reads only locally cached `1day` candles. It re-samples 10,000 repeatable daily OHLC bars with replacement from the lookback window, applies a fixed percentage stop and R-multiple target, and compares them with rolling historical outcomes whose full holding window ends no later than the latest cached candle. It does not select historical entries for similarity. When one daily candle reaches both levels it counts the stop first. The endpoint never fetches data, predicts prices, or submits orders; it returns `422` with the required history count when the cache is too short.
 
 `GET /insights/fii-dii` returns locally normalized official NSE FII/FPI-DII rows, daily/weekly/monthly summaries, chart points, available Nifty 50 index closes, and a coverage note when the requested range is not locally complete. `POST /insights/fii-dii/import` and `GET /insights/fii-dii/import/{job_id}` manage the background report snapshot import. Raw snapshots are kept under `data/nse_archives/fii_dii/`; the SQLite cache owns normalized `fii_dii_rows`, `fii_dii_snapshots`, and `nifty50_closes` tables. The current public NSE FII/DII endpoint is latest-session only; historical sessions are not invented from date query parameters.
 
@@ -370,6 +375,7 @@ The repository test suite uses fake openers/providers and does not require NSE, 
 
 - No real-time market feed or live order execution.
 - Daily NSE archive ingestion only; intraday and derivatives are not normalized for backtesting.
+- Time Machine uses daily bars only and omits fees/slippage; its sample frequencies are not calibrated probabilities.
 - Raw derivative/other archive rows are retained, but the current strategy engine uses normalized EQ/BE/ETF OHLCV bars.
 - YouTube extraction remains a reviewable draft and has no speech-to-text guarantee.
 - Ollama is optional and must be running locally for research hypothesis generation.
@@ -393,3 +399,18 @@ Test evidence:
 Known limitations:
 Next owner/action:
 ```
+
+## 13. Day-Trader Time Machine integration handoff
+
+- Date: 2026-10-28.
+- Branch: `codex/day-trader-time-machine-20261028`.
+- Implementation commit: `a87e591` (`Add local daily-bar Time Machine simulator`).
+- PR: [#4](https://github.com/arjeetanand/backtesting-stockmarket/pull/4), targeting `main`.
+- Installed the reviewed day-trader-skill repository's 11 skill folders globally for Codex at commit `3d0f4ef6986f4984b7c6bd46f7ff4f87744c3abd`.
+- Added `/time-machine`, its typed API client, sidebar entry, bounded request/response schemas, and a local-cache-only seeded daily-bar simulator. The endpoint validates cached OHLC before sampling and does not mutate persistence.
+- Updated `README.md`, `PROJECT_GUIDE.md`, `TESTING.md`, `backend/README.md`, `frontend/README.md`, and `docs/TIME_MACHINE_CHECKLIST.md`.
+- Run with `./run.sh`; the active local app uses UI port `4003` and API port `8001`. Open `http://127.0.0.1:4003/time-machine`.
+- Verification: full Ruff and pytest pass; targeted mypy for the new route, schema, and service passes; frontend lint and production build pass. Full `mypy src` still reports 13 errors in existing `market_cache.py`, `pattern_finder.py`, `breakout_scanner.py`, and `ml_research.py`.
+- Browser check: real cached RELIANCE scenario result rendered; no visible horizontal overflow at `695 × 730`. The browser tool could not emulate the exact `390 × 844` viewport.
+- Limits: daily candles only, fees/slippage excluded, sample counts are not probabilities, and no broker orders or live data. Same-day stop and target touches count as stop first.
+- Next action: merge PR #4 after the latest remote checks pass.

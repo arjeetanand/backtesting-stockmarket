@@ -21,12 +21,14 @@ import {
   Landmark,
   Activity,
   ChevronDown,
+  Clock3,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 const mainNav = [
   { href: "/", label: "Home", icon: LayoutDashboard },
   { href: "/research", label: "New research", icon: FlaskConical },
+  { href: "/time-machine", label: "Time machine", icon: Clock3 },
   { href: "/backtests", label: "Saved tests", icon: GitCompare },
   { href: "/comparison", label: "Compare tests", icon: BarChart3 },
 ];
