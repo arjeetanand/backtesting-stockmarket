@@ -19,13 +19,13 @@ Last reviewed: 2026-10-28
   passes. `mypy src` still has 13 issues in four unchanged files. CUA browser inspection
   covered the desktop and compact UI; the standalone Taste inspector could not launch
   Chrome.
-- `./run.sh` is currently waiting for an NSE import background task to exit gracefully.
-  The existing import and its data were left untouched. Do not claim the app is available
-  until restart completes and `/api/v1/health` responds again.
+- The pre-existing `./run.sh` instance waited for its active NSE import to finish and
+  then shut down gracefully. A clean restart is now serving `http://127.0.0.1:4003/`
+  (HTTP 200) and `http://127.0.0.1:8001/api/v1/health` (`status: ok`, provider
+  `local_nse_cache`). The live research page is open in the in-app browser.
 - Branch: `codex/skill-guided-ui-20261028`; implementation commit `a1cf1ae`. The user
   authorized the PR workflow. [PR #1](https://github.com/arjeetanand/backtesting-stockmarket/pull/1)
-  contains the branch; GitHub is the current source for its check and merge state. See
-  `docs/CONSOLIDATION_CHECKLIST.md` for verification and the runtime restart status.
+  was merged to `main` as `147619b`. See `docs/CONSOLIDATION_CHECKLIST.md` for verification.
 
 ## 2026-10-28 workspace consolidation
 
