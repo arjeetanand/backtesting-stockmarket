@@ -13,6 +13,7 @@ It does not place real orders, connect to a broker, provide live quotes, or requ
 - Tests SMA, RSI/EMA, configurable rule, strategy-library, and imported YouTube ideas.
 - On `/research`, follows one stock → local data → chart → strategy → backtest → results workflow with OHLCV, volume, indicators, signals, trades, equity, drawdown, and metrics.
 - Replays historical candles with simulated orders only.
+- Runs a seeded daily-bar scenario sample and compares it with a fixed-rule historical sample.
 - Persists backtests, research artifacts, import jobs, and replay sessions locally.
 
 ## Run locally
@@ -87,6 +88,7 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 | `/strategy-import` | Extract reviewable rules from a YouTube URL or transcript |
 | `/backtests` | Reopen saved historical tests |
 | `/replay` | Step through historical candles with simulated orders |
+| `/time-machine` | Sample daily-bar scenarios from local NSE history |
 | `/comparison` | Compare saved tests |
 | `/robustness` | Sensitivity, Monte Carlo, walk-forward, and stress checks |
 | `/bias-validity` | Look-ahead, data-quality, and overfitting checks |
@@ -113,6 +115,8 @@ recoverable there. No legacy generated datasets or machine-specific paths were c
 Use **New research** for the primary idea-to-evidence path. Describe a rule, choose the NSE symbol and date range, and let the optional local helper prepare a proposal. Review the rule, assumptions, and risks; explicitly confirm that review; then check or import official NSE history and run the historical simulation. Backtrack shows real local OHLCV, trades, equity, drawdown, and metrics. Missing data stays unavailable rather than being replaced with synthetic prices. The visible checkpoints are one application workflow, not separate AI agents. If Ollama is unavailable, Backtrack labels the catalogue-based proposal as a fallback.
 
 The chart boundary is intentionally API-independent: `frontend/src/lib/research-chart.ts` adapts market-data and backtest responses into the typed contracts in `frontend/src/lib/chart-data.ts`, while `frontend/src/components/charts/FinancialChart.tsx` owns rendering and interaction. The backend's custom result adds candle `volume` and signal `id`/`trade_id` fields without removing existing result fields.
+
+**Time Machine** at `/time-machine` runs 10,000 seeded scenarios by re-sampling the symbol's cached NSE daily OHLC bars with replacement, then compares them with rolling historical outcomes for the same fixed rule. The output is a daily-bar scenario sample, not an intraday simulator, price forecast, or probability estimate. No broker orders are placed.
 
 ## Runtime data and Git
 

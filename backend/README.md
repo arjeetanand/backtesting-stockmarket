@@ -94,6 +94,7 @@ All routes are prefixed with `/api/v1`.
 - `POST /data/nse-import` — queue a bulk incremental import.
 - `GET /data/nse-import/{job_id}` — read import progress.
 - `GET /market-data` — return validated local bars.
+- `POST /scenario-simulator/run` — return a seeded daily-bar scenario sample and rolling fixed-rule historical outcomes from the local cache.
 
 ### Research and backtesting
 
@@ -126,6 +127,8 @@ Watchlist status is evaluated only against local daily bars on or after the setu
 entry date. A pre-entry high or low must not mark a newly saved setup as completed.
 
 `GET /market-data` is the chart-read path for a selected symbol, timeframe, and datetime range. The custom backtest response includes the existing candles, indicators, trades, equity, drawdown, and metrics plus real candle `volume` and stable signal `id`/`trade_id` fields. `422` responses are used for insufficient history and unsupported strategy parameters so the frontend can show an actionable correction.
+
+The scenario simulator accepts a symbol and bounded risk, target, lookback, and holding-period settings. It does not import or retrieve market data. It uses the last cached daily close as the default entry, samples 10,000 paths with a fixed seed, and compares the results with past outcomes ending on or before the cache's latest candle. Same-day stop and target touches count as stop first; outputs are scenario counts, not probabilities or forecasts.
 
 ### Strategy engine additions
 

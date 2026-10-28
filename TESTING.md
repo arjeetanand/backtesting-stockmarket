@@ -1,6 +1,6 @@
 # Backtrack testing and release contract
 
-Last reviewed: 2026-07-23
+Last reviewed: 2026-10-28
 
 This project has three verification layers: backend correctness, frontend build correctness, and rendered workflow checks. Market data is never downloaded by automated tests.
 
@@ -48,6 +48,8 @@ Importer and cache changes must cover:
 The key regression tests are in `tests/unit/test_nse_import.py` and `tests/unit/test_data_inventory_api.py`.
 
 Backtest chart regressions should also verify that candles preserve real volume and stable ordering, and that signals expose stable IDs and trade IDs while retaining date, type, and price.
+
+Scenario simulator regressions cover repeatability for a fixed seed, stop-first handling when one daily bar touches both levels, input bounds, malformed local OHLC, insufficient history, and the fact that only cached daily bars are used. The rolling historical sample must end on or before the latest cached candle.
 
 ## Backtest and persistence tests
 
@@ -122,6 +124,8 @@ npm --prefix frontend run dev
 | Strategy Import → transcript | Rules, confidence, assumptions, and review gaps appear |
 | My tests → open result | Persisted detail and charts render |
 | Replay → step/order/finish | Candles reveal progressively and orders remain simulated |
+| Time Machine → run a scenario | Seeded results and source dates use cached daily bars; counts are labelled as samples, not probabilities |
+| Time Machine → insufficient local history | Required history count and Data-page import guidance appear |
 | Options → edit inputs | Payoff, loss, and breakeven update locally |
 
 For rendered changes, check a desktop viewport and approximately `390 × 844` mobile. Look for clipping, horizontal overflow, unreadable tables, stale loading, broken focus, and duplicate calls-to-action.

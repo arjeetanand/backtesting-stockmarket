@@ -31,6 +31,7 @@ You can still pre-load data from **Manage stock data** when you want to import a
 | ML Lab | Explore predictive features | Run chronological, past-only, cost-aware research experiments |
 | Pattern Finder | Explore recurring setups | Search historical local bars for configurable price patterns and review occurrences |
 | Replay a chart | Learn candle by candle | Reveal historical candles progressively and place simulated orders/journal entries |
+| Time Machine | Compare a plan with sampled scenarios | Sample 10,000 seeded daily-bar paths from local NSE history and compare with fixed-rule historical outcomes |
 | Learn | Understand options basics | Calculate educational call/put payoff, max loss, and breakeven |
 | Analytics | Inspect performance | Review trade quality and available run analytics |
 | FII / DII Insights | Inspect institutional activity | Import official NSE FII/FPI-DII report snapshots, compare daily/weekly/monthly net cash flows, and review the local ledger |
@@ -94,6 +95,12 @@ Users can paste a YouTube URL, captions, or a transcript. The importer extracts 
 ## Replay
 
 Replay uses the same local daily bars as backtesting. The user selects a symbol, date range, and starting balance, then reveals candles using a step/speed control. The screen should show the current candle timestamp, OHLC values, progress, simulated positions, realized/unrealized P&L, trade attempts, and execution journal. Orders are always paper simulations.
+
+## Time Machine
+
+Choose a locally cached NSE symbol, risk distance, reward multiple, holding period, and historical lookback. Time Machine uses the latest saved daily close as the reference entry unless a different entry price is supplied. It re-samples past daily OHLC shapes with replacement 10,000 times using a repeatable seed, then shows the sampled stop/target/time-exit counts and price/R ranges beside the same fixed rule evaluated on rolling historical entries. It does not select historical periods for similarity. It uses no bars after the latest saved candle, never imports data automatically, and asks for more local history when the selected lookback cannot be supported.
+
+This is daily-bar scenario analysis. It does not model intraday movement, fees, or slippage; a candle touching both stop and target is counted as a stop first. The sample frequencies are not probabilities or predictions, and the page does not submit broker orders.
 
 ## Persistence and caching
 

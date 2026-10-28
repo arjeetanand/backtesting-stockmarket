@@ -49,6 +49,8 @@ from quant_research.api.schemas import (
     ReplayStepRequest,
     ResearchDataEnsureRequest,
     RobustnessAnalysisRequest,
+    ScenarioSimulatorRequest,
+    ScenarioSimulatorResponse,
     ScreenerCatalogResponse,
     ScreenerFormulaParameterResponse,
     ScreenerFormulaResponse,
@@ -65,6 +67,7 @@ from quant_research.data_providers.base import MarketDataProviderError
 from quant_research.domain.backtesting.models import BacktestResult
 from quant_research.domain.backtesting.vector_engine import run_rule_backtest
 from quant_research.domain.data.models import OHLCVBar
+from quant_research.domain.data.validator import MarketDataValidator
 from quant_research.domain.robustness.diagnostics import analyze_robustness
 from quant_research.domain.utils.hashing import calculate_value_hash
 from quant_research.domain.validity.auditor import audit_validity
@@ -89,6 +92,7 @@ from quant_research.services.research import (
     ResearchServiceError,
     SmaBacktestCommand,
 )
+from quant_research.services.time_machine import run_time_machine
 from quant_research.services.youtube_strategy import extract_strategy
 
 
@@ -859,6 +863,45 @@ def create_api_router(
             bars=result.bars,
             quality=result.quality,
         )
+
+    @router.post(
+        "/scenario-simulator/run",
+        response_model=ScenarioSimulatorResponse,
+        tags=["simulation"],
+    )
+    def run_scenario_simulator(payload: ScenarioSimulatorRequest) -> ScenarioSimulatorResponse:
+        """Sample scenarios using only locally cached NSE daily candles."""
+        if market_cache is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="The local NSE market cache is not configured.",
+            )
+        symbol = payload.symbol.strip().upper().removesuffix(".NS")
+        if not symbol:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Choose an NSE symbol.")
+        bars = market_cache.get(symbol, timeframe="1day")
+        required_bars = payload.lookback_sessions + payload.max_hold_sessions + 1
+        bars = bars[-required_bars:]
+        if bars:
+            quality = MarketDataValidator.validate(pd.DataFrame([bar.model_dump() for bar in bars]))
+            if not quality.is_valid:
+                detail = quality.errors[0].message if quality.errors else "Local NSE candles failed validation."
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=detail)
+        try:
+            result = run_time_machine(
+                bars=bars,
+                risk_pct=payload.risk_pct,
+                target_r=payload.target_r,
+                max_hold_sessions=payload.max_hold_sessions,
+                lookback_sessions=payload.lookback_sessions,
+                seed=payload.seed,
+                entry_price=payload.entry_price,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+        result_data = asdict(result)
+        result_data["symbol"] = symbol
+        return ScenarioSimulatorResponse(**result_data)
 
     @router.post(
         "/backtests/sma-crossover",
