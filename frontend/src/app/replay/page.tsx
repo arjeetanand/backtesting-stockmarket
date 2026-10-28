@@ -27,6 +27,7 @@ import {
 import type { ReplaySessionData, ReplayBar } from "@/lib/replay/types";
 import { getMarketAvailability, type MarketAvailability } from "@/lib/market-data";
 import { SymbolCombobox } from "@/components/data/SymbolCombobox";
+import SectionArtwork from "@/components/illustrations/SectionArtwork";
 
 const formatINR = (val: number) =>
   `₹${Math.round(val).toLocaleString("en-IN")}`;
@@ -201,12 +202,10 @@ export default function ReplayPage() {
         <TopBar />
         <div className="backtrack-content bt-replay-setup">
           <div className="bt-panel bt-replay-setup-card" style={{ padding: "32px" }}>
-            <span className="bt-eyebrow">REPLAY PAST PRICES</span>
-            <h1>Choose the stock and dates.</h1>
-            <p>
-              Uses locally imported official NSE historical candles. Orders are
-              simulated only — never sent to a broker.
-            </p>
+            <div className="bt-replay-setup-intro">
+              <div><span className="bt-eyebrow">REPLAY PAST PRICES</span><h1>Choose the stock and dates.</h1><p>Step through locally saved official NSE daily candles in order. Any orders you add are simulated and stay on this device.</p></div>
+              <SectionArtwork src="/illustrations/historical-replay.png" className="bt-replay-art" />
+            </div>
 
             {error && <div className="bt-alert-error" style={{ marginTop: "16px" }}>{error}</div>}
 

@@ -27,8 +27,8 @@ import type { LucideIcon } from "lucide-react";
 
 const mainNav = [
   { href: "/", label: "Home", icon: LayoutDashboard },
+  { href: "/data", label: "NSE data", icon: Database },
   { href: "/research", label: "New research", icon: FlaskConical },
-  { href: "/time-machine", label: "Time machine", icon: Clock3 },
   { href: "/backtests", label: "Saved tests", icon: GitCompare },
   { href: "/comparison", label: "Compare tests", icon: BarChart3 },
 ];
@@ -48,13 +48,14 @@ const toolsNav = [
   { href: "/robustness", label: "Check reliability", icon: ShieldAlert },
   { href: "/ml-lab", label: "ML Lab", icon: BrainCircuit },
   { href: "/options", label: "Learn & indicators", icon: BookOpenCheck },
-  { href: "/data", label: "Manage stock data", icon: Database },
+  { href: "/time-machine", label: "Time machine", icon: Clock3 },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
   const isActive = (href: string) => href === "/" ? pathname === "/" : pathname.startsWith(href);
+  const moreIsActive = [...marketNav, ...toolsNav].some(({ href }) => isActive(href));
   const renderLinks = (items: Array<{ href: string; label: string; icon: LucideIcon }>) => items.map(({ href, label, icon: Icon }) => (
     <Link key={href} href={href} className={`bt-nav-link${isActive(href) ? " active" : ""}`} aria-current={isActive(href) ? "page" : undefined}>
       <Icon size={16} aria-hidden="true" />
@@ -73,16 +74,23 @@ export default function Sidebar() {
 
       <nav className="bt-sidebar-nav">
         <div>
-          <p className="bt-nav-section-label">Workspace</p>
+          <p className="bt-nav-section-label">Your workflow</p>
           <div className="bt-nav-items">{renderLinks(mainNav)}</div>
         </div>
         <details className="bt-nav-group" open={marketNav.some(({ href }) => isActive(href))}>
-          <summary>Explore markets <ChevronDown size={14} aria-hidden="true" /></summary>
+          <summary>Markets <ChevronDown size={14} aria-hidden="true" /></summary>
           <div className="bt-nav-items">{renderLinks(marketNav)}</div>
         </details>
         <details className="bt-nav-group" open={toolsNav.some(({ href }) => isActive(href))}>
-          <summary>More tools <ChevronDown size={14} aria-hidden="true" /></summary>
+          <summary>Tools <ChevronDown size={14} aria-hidden="true" /></summary>
           <div className="bt-nav-items">{renderLinks(toolsNav)}</div>
+        </details>
+        <details className="bt-mobile-more">
+          <summary className={moreIsActive ? "active" : undefined}>More <ChevronDown size={14} aria-hidden="true" /></summary>
+          <div className="bt-mobile-more-menu">
+            <p>Explore markets</p><div className="bt-nav-items">{renderLinks(marketNav)}</div>
+            <p>More tools</p><div className="bt-nav-items">{renderLinks(toolsNav)}</div>
+          </div>
         </details>
       </nav>
 

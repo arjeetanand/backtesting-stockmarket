@@ -83,7 +83,7 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 
 | Route | Purpose |
 | --- | --- |
-| `/` | Research overview for the shared workflow, modules, and recent saved tests |
+| `/` | Guided path from local NSE data to research, saved results, and comparison |
 | `/data` | Bulk NSE history download and local stock search |
 | `/research` | Describe an idea, review a proposal, prepare data, and run a backtest |
 | `/strategy` | Build indicator and rule-based strategies |
@@ -117,14 +117,13 @@ recoverable there. No legacy generated datasets or machine-specific paths were c
 The website uses a light-indigo frame, white research canvas, navy editorial headings, and
 pale periwinkle primary actions across its routes. Shared UI tokens and responsive rules
 are documented in [DESIGN.md](DESIGN.md); the theme keeps the existing local,
-historical-only research boundary. The overview and route-family headers use six original,
-locally served transparent PNG illustrations without image optimization or crop. Compact
-headers use a crisp inline SVG notebook mark; its restrained thinking motion respects
-reduced-motion settings.
+historical-only research boundary. Six original transparent PNG illustrations sit beside
+the workflow or first-use state they explain. They keep their full aspect ratio and stay
+static; route headers remain compact so the page title and task are easy to find.
 
 ## Research workflow
 
-Use **New research** for the primary idea-to-evidence path. Describe a rule, choose the NSE symbol and date range, and let the optional local helper prepare a proposal. Review the rule, assumptions, and risks; explicitly confirm that review; then check or import official NSE history and run the historical simulation. Backtrack shows real local OHLCV, trades, equity, drawdown, and metrics. Missing data stays unavailable rather than being replaced with synthetic prices. The visible checkpoints are one application workflow, not separate AI agents. If Ollama is unavailable, Backtrack labels the catalogue-based proposal as a fallback.
+Start on **Home** and follow **NSE data → New research → Saved tests → Compare tests**. Import a larger history window first when the local cache does not cover your selected stock and dates; completed imports offer a direct link to research. In Research, describe a rule, choose the NSE symbol and date range, and let the optional local helper prepare a proposal. Review the rule, assumptions, and risks; explicitly confirm that review; then run the historical simulation. Backtrack shows real local OHLCV, trades, equity, drawdown, and metrics. Missing data stays unavailable rather than being replaced with synthetic prices. The visible checkpoints are one application workflow, not separate AI agents. If Ollama is unavailable, Backtrack labels the catalogue-based proposal as a fallback.
 
 The chart boundary is intentionally API-independent: `frontend/src/lib/research-chart.ts` adapts market-data and backtest responses into the typed contracts in `frontend/src/lib/chart-data.ts`, while `frontend/src/components/charts/FinancialChart.tsx` owns rendering and interaction. The backend's custom result adds candle `volume` and signal `id`/`trade_id` fields without removing existing result fields.
 

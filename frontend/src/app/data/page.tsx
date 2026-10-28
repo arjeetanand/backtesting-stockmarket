@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, CalendarDays, CheckCircle2, Database, Download, RefreshCw, Search } from "lucide-react";
+import { AlertCircle, ArrowRight, CalendarDays, CheckCircle2, Database, Download, RefreshCw, Search } from "lucide-react";
+import Link from "next/link";
 import TopBar from "@/components/layout/TopBar";
+import SectionArtwork from "@/components/illustrations/SectionArtwork";
 import { fetchWithTimeout } from "@/lib/api";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
@@ -227,6 +229,7 @@ export default function DataPage() {
             <div className="bt-provider-select"><span className="bt-provider-icon"><Database size={18} /></span><strong>Official NSE daily archives</strong></div>
             <p className="bt-source-description">Each downloaded trading-day archive contains all supported NSE stocks. Backtrack saves the ZIP locally and loads the full archive into SQLite for research, backtests, and replay.</p>
           </div>
+          <SectionArtwork src="/illustrations/local-data.png" className="bt-data-art" />
           <div className={`bt-feed-status ${cache ? "is-ready" : "is-loading"}`}>
             <span className="feed-pulse" />
             <div><strong>{cache ? `${cache.bars.toLocaleString("en-IN")} saved candles` : "Checking local data"}</strong><small>{cache ? `${cache.symbols.toLocaleString("en-IN")} stocks in SQLite` : "Reading saved data…"}</small></div>
@@ -292,7 +295,7 @@ export default function DataPage() {
 
         {job && <div className={`bt-import-job ${job.status === "failed" ? "is-failed" : ""}`} role={job.status === "failed" ? "alert" : "status"}>
           {job.status === "failed" ? <AlertCircle size={18} /> : <RefreshCw size={18} className={importing ? "spin" : ""} />}
-          <div className="min-w-0 flex-1"><strong>{job.stage ? `${job.stage}: ` : ""}{job.message}</strong>{typeof job.completed_days === "number" && typeof job.total_days === "number" && <><span>{job.completed_days.toLocaleString("en-IN")}/{job.total_days.toLocaleString("en-IN")} trading days checked{typeof job.downloaded_days === "number" ? ` · ${job.downloaded_days.toLocaleString("en-IN")} downloaded` : ""}.</span><div className="bt-import-job-progress"><i style={{ width: `${Math.min(100, (job.completed_days / Math.max(1, job.total_days)) * 100)}%` }} /></div></>}</div>
+          <div className="min-w-0 flex-1"><strong>{job.stage ? `${job.stage}: ` : ""}{job.message}</strong>{typeof job.completed_days === "number" && typeof job.total_days === "number" && <><span>{job.completed_days.toLocaleString("en-IN")}/{job.total_days.toLocaleString("en-IN")} trading days checked{typeof job.downloaded_days === "number" ? ` · ${job.downloaded_days.toLocaleString("en-IN")} downloaded` : ""}.</span><div className="bt-import-job-progress"><i style={{ width: `${Math.min(100, (job.completed_days / Math.max(1, job.total_days)) * 100)}%` }} /></div></>}{job.status === "complete" && <Link href="/research" className="bt-dashboard-text-link">Continue to research <ArrowRight size={14} /></Link>}</div>
         </div>}
         <section className="bt-panel bt-operational-logs" aria-label="Operational import logs">
           <div className="bt-panel-head">

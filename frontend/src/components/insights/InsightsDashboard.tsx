@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
+import Link from "next/link";
 import {
   Activity,
   AlertCircle,
+  ArrowRight,
   ArrowDownRight,
   ArrowUpRight,
   Database,
@@ -99,11 +101,12 @@ function InsightState({
       : { title: "Insights are unavailable", body: message ?? "The local API did not return an Insights snapshot." };
   return (
     <div className={`insights-state insights-state-${kind}`} role={kind === "unavailable" ? "alert" : undefined}>
-      {kind === "loading" ? <RefreshCw size={22} className="spin" aria-hidden="true" /> : kind === "empty" ? <Database size={22} aria-hidden="true" /> : <AlertCircle size={22} aria-hidden="true" />}
+      {kind === "empty" ? <SectionArtwork src="/illustrations/market-insights.png" className="bt-insights-empty-art" /> : kind === "loading" ? <RefreshCw size={22} className="spin" aria-hidden="true" /> : kind === "unavailable" ? <AlertCircle size={22} aria-hidden="true" /> : null}
       <div>
         <strong>{copy.title}</strong>
-        <p>{copy.body}</p>
+        <p>{kind === "empty" ? message ?? copy.body : copy.body}</p>
       </div>
+      {kind === "empty" ? <Link href="/data" className="bt-dashboard-text-link">Import NSE history <ArrowRight size={14} /></Link> : null}
       {kind === "unavailable" && onRetry ? <button type="button" className="bt-secondary" onClick={onRetry}>Retry</button> : null}
     </div>
   );
@@ -274,7 +277,6 @@ export default function InsightsDashboard() {
             <h1>Market breadth at a glance</h1>
             <p>See how the selected index moved using locally imported official NSE daily bars.</p>
           </div>
-          <SectionArtwork src="/illustrations/market-insights.png" className="bt-insights-art" />
           <div className="insights-source-badge"><Database size={14} /> Local NSE daily data</div>
         </section>
 
