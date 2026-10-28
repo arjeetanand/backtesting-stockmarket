@@ -708,6 +708,48 @@ class SqliteMarketCache:
             for record in records
         ]
 
+    def store_fii_dii_history_snapshot(
+        self,
+        snapshot_id: str,
+        fetched_at: datetime,
+        source_url: str,
+        payload: str,
+        rows: list[FiiDiiRow],
+    ) -> int:
+        """Persist provider history separately so it cannot replace NSE snapshots."""
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO fii_dii_snapshots (snapshot_id, fetched_at, source_url, payload)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(snapshot_id) DO UPDATE SET
+                    fetched_at = excluded.fetched_at,
+                    source_url = excluded.source_url,
+                    payload = excluded.payload
+                """,
+                (snapshot_id, fetched_at.isoformat(), source_url, payload),
+            )
+            connection.executemany(
+                """
+                INSERT INTO fii_dii_history_rows
+                    (trading_day, participant, scope, segment, buy_value, sell_value, net_value, source)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(trading_day, participant, scope, segment) DO UPDATE SET
+                    buy_value = excluded.buy_value,
+                    sell_value = excluded.sell_value,
+                    net_value = excluded.net_value,
+                    source = excluded.source
+                """,
+                [
+                    (
+                        row.trading_day.isoformat(), row.participant, row.scope, row.segment,
+                        row.buy_value, row.sell_value, row.net_value, row.source,
+                    )
+                    for row in rows
+                ],
+            )
+        return len(rows)
+
     def get_fii_dii_history_rows(self, start: date, end: date) -> list[FiiDiiRow]:
         with self._connect() as connection:
             records = connection.execute(

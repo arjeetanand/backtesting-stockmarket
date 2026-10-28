@@ -136,6 +136,18 @@ class FiiDiiImportRequest(BaseModel):
     scope: str = Field(default="combined", pattern="^(combined|nse_only)$")
 
 
+class FiiDiiHistorySyncRequest(BaseModel):
+    range_days: Literal[30, 90]
+
+
+class FiiDiiHistorySyncResponse(BaseModel):
+    range_days: Literal[30, 90]
+    stored_rows: int
+    available_start: date
+    available_end: date
+    source_url: str
+
+
 class FiiDiiImportJobResponse(BaseModel):
     job_id: str
     status: str
@@ -202,6 +214,7 @@ class FiiDiiResponse(BaseModel):
     coverage_note: str | None = None
     source_url: str
     provisional: bool = True
+    sync_available: bool = False
 
 
 class ScreenerFormulaParameterResponse(BaseModel):

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from collections.abc import Callable
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from quant_research.repositories.market_cache import FiiDiiRow, SqliteMarketCache
@@ -202,3 +204,129 @@ class NseFiiDiiImporter:
             return float(text)
         except ValueError:
             return None
+
+
+class TapetideFiiDiiImporter:
+    """Fetch provisional 30- or 90-day FII/DII cash-flow history on demand."""
+
+    report_url = "https://api.tapetide.com/v1/market/institutional-flows"
+    source_url = "https://tapetide.com/fii-dii-data"
+
+    def __init__(self, cache: SqliteMarketCache, token: str | None = None, timeout_seconds: float = 25.0) -> None:
+        self._cache = cache
+        self._token = (token or os.getenv("TAPETIDE_API_TOKEN") or "").strip()
+        self._timeout_seconds = timeout_seconds
+
+    @property
+    def configured(self) -> bool:
+        return bool(self._token)
+
+    def import_history(self, range_days: int) -> tuple[int, date | None, date | None]:
+        if range_days not in {30, 90}:
+            raise FiiDiiImportError("Historical sync supports only 30 or 90 days.")
+        if not self.configured:
+            raise FiiDiiImportError("Add a free Tapetide personal API token as TAPETIDE_API_TOKEN in .env to sync history.")
+
+        end = date.today()
+        start = end - timedelta(days=range_days - 1)
+        payload = self._download_report(start, end)
+        rows = self._rows_from_payload(payload, start, end)
+        fetched_at = datetime.now(UTC)
+        snapshot_id = f"fii_dii_tapetide_{fetched_at.strftime('%Y%m%dT%H%M%S%f')}_{os.getpid()}"
+        stored = self._cache.store_fii_dii_history_snapshot(
+            snapshot_id=snapshot_id,
+            fetched_at=fetched_at,
+            source_url=self.source_url,
+            payload=json.dumps(payload, ensure_ascii=False, sort_keys=True),
+            rows=rows,
+        )
+        days = sorted({row.trading_day for row in rows})
+        return stored, days[0], days[-1]
+
+    def _download_report(self, start: date, end: date) -> object:
+        query = urlencode({"from": start.isoformat(), "to": end.isoformat(), "order": "asc", "limit": 1000})
+        request = Request(
+            f"{self.report_url}?{query}",
+            headers={"Authorization": f"Bearer {self._token}", "Accept": "application/json"},
+        )
+        try:
+            with urlopen(request, timeout=self._timeout_seconds) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except HTTPError as exc:
+            if exc.code in {401, 403}:
+                raise FiiDiiImportError("Tapetide rejected the API token. Check TAPETIDE_API_TOKEN in .env.") from exc
+            if exc.code == 429:
+                raise FiiDiiImportError("Tapetide's free API request limit was reached. Try again after the daily reset.") from exc
+            raise FiiDiiImportError(f"Tapetide FII/DII API returned HTTP {exc.code}.") from exc
+        except (URLError, TimeoutError) as exc:
+            raise FiiDiiImportError("Could not reach Tapetide's FII/DII API.") from exc
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise FiiDiiImportError("Tapetide returned an unreadable FII/DII response.") from exc
+
+    @classmethod
+    def _rows_from_payload(cls, payload: object, start: date, end: date) -> list[FiiDiiRow]:
+        if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+            raise FiiDiiImportError("Tapetide returned an unsupported FII/DII response format.")
+        meta = payload.get("meta")
+        if not isinstance(meta, dict):
+            raise FiiDiiImportError("Tapetide returned an unsupported FII/DII response format.")
+        if meta.get("has_more") is True:
+            raise FiiDiiImportError("Tapetide returned a paged result; no data was saved. Please retry later.")
+        if meta.get("has_more") is not False:
+            raise FiiDiiImportError("Tapetide did not confirm that the result was complete; no data was saved.")
+
+        records = payload["data"]
+        rows: list[FiiDiiRow] = []
+        seen_days: set[date] = set()
+        for record in records:
+            if not isinstance(record, dict):
+                raise FiiDiiImportError("Tapetide returned an invalid FII/DII row.")
+            raw_day = record.get("date")
+            try:
+                trading_day = date.fromisoformat(str(raw_day))
+            except ValueError as exc:
+                raise FiiDiiImportError("Tapetide returned a row with an invalid trading date.") from exc
+            if not start <= trading_day <= end:
+                continue
+            if trading_day in seen_days:
+                raise FiiDiiImportError("Tapetide returned duplicate trading dates; no data was saved.")
+            seen_days.add(trading_day)
+
+            for participant, prefix in (("FII", "fii"), ("DII", "dii")):
+                buy = cls._number(record.get(f"{prefix}_buy_cr"))
+                sell = cls._number(record.get(f"{prefix}_sell_cr"))
+                net = cls._number(record.get(f"{prefix}_net_cr"))
+                if buy is None or sell is None:
+                    raise FiiDiiImportError(f"Tapetide is missing {participant} buy/sell values for {trading_day}.")
+                derived_net = round(buy - sell, 2)
+                if net is None:
+                    net = derived_net
+                elif abs(net - derived_net) > 0.02:
+                    raise FiiDiiImportError(f"Tapetide's {participant} net value does not match buy minus sell for {trading_day}.")
+                rows.append(FiiDiiRow(
+                    trading_day=trading_day,
+                    participant=participant,
+                    scope="tapetide",
+                    segment="equity",
+                    buy_value=buy,
+                    sell_value=sell,
+                    net_value=net,
+                    source=cls.source_url,
+                ))
+        if not rows:
+            raise FiiDiiImportError("Tapetide returned no complete trading sessions for the selected range.")
+        return rows
+
+    @staticmethod
+    def _number(value: object) -> float | None:
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+            raise FiiDiiImportError("Tapetide returned a non-numeric FII/DII value.")
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            raise FiiDiiImportError("Tapetide returned a non-numeric FII/DII value.") from None
+        if not math.isfinite(number):
+            raise FiiDiiImportError("Tapetide returned a non-finite FII/DII value.")
+        return number

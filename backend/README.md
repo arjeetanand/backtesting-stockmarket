@@ -40,13 +40,15 @@ NSE_ARCHIVE_PATH=data/nse_archives
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=qwen3:4b
 OLLAMA_TIMEOUT_SECONDS=25
+# Optional; enables the free Tapetide historical FII/DII sync.
+TAPETIDE_API_TOKEN=
 ```
 
-No environment secret is required for the local NSE workflow.
+No token is required for the official NSE workflow. A personal Tapetide token is optional for the separate FII/DII history sync; keep it in `.env` and out of source control.
 
 ## FII/DII history
 
-`GET /api/v1/insights/fii-dii?...&source=tapetide` reads previously saved third-party history from SQLite. Page loads and date-range changes do not call the provider. Tapetide rows stay separate from official NSE data in `fii_dii_history_rows` and `fii_dii_rows`; the UI reports the dates actually available locally.
+`POST /api/v1/insights/fii-dii/history/sync` makes one Tapetide API request for exactly 30 or 90 inclusive calendar days. It stores provisional provider rows separately from official NSE snapshots and does not run automatically. `GET /api/v1/insights/fii-dii?...&source=tapetide` reads only that local history. Tapetide reports a free-plan quota of 50 successful requests per IST day; the free API token is required.
 
 ## Historical NSE importer
 
@@ -81,6 +83,8 @@ The default database is `data/market_cache.sqlite3`.
 | `nse_bhavcopy_rows` | Every imported raw row as JSON |
 | `backtest_runs` | Persisted backtest results and cache keys |
 | `research_artifacts` | Hypotheses, custom results, robustness, YouTube, imports, and replay artifacts |
+| `fii_dii_rows` / `fii_dii_history_rows` | Separate official NSE snapshots and Tapetide provisional history rows |
+| `fii_dii_snapshots` | Raw FII/DII provider responses for audit and refresh history |
 
 SQLite, archives, and generated runtime data are ignored by Git. They must not be committed.
 

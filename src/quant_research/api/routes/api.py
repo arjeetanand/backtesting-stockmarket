@@ -20,6 +20,8 @@ from quant_research.api.schemas import (
     CustomBacktestRequest,
     DataInventoryItem,
     FiiDiiChartPoint,
+    FiiDiiHistorySyncRequest,
+    FiiDiiHistorySyncResponse,
     FiiDiiImportJobResponse,
     FiiDiiImportRequest,
     FiiDiiImportStatusResponse,
@@ -86,7 +88,7 @@ from quant_research.domain.validity.auditor import audit_validity
 from quant_research.llm.ollama import OllamaError
 from quant_research.repositories.artifacts import SqliteArtifactStore
 from quant_research.repositories.market_cache import SqliteMarketCache
-from quant_research.services.fii_dii import FiiDiiImportError, NseFiiDiiImporter
+from quant_research.services.fii_dii import FiiDiiImportError, NseFiiDiiImporter, TapetideFiiDiiImporter
 from quant_research.services.hypotheses import HypothesisAnalysis, HypothesisCommand, HypothesisService
 from quant_research.services.market_insights import run_current_screener
 from quant_research.services.market_scanner import SECTOR_MAP
@@ -252,12 +254,13 @@ def _fii_dii_response(
     scope: str,
     segment: str,
     source: str = "nse",
+    sync_available: bool = False,
 ) -> FiiDiiResponse:
     if source == "tapetide":
         rows = cache.get_fii_dii_history_rows(start, end)
         coverage_start, coverage_end, coverage_days = cache.fii_dii_history_coverage()
         response_scope, response_segment = "tapetide", "equity"
-        source_url = "https://tapetide.com/fii-dii-data"
+        source_url = TapetideFiiDiiImporter.source_url
     else:
         rows = cache.get_fii_dii_rows(start, end, scope, segment)
         coverage_start, coverage_end, coverage_days = cache.fii_dii_coverage(scope, segment)
@@ -281,14 +284,11 @@ def _fii_dii_response(
     latest_day = max(by_day) if by_day else None
     coverage_note = None
     if source == "tapetide" and not rows and coverage_start is None:
-        coverage_note = "No Tapetide history is stored in the local SQLite cache yet."
+        coverage_note = "No Tapetide history is stored locally yet. Sync the selected 30-day or 3-month range to add it."
     elif source == "tapetide" and not rows:
-        coverage_note = "No locally saved Tapetide sessions fall in this selected date range."
+        coverage_note = "No locally cached Tapetide sessions fall in this selected date range. Sync it to add the range."
     elif source == "tapetide" and rows and coverage_start and coverage_start > start:
-        coverage_note = (
-            f"Showing {coverage_days} Tapetide sessions saved locally from {coverage_start} through {coverage_end}. "
-            "The selected view is limited to dates already in SQLite; missing earlier dates are not available locally."
-        )
+        coverage_note = "Only locally cached Tapetide sessions are shown. Sync the selected range to fill older dates."
     elif source == "nse" and rows and coverage_start and coverage_start > start:
         coverage_note = (
             "Only the locally archived NSE sessions are shown. NSE's public FII/DII report currently exposes the latest session; "
@@ -340,6 +340,7 @@ def _fii_dii_response(
         coverage_days=coverage_days,
         coverage_note=coverage_note,
         source_url=source_url,
+        sync_available=sync_available if source == "tapetide" else False,
     )
 
 
@@ -353,6 +354,7 @@ def create_api_router(
     ml_research: MlResearchService | None = None,
     fii_dii_importer: NseFiiDiiImporter | None = None,
     screener_runner: ScreenerRunner | None = None,
+    tapetide_fii_dii_importer: TapetideFiiDiiImporter | None = None,
 ) -> APIRouter:
     """Build routes bound to one fully configured application service."""
     router = APIRouter(prefix="/api/v1")
@@ -773,7 +775,36 @@ def create_api_router(
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="start must be on or before end.")
         if market_cache is None:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="The local market cache is not configured.")
-        return _fii_dii_response(market_cache, start, end, scope, segment, source)
+        return _fii_dii_response(
+            market_cache,
+            start,
+            end,
+            scope,
+            segment,
+            source,
+            sync_available=bool(tapetide_fii_dii_importer and tapetide_fii_dii_importer.configured),
+        )
+
+    @router.post("/insights/fii-dii/history/sync", response_model=FiiDiiHistorySyncResponse, tags=["insights"])
+    def sync_fii_dii_history(payload: FiiDiiHistorySyncRequest) -> FiiDiiHistorySyncResponse:
+        if market_cache is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="The local market cache is not configured.")
+        if tapetide_fii_dii_importer is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Tapetide FII/DII sync is not configured.")
+        try:
+            stored, available_start, available_end = tapetide_fii_dii_importer.import_history(payload.range_days)
+        except FiiDiiImportError as exc:
+            code = status.HTTP_503_SERVICE_UNAVAILABLE if not tapetide_fii_dii_importer.configured else status.HTTP_502_BAD_GATEWAY
+            raise HTTPException(status_code=code, detail=str(exc)) from exc
+        if available_start is None or available_end is None:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Tapetide returned no importable FII/DII history.")
+        return FiiDiiHistorySyncResponse(
+            range_days=payload.range_days,
+            stored_rows=stored,
+            available_start=available_start,
+            available_end=available_end,
+            source_url=TapetideFiiDiiImporter.source_url,
+        )
 
     @router.post("/insights/fii-dii/import", response_model=FiiDiiImportJobResponse, status_code=status.HTTP_202_ACCEPTED, tags=["insights"])
     def start_fii_dii_import(payload: FiiDiiImportRequest, background_tasks: BackgroundTasks) -> FiiDiiImportJobResponse:

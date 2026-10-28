@@ -51,6 +51,15 @@ export type FiiDiiResponse = {
   coverage_note: string | null;
   source_url: string;
   provisional: boolean;
+  sync_available: boolean;
+};
+
+export type FiiDiiHistorySyncResponse = {
+  range_days: 30 | 90;
+  stored_rows: number;
+  available_start: string;
+  available_end: string;
+  source_url: string;
 };
 
 export type FiiDiiImportStatus = {
@@ -78,6 +87,14 @@ async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
 export async function getFiiDiiData(start: string, end: string, scope: FiiDiiScope, segment: FiiDiiSegment, source: FiiDiiSource): Promise<FiiDiiResponse> {
   const params = new URLSearchParams({ start, end, scope, segment, source });
   return jsonRequest<FiiDiiResponse>(`${API_BASE_URL}/insights/fii-dii?${params.toString()}`);
+}
+
+export async function syncTapetideFiiDiiHistory(rangeDays: 30 | 90): Promise<FiiDiiHistorySyncResponse> {
+  return jsonRequest<FiiDiiHistorySyncResponse>(`${API_BASE_URL}/insights/fii-dii/history/sync`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ range_days: rangeDays }),
+  });
 }
 
 export async function startFiiDiiImport(start: string, end: string, scope: FiiDiiScope): Promise<{ job_id: string }> {

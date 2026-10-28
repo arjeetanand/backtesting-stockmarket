@@ -1,9 +1,13 @@
-# FII/DII saved history checklist
+# FII/DII historical sync checklist
 
-- [x] Read previously saved Tapetide rows from the local SQLite cache on page load.
-- [x] Keep Tapetide history separate from official NSE latest-session rows.
-- [x] Filter 30D/3M/6M/1Y views to saved dates and report the actual cached coverage.
-- [x] Add a regression check that the one-year response shows saved rows without mixing the NSE series.
-- [x] Confirm the configured cache is `data/market_cache.sqlite3`; it contains 61 sessions from 2026-07-31 through 2026-10-28.
-- [x] Pass Ruff, full pytest, frontend lint, 20 frontend tests, webpack production build, and `git diff --check`.
-- [ ] Exact 390px mobile viewport: browser returned 487px when 390px was requested. The document had no horizontal overflow at 487px; the wide ledger scrolls inside its table container.
+- [x] Keep the official NSE latest-session feed unchanged and separate.
+- [x] Add a user-triggered Tapetide sync for 30 or 90 inclusive calendar days.
+- [x] Store raw responses and normalized history rows locally with provider attribution.
+- [x] Keep the personal API token on the backend; never send it to the browser.
+- [x] Label the third-party series provisional and distinguish it from NSE data.
+- [x] Add regression coverage for range bounds, provider-value validation, and source isolation.
+- [x] Render the local page and confirm the source, empty, and missing-token states.
+- [x] Pass Ruff, the full pytest suite, frontend lint, webpack production build, and `git diff --check`.
+- [x] Try full mypy; only the 13 existing issues in `market_cache.py`, `pattern_finder.py`, `ml_research.py`, and `breakout_scanner.py` remain.
+- [ ] Live provider sync: requires the user's own free Tapetide token and a reachable API.
+- [ ] Exact mobile viewport review: not available in the current browser session.

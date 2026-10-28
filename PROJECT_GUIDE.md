@@ -33,7 +33,7 @@ Backtrack is a local, research-only Indian-market backtesting application. It us
 | Time Machine | Compare a plan with sampled scenarios | Sample 10,000 seeded daily-bar paths from local NSE history and compare with fixed-rule historical outcomes |
 | Learn | Understand options basics | Calculate educational call/put payoff, max loss, and breakeven |
 | Analytics | Inspect performance | Review trade quality and available run analytics |
-| FII / DII Insights | Inspect institutional activity | View saved Tapetide history from SQLite or the separate official NSE latest-session report, with daily/weekly/monthly flows and actual date coverage |
+| FII / DII Insights | Inspect institutional activity | View locally saved provisional Tapetide history or the separate official NSE latest-session snapshot, with daily/weekly/monthly flows and clear coverage |
 | Settings | Inspect local configuration | View API, local cache, Ollama, and provider status |
 
 ### Daily structure zones
@@ -46,7 +46,7 @@ This is an independent Backtrack heuristic: a qualifying daily close must break 
 
 ## FII/DII history
 
-On **FII / DII Insights**, the **Tapetide history · saved locally** view reads `fii_dii_history_rows` from the local SQLite cache when the page opens. It does not download the same rows again. The 30D/3M/6M/1Y controls filter the dates already stored and show their actual coverage; they do not imply that a full year is available. Official NSE latest-session rows remain in the separate `fii_dii_rows` table.
+On **FII / DII Insights**, the **Free historical API** view reads Tapetide rows already saved in the local SQLite cache, so reopening the page does not download them again. A user-triggered sync can request 30 or 90 calendar days; 6-month and 1-year selections are views of whatever history is already saved, and the page shows its actual date coverage. These figures are provisional third-party data whose upstream source is not documented. The **Official NSE latest snapshot** remains a separate series and does not provide date-range history.
 
 ## Manage stock data
 

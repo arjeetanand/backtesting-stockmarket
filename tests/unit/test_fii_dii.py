@@ -1,12 +1,13 @@
-import sqlite3
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from quant_research.api.routes.api import _fii_dii_response, create_api_router
-from quant_research.api.schemas import FiiDiiImportRequest
+from quant_research.api.schemas import FiiDiiHistorySyncRequest, FiiDiiImportRequest
 from quant_research.repositories.backtests import InMemoryBacktestRepository
 from quant_research.repositories.market_cache import FiiDiiRow, IndexClose, SqliteMarketCache
-from quant_research.services.fii_dii import NseFiiDiiImporter
+from quant_research.services.fii_dii import FiiDiiImportError, NseFiiDiiImporter, TapetideFiiDiiImporter
 from quant_research.services.hypotheses import HypothesisService
 from quant_research.services.nse_indices import NseIndexArchiveImporter
 from quant_research.services.research import ResearchService
@@ -108,41 +109,108 @@ def test_nifty50_archive_parser_uses_official_index_row() -> None:
     assert NseIndexArchiveImporter._parse_nifty50_close(payload) == 24353.55
 
 
-def test_one_year_tapetide_view_reads_saved_rows_and_explains_partial_coverage(tmp_path: Path) -> None:
-    today = date.today()
-    first_saved_day = today - timedelta(days=60)
-    latest_saved_day = today - timedelta(days=1)
+@pytest.mark.parametrize(("range_days", "expected_days"), [(30, {0}), (90, {0, 40})])
+def test_tapetide_history_sync_is_bounded_and_kept_separate_from_nse(
+    tmp_path: Path, range_days: int, expected_days: set[int]
+) -> None:
     cache = SqliteMarketCache(tmp_path / "market.sqlite3")
-    cache.store_fii_dii_snapshot(
-        "nse", datetime.now(UTC), "nse", "{}",
-        [FiiDiiRow(latest_saved_day, "FII", "combined", "equity", 10, 5, 5, "nse")],
-    )
-    with sqlite3.connect(cache.path) as connection:
-        connection.executemany(
-            """INSERT INTO fii_dii_history_rows
-               (trading_day, participant, scope, segment, buy_value, sell_value, net_value, source)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            [
-                (day.isoformat(), participant, "tapetide", "equity", 100, 80, 20, "https://tapetide.com/fii-dii-data")
-                for day in (first_saved_day, latest_saved_day)
-                for participant in ("FII", "DII")
+    today = date.today()
+    older = today - timedelta(days=40)
+    outside = today - timedelta(days=100)
+    nse_row = FiiDiiRow(today, "FII", "combined", "equity", 10, 20, -10, "nse")
+    cache.store_fii_dii_snapshot("nse", datetime.now(UTC), "nse", "{}", [nse_row])
+    importer = TapetideFiiDiiImporter(cache, token="test-token")
+    requested: list[tuple[date, date]] = []
+
+    def download(start: date, end: date) -> object:
+        requested.append((start, end))
+        return {
+            "data": [
+                {"date": day.isoformat(), "fii_buy_cr": 100, "fii_sell_cr": 80, "fii_net_cr": 20,
+                 "dii_buy_cr": 120, "dii_sell_cr": 100, "dii_net_cr": None}
+                for day in (today, older, outside)
             ],
-        )
+            "meta": {"has_more": False},
+        }
 
-    response = _fii_dii_response(
-        cache,
-        today - timedelta(days=364),
-        today,
-        "combined",
-        "equity",
-        source="tapetide",
+    importer._download_report = download  # type: ignore[method-assign]
+    stored, available_start, available_end = importer.import_history(range_days)
+
+    start = today - timedelta(days=range_days - 1)
+    history = cache.get_fii_dii_history_rows(start, today)
+    expected_dates = {today - timedelta(days=age) for age in expected_days}
+    assert requested == [(start, today)]
+    assert stored == 2 * len(expected_dates)
+    assert (available_start, available_end) == (min(expected_dates), today)
+    assert {row.trading_day for row in history} == expected_dates
+    assert {row.net_value for row in history if row.participant == "DII"} == {20}
+    assert cache.get_fii_dii_rows(today, today)[0] == nse_row
+
+
+def test_tapetide_importer_rejects_unsupported_sync_window(tmp_path: Path) -> None:
+    importer = TapetideFiiDiiImporter(SqliteMarketCache(tmp_path / "market.sqlite3"))
+    with pytest.raises(FiiDiiImportError, match="only 30 or 90 days"):
+        importer.import_history(365)
+
+
+def test_tapetide_parser_rejects_inconsistent_or_paged_response() -> None:
+    today = date.today()
+    record = {
+        "date": today.isoformat(), "fii_buy_cr": 100, "fii_sell_cr": 80, "fii_net_cr": 19,
+        "dii_buy_cr": 120, "dii_sell_cr": 100, "dii_net_cr": 20,
+    }
+    with pytest.raises(FiiDiiImportError, match="does not match buy minus sell"):
+        TapetideFiiDiiImporter._rows_from_payload({"data": [record], "meta": {"has_more": False}}, today, today)
+    with pytest.raises(FiiDiiImportError, match="paged result"):
+        TapetideFiiDiiImporter._rows_from_payload({"data": [record], "meta": {"has_more": True}}, today, today)
+    with pytest.raises(FiiDiiImportError, match="complete"):
+        TapetideFiiDiiImporter._rows_from_payload({"data": [record], "meta": {}}, today, today)
+
+
+def test_tapetide_sync_route_returns_actionable_missing_token_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi import HTTPException
+
+    monkeypatch.delenv("TAPETIDE_API_TOKEN", raising=False)
+    cache = SqliteMarketCache(tmp_path / "market.sqlite3")
+    router = create_api_router(
+        ResearchService(None, InMemoryBacktestRepository()),
+        HypothesisService(StubLlm()),
+        market_cache=cache,
+        tapetide_fii_dii_importer=TapetideFiiDiiImporter(cache),
     )
+    endpoint = next(route.endpoint for route in router.routes if route.path.endswith("/insights/fii-dii/history/sync"))
 
-    assert len(response.rows) == 4
-    assert {row.scope for row in response.rows} == {"tapetide"}
-    assert response.coverage_days == 2
-    assert response.coverage_start == first_saved_day
-    assert response.coverage_end == latest_saved_day
-    assert response.coverage_note is not None
-    assert "missing earlier dates are not available locally" in response.coverage_note
-    assert len(cache.get_fii_dii_rows(latest_saved_day, latest_saved_day)) == 1
+    with pytest.raises(HTTPException) as error:
+        endpoint(FiiDiiHistorySyncRequest(range_days=90))
+
+    assert error.value.status_code == 503
+    assert "TAPETIDE_API_TOKEN" in error.value.detail
+
+
+def test_tapetide_sync_route_reads_back_the_separate_history_series(tmp_path: Path) -> None:
+    today = date.today()
+    cache = SqliteMarketCache(tmp_path / "market.sqlite3")
+    importer = TapetideFiiDiiImporter(cache, token="test-token")
+    importer._download_report = lambda _start, _end: {
+        "data": [{
+            "date": today.isoformat(), "fii_buy_cr": 100, "fii_sell_cr": 80, "fii_net_cr": 20,
+            "dii_buy_cr": 120, "dii_sell_cr": 100, "dii_net_cr": 20,
+        }],
+        "meta": {"has_more": False},
+    }  # type: ignore[method-assign]
+    router = create_api_router(
+        ResearchService(None, InMemoryBacktestRepository()),
+        HypothesisService(StubLlm()),
+        market_cache=cache,
+        tapetide_fii_dii_importer=importer,
+    )
+    sync_endpoint = next(route.endpoint for route in router.routes if route.path.endswith("/insights/fii-dii/history/sync"))
+    data_endpoint = next(route.endpoint for route in router.routes if route.path.endswith("/insights/fii-dii"))
+
+    sync = sync_endpoint(FiiDiiHistorySyncRequest(range_days=30))
+    data = data_endpoint(start=today, end=today, source="tapetide")
+
+    assert sync.stored_rows == 2
+    assert data.sync_available is True
+    assert {row.participant for row in data.rows} == {"FII", "DII"}
+    assert {row.scope for row in data.rows} == {"tapetide"}
