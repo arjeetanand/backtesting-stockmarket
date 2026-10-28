@@ -8,7 +8,7 @@ import { RefreshCw } from "lucide-react";
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
 const pageTitles: Record<string, { title: string; category: string }> = {
-  "/": { title: "Backtesting Workspace", category: "" },
+  "/": { title: "Research overview", category: "" },
   "/research": { title: "Test a strategy", category: "" },
   "/strategy": { title: "Build rules", category: "" },
   "/backtests": { title: "My tests", category: "" },
@@ -76,9 +76,9 @@ export default function TopBar({ title }: TopBarProps = {}) {
           <RefreshCw size={13} className={syncing ? "spin" : ""} />
           {syncing ? "Syncing NSE Data…" : "Sync Today's Data"}
         </button>
-        <div className="bt-topbar-status" aria-label="NSE data connection status">
+        <div className="bt-topbar-status" aria-label="Official NSE daily archive data">
           <span className="bt-topbar-status-dot" aria-hidden="true" />
-          <span>NSE Live</span>
+          <span>Historical NSE</span>
         </div>
         <Link href="/research" className="bt-topbar-new-test">
           Start a new test

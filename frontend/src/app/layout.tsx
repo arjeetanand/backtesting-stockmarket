@@ -3,9 +3,8 @@ import "./globals.css";
 import Sidebar from "@/components/layout/Sidebar";
 
 export const metadata: Metadata = {
-  title: "Quant Research Terminal",
-  description:
-    "AI-native quantitative trading research and backtesting platform",
+  title: "Backtrack — NSE research",
+  description: "Local Indian-equity research using official NSE daily archives and simulated backtests.",
 };
 
 export default function RootLayout({
@@ -15,10 +14,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        style={{ background: "#f7f9fb", color: "#191c1e" }}
-        className="min-h-screen"
-      >
+      <body className="min-h-screen bt-app-body">
         <Sidebar />
         <main className="min-h-screen bt-app-main">
           {children}

@@ -5,19 +5,20 @@ Backtrack is a local, research-only Indian-market backtesting application. It us
 ## Simple first-use flow
 
 1. Start the backend and frontend using [README.md](README.md).
-2. Open **Manage stock data**.
-3. Choose all history, last four years, last year, a calendar year, or custom dates.
-4. Start the one bulk import and leave the backend running.
-5. Search a symbol or company name to confirm its saved period and candle count.
-6. Open **Test a strategy**, **Build rules**, **Use a YouTube strategy**, or **Replay a chart**.
-7. Review assumptions, fees, slippage, data availability, and validity before trusting a result.
+2. Open **New research**, describe the idea, and choose a listed symbol and date range.
+3. Review the proposed rule, its assumptions, and risks, then confirm the review.
+4. Backtrack checks local coverage and prepares any missing official NSE history for the selected range.
+5. Run the historical simulation and inspect its candles, trades, and metrics.
+6. Use reliability, validity, replay, and comparison tools to challenge the result.
+
+You can still pre-load data from **Manage stock data** when you want to import a larger date window or inspect local symbol coverage first.
 
 ## Pages
 
 | Page | User task | Current behavior |
 | --- | --- | --- |
-| Home | Choose where to begin | Enter strategy testing, YouTube import, or replay |
-| Test a strategy | Test a trading idea | Review a proposal, ensure local history, configure capital/risk, and run a saved backtest |
+| Home | Start the unified research flow | Open New research or browse the grouped market and analysis tools; recent tests come from the local API |
+| New research | Turn an idea into historical evidence | Review a draft rule, confirm the assumptions, ensure local NSE history, then explicitly run the simulation |
 | Build rules | Create a rule strategy | Configure indicators, entries, exits, risk, fees, and slippage |
 | Use a YouTube strategy | Bring in an online idea | Extract a reviewable draft from a URL, captions, or pasted transcript; human review is required |
 | Manage stock data | Download and search history | Bulk NSE archive import with quick/custom date windows and local catalogue search |
@@ -66,13 +67,15 @@ If no results appear, confirm that the backend is running and refresh the offici
 
 The normal path is:
 
-1. Select a stock and date range.
-2. Choose a known strategy or describe rules.
-3. Confirm that local history covers the requested period.
-4. Review capital, position sizing, risk limit, fees, slippage, and execution convention.
-5. Run the backtest.
-6. Inspect the loaded OHLCV/volume chart, then review real entry/exit markers, indicator overlays or panes, trade details, return, win rate, trade count, drawdown, equity curve, and trade ledger.
-7. Save the result and challenge it with comparison, robustness, replay, and validity tools.
+1. Describe the idea, then select the stock and date range.
+2. Review the proposed rule and its assumptions, risks, capital, position sizing, and risk settings.
+3. Confirm the review. Backtrack does not start a historical simulation before this action.
+4. Confirm the date range has local official NSE history; missing bars are prepared or reported unavailable.
+5. Run the historical simulation.
+6. Inspect the loaded OHLCV/volume chart, entry/exit markers, trade details, return, win rate, trade count, drawdown, equity curve, and trade ledger.
+7. Challenge the result with comparison, reliability, validity, and replay tools. Each follow-up uses its own inputs.
+
+The visible checkpoints describe the actual in-app sequence; they do not imply that independent AI agents ran. Hypothesis assistance uses local Ollama when configured. The clearly labelled deterministic catalogue fallback keeps the workflow usable when Ollama is unavailable. Review confirmation is not carried across a page reload.
 
 The research chart is populated only from locally validated NSE bars or the returned backtest result. It sorts and de-duplicates timestamps, omits invalid numeric points, preserves missing volume as unavailable, and shows explicit loading, empty, and error states. The current main workflow is daily data; intraday or unsupported timeframes must be imported and normalized before they can be charted or tested.
 

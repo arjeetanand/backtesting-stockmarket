@@ -1,4 +1,6 @@
-# Backtrack — Stitch UI Design Brief
+# Historical Stitch UI Design Brief (Superseded)
+
+> This brief predates the unified light-indigo redesign. Use the repository-root [DESIGN.md](../DESIGN.md) as the current visual source of truth. The product-safety constraints below remain relevant; the older layout and styling directions are retained only as historical planning notes.
 
 Design and prototype a polished desktop-first web application called **Backtrack**.
 

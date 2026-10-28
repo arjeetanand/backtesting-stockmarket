@@ -7,29 +7,25 @@ The frontend is a Next.js App Router application in `frontend/src`. It provides 
 From the repository root:
 
 ```bash
-npm --prefix frontend install
-./scripts/dev-frontend.sh 3000 8000
+npm --prefix frontend ci
+./run.sh
 ```
 
-Open `http://localhost:3000`. Start the backend first on port `8000` for real data and backtests. Without it, the UI keeps explicit unavailable/error states and does not substitute mock prices.
+Open `http://localhost:4003`. `run.sh` starts the Next.js frontend on port `4003` and the local FastAPI backend on `8001`. Without the backend, the UI keeps explicit unavailable/error states and does not substitute mock prices.
 
-The frontend can be started on ports `3000`, `3001`, or `3002` with the named npm
-commands (`npm --prefix frontend run dev:3000`, `dev:3001`, or `dev:3002`) or with
-`./scripts/dev-frontend.sh <frontend-port> <backend-port>`. The script passes the
-backend port through `NEXT_PUBLIC_API_BASE_URL` so the selected pair stays aligned.
-The named scripts isolate Next output per port and enable `WATCHPACK_POLLING=true` by
-default to reduce `EMFILE` watcher pressure; set `WATCHPACK_POLLING=false` when the
-machine has enough file-watcher capacity.
+For UI checks, use `./scripts/dev-frontend.sh 5003 8001` or
+`./scripts/dev-frontend.sh 6003 8001` while that test port is free. The script passes
+the backend port through `NEXT_PUBLIC_API_BASE_URL` and isolates Next output per port.
+It enables `WATCHPACK_POLLING=true` by default to reduce `EMFILE` watcher pressure; set
+`WATCHPACK_POLLING=false` when the machine has enough file-watcher capacity.
 
-For parallel local instances, each port gets an isolated Next build directory
-(`.next-port-3000`, `.next-port-3001`, or `.next-port-3002`) to avoid build-file
-collisions. If a newly added route still returns a Next 404, stop and restart
-the relevant dev server; a stale watcher may not have discovered the route.
+If a newly added route still returns a Next 404, stop and restart the relevant dev
+server; a stale watcher may not have discovered the route.
 
 Optional `frontend/.env.local`:
 
 ```dotenv
-NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000/api/v1
+NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8001/api/v1
 ```
 
 The home page is only a workflow chooser. Stock and date controls belong on Research, Strategy Lab, Pattern Finder, or Replay; do not reintroduce stock/date state into the home page unless the product flow changes deliberately.

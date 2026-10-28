@@ -34,7 +34,9 @@
     ".next-port-3001/types/**/*.ts",
     ".next-port-3001/dev/types/**/*.ts",
     ".next-port-3002/types/**/*.ts",
-    ".next-port-3002/dev/types/**/*.ts"
+    ".next-port-3002/dev/types/**/*.ts",
+    ".next-port-4003/types/**/*.ts",
+    ".next-port-4003/dev/types/**/*.ts"
   ],
   "exclude": ["node_modules"]
 }

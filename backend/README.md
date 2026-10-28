@@ -13,11 +13,11 @@ python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e "[dev]"
 cp .env.example .env
-./scripts/dev-backend.sh 8000
+./scripts/dev-backend.sh 8001
 ```
 
-API documentation: `http://localhost:8000/docs`  
-Health check: `http://localhost:8000/api/v1/health`
+API documentation: `http://localhost:8001/docs`
+Health check: `http://localhost:8001/api/v1/health`
 
 Pass any available port to `./scripts/dev-backend.sh`, for example `8001` or
 `8002`, when running another local backend instance. Pair it with the same port

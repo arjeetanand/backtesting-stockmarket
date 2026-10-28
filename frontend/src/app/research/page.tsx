@@ -10,6 +10,7 @@ import { STRATEGY_LIBRARY, UNIFIED_STRATEGIES } from "@/lib/strategy-library";
 import { FinancialChart } from "@/components/charts/FinancialChart";
 import { DrawdownChart } from "@/components/charts/Charts";
 import { adaptBacktestChart, adaptMarketBars, type BacktestChartPayload } from "@/lib/research-chart";
+import { canRunHistoricalTest } from "@/lib/research-flow";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 const EXAMPLES = [
@@ -25,7 +26,7 @@ const TIMEFRAMES = [
   { value: "1hour", label: "Hourly", detail: "Intraday provider required", unavailable: true },
 ];
 
-type StepStatus = "complete" | "running" | "pending";
+type StepStatus = "complete" | "running" | "ready" | "pending";
 type HypothesisAnalysis = {
   generated_by?: string;
   model?: string;
@@ -60,7 +61,7 @@ type ImportJob = {
   total_days?: number;
 };
 
-const PIPELINE = ["Choose stock & dates", "Choose a strategy", "Load local history", "Run the simulation", "Read your result"];
+const PIPELINE = ["Analyze the idea", "Review the rule", "Confirm NSE history", "Run the simulation", "Choose follow-up checks"];
 const moneyLabel = (value: number) => `₹${Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 const signedMoneyLabel = (value: number) => `${value >= 0 ? "+" : "−"}${moneyLabel(Math.abs(value))}`;
 const dateOnly = (value?: string) => value?.slice(0, 10) ?? "";
@@ -76,7 +77,7 @@ type Candle = { date: string; open: number; high: number; low: number; close: nu
 export default function ResearchPage() {
   const today = new Date().toISOString().slice(0, 10);
   const defaultStart = new Date(new Date(`${today}T00:00:00`).setFullYear(new Date(`${today}T00:00:00`).getFullYear() - 1)).toISOString().slice(0, 10);
-  const [hypothesis, setHypothesis] = useState("Test whether a 20/50 moving-average crossover can capture medium-term trends in RELIANCE.");
+  const [hypothesis, setHypothesis] = useState("Test whether a 20-day moving average crossing above a 50-day average is followed by positive returns.");
   const [symbol, setSymbol] = useState("RELIANCE");
   const [strategyId, setStrategyId] = useState("sma_crossover");
   const [timeframe, setTimeframe] = useState("1day");
@@ -92,7 +93,7 @@ export default function ResearchPage() {
   const [endDate, setEndDate] = useState("");
   const [backtest, setBacktest] = useState<BacktestResult | null>(null);
   const [importJob, setImportJob] = useState<ImportJob | null>(null);
-  const [autoRunPending, setAutoRunPending] = useState(false);
+  const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [chatMessage, setChatMessage] = useState("");
   const [chatHistory, setChatHistory] = useState<Array<{ role: "ai" | "user"; text: string }>>([]);
   const [loading, setLoading] = useState(false);
@@ -108,6 +109,7 @@ export default function ResearchPage() {
   const [hiddenIndicators, setHiddenIndicators] = useState<string[]>([]);
 
   const invalidateRun = () => {
+    setReviewConfirmed(false);
     setBacktest(null);
     setSelectedTradeId(null);
     setMarketBars([]);
@@ -218,7 +220,14 @@ export default function ResearchPage() {
   const proposalAssumptions = analysis?.assumptions.filter((item) => !/ollama|model|llm/i.test(item)).slice(0, 2) ?? [];
   const proposalRisks = analysis?.risks.filter((item) => !/ollama|model|llm/i.test(item)).slice(0, 2) ?? [];
   const proposalUsedFallback = Boolean(analysis && (/fallback|ollama unavailable|could not reach ollama|did not respond/i.test(analysis.generated_by ?? "") || analysis.risks.some((item) => /ollama|could not reach|did not respond/i.test(item))));
-  const canRunBacktest = Boolean(analysis && availability?.bars && startDate && endDate && timeframe !== "1hour" && !loading && !runningBacktest && (!importJob || importJob.status === "complete"));
+  const canRunBacktest = canRunHistoricalTest({
+    hasProposal: Boolean(analysis),
+    reviewConfirmed,
+    hasLocalData: Boolean(availability?.bars && startDate && endDate),
+    supportedTimeframe: timeframe !== "1hour",
+    isBusy: loading || runningBacktest,
+    importComplete: !importJob || importJob.status === "complete",
+  });
   const marketChart = useMemo(() => adaptMarketBars(marketBars), [marketBars]);
   const resultChart = useMemo(() => adaptBacktestChart((backtest ?? {}) as BacktestChartPayload), [backtest]);
   const visibleResultIndicators = useMemo(
@@ -234,6 +243,14 @@ export default function ResearchPage() {
       .map((point) => ({ date: dateOnly(point.date ?? point.timestamp), drawdown: Number(point.drawdown ?? 0) })),
     [backtest?.drawdown_curve, endDate, startDate],
   );
+  const dataReady = Boolean(availability?.bars && startDate && endDate && (!importJob || importJob.status === "complete"));
+  const pipelineStatus: StepStatus[] = [
+    loading ? "running" : analysis ? "complete" : "pending",
+    analysis ? reviewConfirmed ? "complete" : "ready" : "pending",
+    importJob && importJob.status !== "complete" && importJob.status !== "failed" ? "running" : dataReady ? "complete" : analysis ? "ready" : "pending",
+    runningBacktest ? "running" : backtest ? "complete" : reviewConfirmed && dataReady ? "ready" : "pending",
+    backtest ? "ready" : "pending",
+  ];
   const dsl = useMemo(() => analysis ? JSON.stringify({
     source: isLlmGenerated ? "local_ollama_review" : "curated_rule_template",
     generated_by: analysis.generated_by ?? "local Ollama",
@@ -269,7 +286,6 @@ export default function ResearchPage() {
           setAvailability(refreshed);
           setStartDate(importStart);
           setEndDate(importEnd);
-          setAutoRunPending(true);
           return;
         }
         if (next.status === "failed") return;
@@ -317,7 +333,6 @@ export default function ResearchPage() {
         if (localData.bars > 0) {
           setStartDate(importedStart);
           setEndDate(importedEnd);
-          setAutoRunPending(true);
         } else {
           void ensureResearchData(importedSymbol, importedStart, importedEnd);
         }
@@ -345,7 +360,6 @@ export default function ResearchPage() {
       setStartDate("");
       setEndDate("");
       setImportJob(null);
-      setAutoRunPending(false);
       setChatHistory([]);
       invalidateRun();
       setError(null);
@@ -358,6 +372,7 @@ export default function ResearchPage() {
     setLoading(true);
     setError(null);
     invalidateRun();
+    setAnalysis(null);
     try {
       const response = await withTimeout(fetch(`${API_BASE_URL}/research/hypothesis`, {
         method: "POST",
@@ -382,7 +397,6 @@ export default function ResearchPage() {
         setImportJob(null);
         setStartDate(requestedStart);
         setEndDate(requestedEnd);
-        setAutoRunPending(true);
       } else {
         void ensureResearchData(selectedSymbol);
       }
@@ -396,7 +410,7 @@ export default function ResearchPage() {
   };
 
   const runBacktest = async () => {
-    if (!analysis || !availability?.earliest || !availability.latest || !startDate || !endDate) return;
+    if (!analysis || !reviewConfirmed || !availability?.earliest || !availability.latest || !startDate || !endDate) return;
     if (startDate > endDate) {
       setError("The start date must be on or before the end date.");
       return;
@@ -449,23 +463,14 @@ export default function ResearchPage() {
 
   const formatPercent = (value: number | undefined) => `${((value ?? 0) * 100).toFixed(2)}%`;
 
-  useEffect(() => {
-    if (!autoRunPending || runningBacktest || !analysis || !availability?.bars || !startDate || !endDate) return;
-    queueMicrotask(() => {
-      setAutoRunPending(false);
-      void runBacktest();
-    });
-    // The pending flag is consumed by this effect and the run function is intentionally stable for that transition.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRunPending, runningBacktest, analysis, availability, startDate, endDate, strategyId, timeframe, initialCapital]);
-
   const primaryAction = () => {
     if (!analysis) { void parseHypothesis(); return; }
+    if (!reviewConfirmed) return;
     if (availability?.bars && startDate && endDate) { void runBacktest(); return; }
-    if (!importJob) void ensureResearchData(symbol.trim().toUpperCase(), requestedStart, requestedEnd);
+    if (!importJob || importJob.status === "failed" || importJob.status === "complete") void ensureResearchData(symbol.trim().toUpperCase(), requestedStart, requestedEnd);
   };
 
-  const primaryActionLabel = runningBacktest ? "Running backtest…" : loading ? "Preparing strategy…" : analysis && availability?.bars && startDate && endDate ? "Run backtest" : analysis ? "Prepare data & run" : "Prepare & run backtest";
+  const primaryActionLabel = runningBacktest ? "Running backtest…" : loading ? "Preparing strategy…" : analysis && reviewConfirmed && canRunBacktest ? "Run historical test" : analysis ? "Review the draft to continue" : "Analyze this idea";
   const progressMessage = loading
     ? "Reading the hypothesis, checking the selected rule, and asking the local model for a testable proposal."
     : runningBacktest
@@ -477,7 +482,7 @@ export default function ResearchPage() {
   const losingTrades = completedTrades.filter((trade) => trade.pnl < 0).length;
   const netPnl = backtest ? backtest.final_equity - backtest.initial_capital : 0;
   const totalTrades = Math.round(backtest?.metrics?.trade_count ?? backtest?.metrics?.total_trades ?? completedTrades.length);
-  const resultOutcome = totalTrades === 0 ? "No completed trades" : netPnl >= 0 ? "Historically profitable" : "Historically unprofitable";
+  const resultOutcome = totalTrades === 0 ? "No completed trades" : netPnl >= 0 ? "Positive in this sample" : "Negative in this sample";
 
   const handleSendChat = () => {
     const text = chatMessage.trim();
@@ -495,49 +500,64 @@ export default function ResearchPage() {
   };
 
   return <div className="backtrack-page bt-research-page">
-    <TopBar />
+    <TopBar title="New research" />
     <main className="backtrack-content bt-stack">
       <section className="bt-heading-row">
-        <div><div className="bt-kicker"><span className="live-dot" /> TEST A STRATEGY</div><h1>Test a strategy.</h1><p>Choose a stock, date range, and rule. Backtrack will use real local NSE candles and show you where the strategy bought, sold, won, or lost.</p></div>
+        <div><h1>Research a trading idea</h1><p>Describe the setup, review the proposed rule, then test it on local NSE history.</p></div>
         <span className="data-source">{restored && (analysis || backtest) ? <><CheckCircle size={14} /> Saved session restored</> : <><BarChart3 size={14} /> Historical simulation · NSE data</>}</span>
       </section>
 
       <section className="bt-hypothesis-block">
-        <div className="bt-hypothesis-header"><div className="bt-hypothesis-icon"><Sparkles size={17} /></div><span className="bt-hypothesis-title">Optional: describe your idea</span><span className="bt-ai-badge">Plain-language helper</span></div>
-        <textarea className="bt-hypothesis-textarea" value={hypothesis} onChange={(event) => setHypothesis(event.target.value)} />
-        <div className="bt-test-window-summary"><strong>Test window</strong><span>{requestedStart} → {requestedEnd}</span><small>These dates are used consistently for the historical price chart, backtest, trades, and risk curve.</small></div>
-        <div className="bt-grid-2" style={{ margin: "14px 0" }}><div><label className="bt-field-label">NSE symbol</label><SymbolCombobox value={symbol} onChange={(nextSymbol) => { setSymbol(nextSymbol); setAnalysis(null); setAvailability(null); setStartDate(""); setEndDate(""); invalidateRun(); setImportJob(null); setAutoRunPending(false); }} /></div><div><label className="bt-field-label">Strategy</label><select className="bt-field-input" aria-label="Strategy to test" value={strategyId} onChange={(event) => { setStrategyId(event.target.value); setAnalysis(null); invalidateRun(); }}><option value="sma_crossover">SMA crossover</option>{STRATEGY_LIBRARY.filter((item) => item.id !== "golden-cross" && item.strategyId !== "sma_crossover").map((item) => <option key={item.id} value={item.strategyId}>{item.name}</option>)}</select></div><div><label className="bt-field-label">Timeframe</label><select className="bt-field-input" aria-label="Backtest timeframe" value={timeframe} onChange={(event) => { setTimeframe(event.target.value); setAnalysis(null); invalidateRun(); }} >{TIMEFRAMES.map((item) => <option key={item.value} value={item.value}>{item.label} · {item.detail}</option>)}</select><span className="bt-field-help">Weekly and monthly are resampled from saved NSE daily candles. Monthly needs a longer history for slow indicators. Hourly needs an intraday source and stays unavailable for this NSE archive.</span></div><div><label className="bt-field-label">Starting capital (₹)</label><input className="bt-field-input" type="number" min="1000" step="1000" value={initialCapital} onChange={(event) => { setInitialCapital(Math.max(1000, Number(event.target.value) || 1000)); invalidateRun(); }} /><span className="bt-field-help">Paper-only account size.</span></div><div><label className="bt-field-label">Money per trade (₹)</label><input className="bt-field-input" type="number" min="100" step="100" value={positionSizeAmount} onChange={(event) => { setPositionSizeAmount(Math.max(100, Number(event.target.value) || 100)); invalidateRun(); }} /><span className="bt-field-help">Fixed amount committed to each entry.</span></div><div><label className="bt-field-label">Maximum loss per trade (%)</label><input className="bt-field-input" type="number" min="0" max="99" step="0.25" value={stopLossPct} onChange={(event) => { setStopLossPct(Math.min(99, Math.max(0, Number(event.target.value) || 0))); invalidateRun(); }} /><span className="bt-field-help">0 disables the stop-loss rule.</span></div><div><label className="bt-field-label">Profit target per trade (%)</label><input className="bt-field-input" type="number" min="0" max="1000" step="0.25" value={takeProfitPct} onChange={(event) => { setTakeProfitPct(Math.min(1000, Math.max(0, Number(event.target.value) || 0))); invalidateRun(); }} /><span className="bt-field-help">0 lets the strategy exit on its signal.</span></div><div><label className="bt-field-label">Backtest from</label><input className="bt-field-input" type="date" max={requestedEnd} value={requestedStart} onChange={(event) => { setRequestedStart(event.target.value); setAnalysis(null); setStartDate(""); setEndDate(""); invalidateRun(); setImportJob(null); setAutoRunPending(false); }} /></div><div><label className="bt-field-label">Backtest to</label><input className="bt-field-input" type="date" min={requestedStart} max={today} value={requestedEnd} onChange={(event) => { setRequestedEnd(event.target.value); setAnalysis(null); setStartDate(""); setEndDate(""); invalidateRun(); setImportJob(null); setAutoRunPending(false); }} /></div></div>
+        <div className="bt-hypothesis-header"><h2 className="bt-hypothesis-title">Start with your idea</h2><span className="bt-ai-badge">Optional local helper</span></div>
+        <label className="bt-field-label" htmlFor="research-hypothesis">Describe the rule you want to test</label>
+        <textarea id="research-hypothesis" className="bt-hypothesis-textarea" value={hypothesis} onChange={(event) => { setHypothesis(event.target.value); setAnalysis(null); invalidateRun(); }} />
+        <div className="bt-grid-2 bt-research-inputs">
+          <div><label className="bt-field-label">NSE symbol</label><SymbolCombobox value={symbol} onChange={(nextSymbol) => { setSymbol(nextSymbol); setAnalysis(null); setAvailability(null); setStartDate(""); setEndDate(""); invalidateRun(); setImportJob(null); }} /></div>
+          <div><label className="bt-field-label">Strategy rule</label><select className="bt-field-input" aria-label="Strategy to test" value={strategyId} onChange={(event) => { setStrategyId(event.target.value); setAnalysis(null); invalidateRun(); }}><option value="sma_crossover">SMA crossover</option>{STRATEGY_LIBRARY.filter((item) => item.id !== "golden-cross" && item.strategyId !== "sma_crossover").map((item) => <option key={item.id} value={item.strategyId}>{item.name}</option>)}</select></div>
+          <div><label className="bt-field-label">Backtest from</label><input className="bt-field-input" type="date" max={requestedEnd} value={requestedStart} onChange={(event) => { setRequestedStart(event.target.value); setStartDate(""); setEndDate(""); invalidateRun(); setImportJob(null); }} /></div>
+          <div><label className="bt-field-label">Backtest to</label><input className="bt-field-input" type="date" min={requestedStart} max={today} value={requestedEnd} onChange={(event) => { setRequestedEnd(event.target.value); setStartDate(""); setEndDate(""); invalidateRun(); setImportJob(null); }} /></div>
+        </div>
+        <details className="bt-advanced-settings">
+          <summary><span>Timeframe, capital &amp; risk</span><small>Daily NSE · {moneyLabel(initialCapital)} start · {moneyLabel(positionSizeAmount)} per trade</small></summary>
+          <div className="bt-grid-2 bt-research-inputs">
+            <div><label className="bt-field-label">Timeframe</label><select className="bt-field-input" aria-label="Backtest timeframe" value={timeframe} onChange={(event) => { setTimeframe(event.target.value); setAnalysis(null); invalidateRun(); }} >{TIMEFRAMES.map((item) => <option key={item.value} value={item.value}>{item.label} · {item.detail}</option>)}</select><span className="bt-field-help">Weekly and monthly are resampled from saved NSE daily candles. Hourly requires an intraday provider and is unavailable.</span></div>
+            <div><label className="bt-field-label">Starting capital (₹)</label><input className="bt-field-input" type="number" min="1000" step="1000" value={initialCapital} onChange={(event) => { setInitialCapital(Math.max(1000, Number(event.target.value) || 1000)); invalidateRun(); }} /></div>
+            <div><label className="bt-field-label">Money per trade (₹)</label><input className="bt-field-input" type="number" min="100" step="100" value={positionSizeAmount} onChange={(event) => { setPositionSizeAmount(Math.max(100, Number(event.target.value) || 100)); invalidateRun(); }} /><span className="bt-field-help">Fixed amount committed to each entry.</span></div>
+            <div><label className="bt-field-label">Maximum loss per trade (%)</label><input className="bt-field-input" type="number" min="0" max="99" step="0.25" value={stopLossPct} onChange={(event) => { setStopLossPct(Math.min(99, Math.max(0, Number(event.target.value) || 0))); invalidateRun(); }} /><span className="bt-field-help">0 disables the stop-loss rule.</span></div>
+            <div><label className="bt-field-label">Profit target per trade (%)</label><input className="bt-field-input" type="number" min="0" max="1000" step="0.25" value={takeProfitPct} onChange={(event) => { setTakeProfitPct(Math.min(1000, Math.max(0, Number(event.target.value) || 0))); invalidateRun(); }} /><span className="bt-field-help">0 exits only when the strategy signals.</span></div>
+          </div>
+        </details>
         <details className="bt-strategy-library" aria-label="Available strategy library"><summary><span><span className="bt-row"><BarChart3 size={15} style={{ color: "#4f46e5" }} /><strong>Browse the strategy library</strong></span><small>Pick from {STRATEGY_LIBRARY.length} supported rule sets if you want to compare approaches.</small></span><span className="bt-ai-badge">Optional</span></summary><div className="bt-strategy-library-body"><p className="bt-field-help">Source links are community references; the engine calculates fresh stats for your exact inputs. Price-action entries are labelled as Backtrack interpretations and remain reviewable.</p><div className="bt-strategy-library-grid">{STRATEGY_LIBRARY.map((item) => { const isSelected = strategyId === item.strategyId && item.id !== "golden-cross"; return <button type="button" key={item.id} data-testid={`strategy-card-${item.id}`} aria-pressed={isSelected} className={isSelected ? "is-selected" : ""} onClick={() => { setStrategyId(item.strategyId); setAnalysis(null); invalidateRun(); }}><span><strong>{item.name}</strong><small>{item.family} · {item.sourceLabel}</small></span><p>{item.description}</p><ChevronRight size={13} /></button>; })}</div>{strategyId && <p className="bt-library-selection"><Check size={13} /> Selected: <strong>{STRATEGY_LIBRARY.find((item) => item.strategyId === strategyId && item.id !== "golden-cross")?.name ?? STRATEGY_LIBRARY.find((item) => item.strategyId === strategyId)?.name}</strong> · {STRATEGY_LIBRARY.find((item) => item.strategyId === strategyId && item.id !== "golden-cross")?.use ?? STRATEGY_LIBRARY.find((item) => item.strategyId === strategyId)?.use}</p>}</div></details>
-        <div className="bt-hypothesis-footer"><div className="bt-hypothesis-pills">{importedFlow ? <span className="bt-imported-formula-note"><CheckCircle size={13} /> Formula loaded from YouTube strategy selection. Review the risk settings, then use this single action.</span> : EXAMPLES.map((example) => <button type="button" key={example} className="bt-hypothesis-pill" onClick={() => setHypothesis(example)}>{example.slice(0, 42)}…</button>)}</div><button type="button" className="bt-primary" onClick={primaryAction} disabled={loading || runningBacktest || timeframe === "1hour" || Boolean(importJob && ["queued", "running"].includes(importJob.status))}>{runningBacktest || loading ? <Loader2 size={14} className="spin" /> : <Play size={14} />} {primaryActionLabel}</button></div>
+        <div className="bt-hypothesis-footer">
+          <div className="bt-hypothesis-pills">{importedFlow ? <span className="bt-imported-formula-note"><CheckCircle size={13} /> Formula loaded from the strategy library. Review it before continuing.</span> : EXAMPLES.map((example) => <button type="button" key={example} className="bt-hypothesis-pill" onClick={() => { setHypothesis(example); setAnalysis(null); invalidateRun(); }}>{example.slice(0, 42)}…</button>)}</div>
+          {!analysis && <button type="button" className="bt-primary" onClick={primaryAction} disabled={loading || runningBacktest || timeframe === "1hour"}>{loading ? <Loader2 size={14} className="spin" /> : <Sparkles size={14} />} {primaryActionLabel}</button>}
+        </div>
         {progressMessage && <div className="bt-run-status" role="status" aria-live="polite"><Loader2 size={15} className="spin" /><div><strong>{primaryActionLabel}</strong><span>{progressMessage}</span><small>This can take a little longer when NSE history or Ollama is being contacted. If Ollama is unavailable, a clearly labelled catalogue proposal keeps the historical test usable.</small></div></div>}
       </section>
 
       {error && <div className="bt-alert-error" role="alert">{error}</div>}
 
-      {importJob && <section className="bt-panel" style={{ padding: "20px" }}><div className="bt-row-between"><div><div className="bt-row"><Loader2 size={16} className={importJob.status === "complete" || importJob.status === "failed" ? "" : "spin"} style={{ color: importJob.status === "failed" ? "#e11d48" : "#4f46e5" }} /><h3>Official NSE history preparation</h3></div><p className="text-xs text-slate-500" style={{ marginTop: "6px" }}>{importJob.message}</p></div><span className="bt-ai-badge">{importJob.status}</span></div><div className="bt-grid-2" style={{ marginTop: "16px" }}>{["Validate local cache", "Download or reuse archive", "Save full archive to SQLite", "Ready to backtest"].map((step, index) => { const completed = importJob.status === "complete" || (index === 0 && importJob.status !== "queued") || (index === 1 && importJob.stage?.includes("Saving")); return <div key={step} className="bt-callout"><strong>{completed ? "✓ " : "○ "}{step}</strong><p>{index === 1 && importJob.total_days ? `${importJob.completed_days ?? 0}/${importJob.total_days} trading days checked` : completed ? "Done" : "Waiting"}</p></div>; })}</div>{importJob.status === "failed" && <div className="bt-alert-error" style={{ marginTop: "14px" }}>NSE data could not be imported. Check the symbol and retry Parse Hypothesis.</div>}</section>}
+      {importJob && <section className="bt-panel" style={{ padding: "20px" }}><div className="bt-row-between"><div><div className="bt-row"><Loader2 size={16} className={importJob.status === "complete" || importJob.status === "failed" ? "" : "spin"} style={{ color: importJob.status === "failed" ? "#e11d48" : "#4f46e5" }} /><h3>Official NSE history preparation</h3></div><p className="text-xs text-slate-500" style={{ marginTop: "6px" }}>{importJob.message}</p></div><span className="bt-ai-badge">{importJob.status}</span></div><div className="bt-grid-2" style={{ marginTop: "16px" }}>{["Validate local cache", "Download or reuse archive", "Save full archive to SQLite", "Ready to backtest"].map((step, index) => { const completed = importJob.status === "complete" || (index === 0 && importJob.status !== "queued") || (index === 1 && importJob.stage?.includes("Saving")); return <div key={step} className="bt-callout"><strong>{completed ? "✓ " : "○ "}{step}</strong><p>{index === 1 && importJob.total_days ? `${importJob.completed_days ?? 0}/${importJob.total_days} trading days checked` : completed ? "Done" : "Waiting"}</p></div>; })}</div>{importJob.status === "failed" && <div className="bt-alert-error" style={{ marginTop: "14px" }}>NSE history could not be prepared. Retry the local data check when the API is available.</div>}</section>}
 
-      <section className="bt-panel bt-pipeline-panel"><p className="bt-pipeline-title">Your backtest in five steps</p><div className="bt-pipeline-grid">{PIPELINE.map((label, index) => {
-        const dataReady = Boolean(analysis && availability?.bars && (!importJob || importJob.status === "complete"));
-        const inputReady = Boolean(symbol.trim() && requestedStart && requestedEnd && timeframe !== "1hour");
-        const completedSteps = backtest ? PIPELINE.length : dataReady ? 3 : inputReady ? 2 : 0;
-        const runningStep = loading ? 1 : importJob && importJob.status !== "complete" && importJob.status !== "failed" ? 2 : runningBacktest ? 3 : -1;
-        const status: StepStatus = index < completedSteps ? "complete" : index === runningStep ? "running" : "pending";
-        return <div key={label} className={`bt-pipeline-step ${status}`}><div className="bt-step-top"><span className="bt-step-num">0{index + 1}</span>{status === "complete" ? <CheckCircle size={14} style={{ color: "#059669" }} /> : status === "running" ? <Loader2 size={14} style={{ color: "#4f46e5" }} className="spin" /> : <Circle size={14} style={{ color: "#cbd5e1" }} />}</div><div><p className="bt-step-label">{label}</p><p className={`bt-step-status ${status}`}>{status}</p></div></div>;
+      <section className="bt-panel bt-pipeline-panel"><div className="bt-row-between"><p className="bt-pipeline-title">One research flow</p><span className="bt-panel-note">Checkpoints show real steps, not separate agents</span></div><div className="bt-pipeline-grid">{PIPELINE.map((label, index) => {
+        const status = pipelineStatus[index] ?? "pending";
+        return <div key={label} className={`bt-pipeline-step ${status}`}><div className="bt-step-top"><span className="bt-step-num">0{index + 1}</span>{status === "complete" ? <CheckCircle size={14} aria-hidden="true" /> : status === "running" ? <Loader2 size={14} className="spin" aria-hidden="true" /> : status === "ready" ? <ChevronRight size={14} aria-hidden="true" /> : <Circle size={14} aria-hidden="true" />}</div><div><p className="bt-step-label">{label}</p><p className={`bt-step-status ${status}`}>{status}</p></div></div>;
       })}</div></section>
 
       <div className="bt-grid-2">
         <section className="bt-panel bt-proposal-panel" style={{ padding: "20px" }}>
-          <div className="bt-row-between bt-proposal-heading"><div><div className="bt-row"><Code2 size={16} style={{ color: "#4f46e5" }} /><h3>Review your test</h3></div><p className="bt-section-explanation">A short review of the rule and settings Backtrack will use. Nothing is traded.</p></div><span className="bt-ai-badge">{analysis ? (isLlmGenerated ? "Local draft · review" : "Curated rule · review") : "Waiting"}</span></div>
-          {!analysis ? <div className="bt-proposal-empty"><span>Choose a stock and strategy, then prepare the test to see the rule summary here.</span></div> : <>
+          <div className="bt-row-between bt-proposal-heading"><div><div className="bt-row"><Code2 size={16} aria-hidden="true" /><h3>Review the proposed rule</h3></div><p className="bt-section-explanation">Backtrack turns your idea into a draft. Check its assumptions before running the simulation.</p></div><span className="bt-ai-badge">{analysis ? (isLlmGenerated ? "Local model draft" : "Curated rule") : "Waiting"}</span></div>
+          {!analysis ? <div className="bt-proposal-empty"><span>Describe an idea above to prepare a reviewable rule.</span></div> : <>
             <div className="bt-proposal-summary">
-              <div className="bt-proposal-rule"><span className="bt-eyebrow">Rule being tested</span><strong>{selectedStrategy?.name ?? strategyId}</strong><p>{selectedStrategy?.description ?? analysis.suggested_backtest.rationale}</p></div>
+              <div className="bt-proposal-rule"><span className="bt-eyebrow">Rule being tested</span><strong>{selectedStrategy?.name ?? strategyId}</strong><p>{analysis.summary}</p><small>{selectedStrategy?.description ?? analysis.suggested_backtest.rationale}</small></div>
               <div className="bt-proposal-settings"><span>{symbol.trim().toUpperCase()} · {TIMEFRAMES.find((item) => item.value === timeframe)?.label ?? timeframe}</span><span>Fast {analysis.suggested_backtest.fast_window} / slow {analysis.suggested_backtest.slow_window}</span><span>{moneyLabel(positionSizeAmount)} per trade · {stopLossPct}% stop · {takeProfitPct}% target</span></div>
             </div>
             <div className="bt-proposal-next"><CheckCircle size={17} /><div><strong>What will happen</strong><p>{analysis.suggested_backtest.rationale} Signals are checked candle by candle and filled on the next candle. The result is historical evidence, not a forecast.</p></div></div>
             <div className="bt-proposal-columns"><div><strong>Assumptions</strong>{(proposalAssumptions.length ? proposalAssumptions : ["Signals execute on the next candle."]).map((item) => <p key={item}>• {item}</p>)}</div><div><strong>Watch for</strong>{(proposalRisks.length ? proposalRisks : ["Fees, slippage, sample size, and changing market regimes."]).map((item) => <p key={item}>• {item}</p>)}</div></div>
             {proposalUsedFallback && <p className="bt-proposal-source-note"><Sparkles size={13} /> Backtrack used its transparent rule catalogue because local Ollama was unavailable. You can still run the historical test.</p>}
+            <label className="bt-review-confirm"><input type="checkbox" checked={reviewConfirmed} onChange={(event) => setReviewConfirmed(event.target.checked)} /><span>I reviewed the rule, assumptions, and risk settings.</span></label>
             <details className="bt-proposal-details"><summary>Show technical details</summary><p className="bt-field-help">For review/debugging only. These details do not place an order or change the simulation.</p><pre className="bt-dsl-preview"><code>{dsl}</code></pre><div className="bt-proposal-score"><span>Was this explanation useful?</span>{[1, 2, 3, 4, 5].map((score) => <button type="button" key={score} aria-label={`Score proposal ${score} out of 5`} className={proposalScore === score ? "is-selected" : ""} onClick={() => setProposalScore(score)}><Star size={13} fill={proposalScore !== null && score <= proposalScore ? "currentColor" : "none"} /></button>)}{proposalScore && <small>Saved locally.</small>}</div></details>
-            <div className="bt-proposal-actions"><span>Review complete? Run the paper-only simulation.</span><span className="bt-row">{proposalUsedFallback && <button type="button" className="bt-secondary small" onClick={retryOllama} disabled={loading || runningBacktest}>Try local explanation again</button>}<button type="button" className="bt-primary" onClick={primaryAction} disabled={loading || runningBacktest || timeframe === "1hour" || Boolean(importJob && ["queued", "running"].includes(importJob.status))}>{runningBacktest || loading ? <Loader2 size={14} className="spin" /> : <Play size={14} />} {canRunBacktest ? "Run this backtest" : "Check data & continue"}</button></span></div>
+            <div className="bt-proposal-actions"><span>{reviewConfirmed ? "The test will use historical NSE data and simulated fills." : "Confirm your review to enable the next step."}</span><span className="bt-row">{proposalUsedFallback && <button type="button" className="bt-secondary small" onClick={retryOllama} disabled={loading || runningBacktest}>Retry local explanation</button>}<button type="button" className="bt-primary" onClick={primaryAction} disabled={!reviewConfirmed || loading || runningBacktest || timeframe === "1hour" || Boolean(importJob && ["queued", "running"].includes(importJob.status))}>{runningBacktest || loading ? <Loader2 size={14} className="spin" /> : <Play size={14} />} {runningBacktest ? "Running simulation…" : canRunBacktest ? "Run historical test" : importJob?.status === "failed" ? "Retry NSE data check" : "Check local NSE data"}</button></span></div>
           </>}
         </section>
         <section className="bt-panel bt-clarification-panel" style={{ padding: "20px" }}>
@@ -583,7 +603,7 @@ export default function ResearchPage() {
         {completedTrades.length > 0 && <div className="bt-result-trades"><div className="bt-row-between"><strong>Trade-by-trade results</strong><span className="bt-field-help">Select a trade to focus its entry and exit on the chart.</span></div>{completedTrades.map((trade) => { const tradeId = String(trade.id ?? trade.trade_id); const selected = selectedTradeId === tradeId; return <button type="button" className={`bt-result-trade${selected ? " is-selected" : ""}`} aria-pressed={selected} key={tradeId} onClick={() => setSelectedTradeId(selected ? null : tradeId)}><span className="bt-trade-index">#{trade.trade_id ?? trade.id}</span><span><strong>{trade.entry_date || "Entry"} → {trade.exit_date || "Exit"}</strong><small>{trade.entry_price ? `₹${trade.entry_price.toLocaleString("en-IN")} → ₹${(trade.exit_price ?? 0).toLocaleString("en-IN")}` : "Simulated next-candle execution"}</small><small>Committed {moneyLabel(trade.entry_amount ?? 0)} · Held {trade.holding_days ?? 0} days · Best open {moneyLabel(trade.max_unrealized_pnl ?? 0)} · Worst open {moneyLabel(trade.min_unrealized_pnl ?? 0)}</small><small>Realized at exit {signedMoneyLabel(trade.pnl)}</small></span><b className={trade.pnl >= 0 ? "bt-result-positive" : "bt-result-negative"}>{signedMoneyLabel(trade.pnl)}</b></button>; })}</div>}
         {totalTrades === 0 && <div className="bt-empty-result"><strong>No completed trades in this window</strong><span>Try a longer date range, a different stock, or a strategy with signals in this period. No prices were invented.</span></div>}
         {(backtest.warnings?.length ?? 0) > 0 && <div className="bt-alert-error" style={{ marginTop: "16px" }}>{backtest.warnings?.join(" ")}</div>}
-        <div className="bt-row-between" style={{ marginTop: "16px" }}><span className="text-xs text-slate-500">Historical simulation only · no real order was placed.</span><span className="bt-row"><Link href={{ pathname: "/replay", query: { source: "research", symbol, timeframe, start: startDate, end: endDate } }} className="bt-secondary">Replay these candles <ChevronRight size={14} /> </Link><Link href="/strategy" className="bt-secondary">Adjust rules <ChevronRight size={14} /> </Link><Link href={{ pathname: "/comparison", query: { source: "research", symbol, strategy: strategyId, timeframe, start: startDate, end: endDate, capital: initialCapital, position: positionSizeAmount, stop: stopLossPct, target: takeProfitPct } }} className="bt-secondary">Compare this run <ChevronRight size={14} /> </Link></span></div>
+        <div className="bt-row-between bt-research-next-actions" style={{ marginTop: "16px" }}><span className="text-xs text-slate-500">Historical simulation only · no real order was placed. Follow-up tools ask you to confirm their own inputs.</span><span className="bt-row"><Link href="/robustness" className="bt-secondary">Reliability analysis <ChevronRight size={14} /> </Link><Link href="/bias-validity" className="bt-secondary">Validity checklist <ChevronRight size={14} /> </Link><Link href={{ pathname: "/replay", query: { source: "research", symbol, timeframe, start: startDate, end: endDate } }} className="bt-secondary">Replay these candles <ChevronRight size={14} /> </Link><Link href="/strategy" className="bt-secondary">Adjust rules <ChevronRight size={14} /> </Link><Link href={{ pathname: "/comparison", query: { source: "research", symbol, strategy: strategyId, timeframe, start: startDate, end: endDate, capital: initialCapital, position: positionSizeAmount, stop: stopLossPct, target: takeProfitPct } }} className="bt-secondary">Compare this run <ChevronRight size={14} /> </Link></span></div>
       </section>}
       {selectedDrawdown.length > 1 && <section className="bt-panel bt-research-chart-panel" aria-label="Backtest drawdown curve"><div className="bt-row-between"><div><h3>Drawdown through the same test window</h3><p className="text-xs text-slate-500" style={{ marginTop: "6px" }}>{startDate} → {endDate}. The percentage fall from the previous equity peak.</p></div><span className="data-source">Max {formatPercent(backtest?.metrics?.maximum_drawdown ?? backtest?.metrics?.max_drawdown)}</span></div><DrawdownChart data={selectedDrawdown} height={220} /></section>}
     </main>

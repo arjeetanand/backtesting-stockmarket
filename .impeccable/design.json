@@ -1,0 +1,289 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-28T08:13:23.000Z",
+  "title": "Design System: Backtrack",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Working indigo",
+        "canonical": "#4f46e5",
+        "tonalRamp": [
+          "#1e1b4b",
+          "#312e81",
+          "#3730a3",
+          "#4338ca",
+          "#4f46e5",
+          "#6366f1",
+          "#818cf8",
+          "#e4e7fb"
+        ]
+      },
+      "frame": {
+        "role": "neutral",
+        "displayName": "Cool frame",
+        "canonical": "#eef0f8",
+        "tonalRamp": [
+          "#252b3a",
+          "#394156",
+          "#4f5870",
+          "#69718a",
+          "#858ba0",
+          "#a7abb9",
+          "#cbd0df",
+          "#eef0f8"
+        ]
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "White canvas",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#111318",
+          "#282a31",
+          "#444750",
+          "#62656e",
+          "#80838b",
+          "#a1a3aa",
+          "#c6c8cd",
+          "#ffffff"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Quiet surface",
+        "canonical": "#f8f9fc",
+        "tonalRamp": [
+          "#242833",
+          "#3b404e",
+          "#555b6a",
+          "#727887",
+          "#9095a2",
+          "#afb3bd",
+          "#d4d7df",
+          "#f8f9fc"
+        ]
+      },
+      "selected": {
+        "role": "primary",
+        "displayName": "Selected wash",
+        "canonical": "#e4e7fb",
+        "tonalRamp": [
+          "#1e1b4b",
+          "#312e81",
+          "#3730a3",
+          "#4338ca",
+          "#4f46e5",
+          "#818cf8",
+          "#c7cdf5",
+          "#e4e7fb"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Hairline border",
+        "canonical": "#e3e6ef",
+        "tonalRamp": [
+          "#292b34",
+          "#424550",
+          "#5e616d",
+          "#7c7e89",
+          "#999ba4",
+          "#b9bbc2",
+          "#d0d2dc",
+          "#e3e6ef"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#172033",
+        "tonalRamp": [
+          "#090d16",
+          "#172033",
+          "#26334a",
+          "#3b4961",
+          "#58647a",
+          "#798396",
+          "#a5acb8",
+          "#e1e4ea"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted slate",
+        "canonical": "#596579",
+        "tonalRamp": [
+          "#1c2330",
+          "#303a4c",
+          "#435067",
+          "#596579",
+          "#707b8e",
+          "#8b94a3",
+          "#b4bac4",
+          "#e4e6ea"
+        ]
+      },
+      "positive": {
+        "role": "positive",
+        "displayName": "Positive",
+        "canonical": "#047857",
+        "tonalRamp": [
+          "#022c22",
+          "#064e3b",
+          "#065f46",
+          "#047857",
+          "#059669",
+          "#10b981",
+          "#6ee7b7",
+          "#ecfdf5"
+        ]
+      },
+      "negative": {
+        "role": "negative",
+        "displayName": "Negative",
+        "canonical": "#be123c",
+        "tonalRamp": [
+          "#4c0519",
+          "#881337",
+          "#9f1239",
+          "#be123c",
+          "#e11d48",
+          "#fb7185",
+          "#fda4af",
+          "#fff1f2"
+        ]
+      },
+      "warning": {
+        "role": "warning",
+        "displayName": "Warning",
+        "canonical": "#a16207",
+        "tonalRamp": [
+          "#451a03",
+          "#713f12",
+          "#854d0e",
+          "#a16207",
+          "#ca8a04",
+          "#eab308",
+          "#fde047",
+          "#fffbeb"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Home-page lead."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Instructions and explanatory copy."
+      },
+      "mono": {
+        "displayName": "Technical mono",
+        "purpose": "Dates, symbols, prices, and identifiers."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "state-transition",
+        "value": "150ms ease",
+        "purpose": "Quiet button and navigation state transitions."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "mobile",
+        "value": "640px"
+      },
+      {
+        "name": "compact-shell",
+        "value": "900px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Main action for the next research step.",
+      "html": "<button class=\"ds-btn-primary\" type=\"button\">Analyze this idea</button>",
+      "css": ".ds-btn-primary { min-height: 38px; padding: 8px 14px; color: #fff; background: var(--primary); border: 1px solid #4338ca; border-radius: 7px; font: 600 13px Inter, system-ui, sans-serif; transition: background-color .15s ease; } .ds-btn-primary:hover { background: #4338ca; } .ds-btn-primary:focus-visible { outline: 3px solid rgba(79,70,229,.35); outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Lower-emphasis alternate action.",
+      "html": "<button class=\"ds-btn-secondary\" type=\"button\">Review later</button>",
+      "css": ".ds-btn-secondary { min-height: 38px; padding: 8px 14px; color: #172033; background: #fff; border: 1px solid #cbd2df; border-radius: 7px; font: 500 13px Inter, system-ui, sans-serif; transition: background-color .15s ease; } .ds-btn-secondary:hover { background: #f8f9fc; } .ds-btn-secondary:focus-visible { outline: 3px solid rgba(79,70,229,.35); outline-offset: 2px; }"
+    },
+    {
+      "name": "Input Field",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "White form field with an explicit keyboard focus state.",
+      "html": "<label class=\"ds-field\"><span>Symbol</span><input type=\"text\" value=\"RELIANCE\" /></label>",
+      "css": ".ds-field { display: grid; gap: 5px; color: #475467; font: 500 12px Inter, system-ui, sans-serif; } .ds-field input { min-height: 38px; padding: 8px 10px; color: #172033; background: #fff; border: 1px solid #cbd2df; border-radius: 7px; font: 13px Inter, system-ui, sans-serif; } .ds-field input:focus-visible { outline: 3px solid rgba(79,70,229,.2); border-color: #4f46e5; }"
+    },
+    {
+      "name": "Navigation Link",
+      "kind": "nav",
+      "refersTo": "navigation-current",
+      "description": "Current page in the desktop and mobile navigation.",
+      "html": "<a class=\"ds-nav-link\" href=\"#\" aria-current=\"page\"><span aria-hidden=\"true\">◦</span> New research</a>",
+      "css": ".ds-nav-link { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 7px 10px; color: #3730a3; background: #e4e7fb; border-radius: 7px; text-decoration: none; font: 600 12px Inter, system-ui, sans-serif; } .ds-nav-link:focus-visible { outline: 3px solid rgba(79,70,229,.35); outline-offset: 2px; }"
+    },
+    {
+      "name": "Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Flat white work area separated with a hairline border.",
+      "html": "<section class=\"ds-panel\"><strong>Review the proposed rule</strong><p>Check assumptions before running a historical simulation.</p></section>",
+      "css": ".ds-panel { padding: 18px; color: #172033; background: #fff; border: 1px solid #e3e6ef; border-radius: 10px; font: 13px/1.55 Inter, system-ui, sans-serif; } .ds-panel strong { font-weight: 600; } .ds-panel p { margin: 6px 0 0; color: #596579; }"
+    },
+    {
+      "name": "Review Confirmation",
+      "kind": "custom",
+      "refersTo": "research-review",
+      "description": "Explicit human confirmation required before a historical test.",
+      "html": "<label class=\"ds-review\"><input type=\"checkbox\" /><span>I reviewed the rule, assumptions, and risk settings.</span></label>",
+      "css": ".ds-review { display: flex; align-items: flex-start; gap: 9px; margin-top: 14px; color: #172033; font: 12px/1.45 Inter, system-ui, sans-serif; cursor: pointer; } .ds-review input { width: 16px; height: 16px; flex: 0 0 auto; margin: 1px 0 0; accent-color: #4f46e5; } .ds-review:focus-within { outline: 3px solid rgba(79,70,229,.2); outline-offset: 2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Local Research Desk",
+    "overview": "Backtrack is a personal workspace for turning a stock idea into a reviewed rule and historical evidence. Its visual language is quiet and precise: a light-indigo frame, a white working sheet, clear data labels, and restrained accents that keep attention on the user's assumptions and results.\n\nThe interface keeps the primary journey in one place and tucks secondary market and analysis tools into grouped navigation. A visible checkpoint sequence describes the actual app flow; it must not imply that separate AI agents ran. Local model output and deterministic fallback rules remain clearly labelled drafts.",
+    "keyCharacteristics": [
+      "Light-indigo shell around a white work surface.",
+      "Flat, hairline-separated panels with compact, readable data.",
+      "A human review checkpoint before historical simulation."
+    ],
+    "rules": [
+      {
+        "name": "The Provenance Rule",
+        "body": "Color never makes an unavailable or simulated value look live or certain; label data source and result state in text.",
+        "section": "colors"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "body": "Do not add card shadows to create hierarchy; use spacing, surface tone, and borders.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do label the source and historical scope of market data.",
+      "Do keep missing-data and fallback states explicit.",
+      "Do describe checkpoints as one local workflow, not as separate agents.",
+      "Do make the proposed rule and assumptions reviewable before a run."
+    ],
+    "donts": [
+      "Don't add live quotes, broker connections, or real-money order controls.",
+      "Don't present a historical result as a forecast or trading instruction.",
+      "Don't fabricate candles, metrics, or successful states.",
+      "Don't add decorative terminal grids, heavy shadows, or an unrelated dark theme."
+    ]
+  }
+}

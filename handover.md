@@ -1,6 +1,60 @@
 # Backtrack engineering handover
 
-Last reviewed: 2026-07-23
+Last reviewed: 2026-10-28
+
+## 2026-10-28 light-indigo research UI
+
+- Confirmed scope: personal, local NSE research. The refresh keeps the light-indigo
+  framed-sheet design, simplifies navigation, and presents the existing analysis,
+  rule review, local-history check, simulation, and follow-up tools as one workflow.
+- The research page now requires an explicit review confirmation before checking or
+  running the test. Changing the hypothesis, symbol, rule, timeframe, date range, or risk
+  settings clears that confirmation; it is not restored from local storage.
+- Taste and Impeccable are installed as Codex skills. Their design notes are in
+  `PRODUCT.md`, `DESIGN.md`, `.taste-skill/direction.json`, and `.impeccable/design.json`.
+  `awesome-design-skills` is a catalog, while `img2threejs` is unrelated to this 2D stock
+  research UI; neither was installed as an app dependency.
+- Verification for this task: frontend tests (19), lint, and production build passed;
+  backend `ruff` and the full `pytest` suite passed. The group-leader shutdown regression
+  passes. `mypy src` still has 13 issues in four unchanged files. CUA browser inspection
+  covered the desktop and compact UI; the standalone Taste inspector could not launch
+  Chrome.
+- `./run.sh` is currently waiting for an NSE import background task to exit gracefully.
+  The existing import and its data were left untouched. Do not claim the app is available
+  until restart completes and `/api/v1/health` responds again.
+- Branch: `codex/skill-guided-ui-20261028`; implementation commit `a1cf1ae`. The user
+  authorized the PR workflow. [PR #1](https://github.com/arjeetanand/backtesting-stockmarket/pull/1)
+  contains the branch; GitHub is the current source for its check and merge state. See
+  `docs/CONSOLIDATION_CHECKLIST.md` for verification and the runtime restart status.
+
+## 2026-10-28 workspace consolidation
+
+- Backtrack remains the active stock-research repository. The landing page now presents
+  one workflow across NSE data import, strategy tests, scanning, robustness, ML, insights,
+  and chart replay; recent test rows come from the local backtest API.
+- The interface labels the data as historical NSE daily archives and marks replay orders
+  as simulated. It does not add live quotes, broker access, or trade execution.
+- `./run.sh` manages the local stack on UI port `4003` and API port `8001`; UI test ports
+  are `5003` and `6003`. It records its own runner PID under ignored `data/.runtime/`,
+  checks ownership before restart, and stops only process groups it created.
+- Audit outcome: keep public `backtesting-stockmarket`; archive private `StockML`,
+  `stockpulse`, `stock-news-sentiment-analysis`, and `stock-news-analysis` on GitHub.
+  These are recoverable archives, not deletions. Older news and generated model artifacts
+  were not copied. Backtrack ML Lab already evaluates chronologically on local NSE data.
+- Codex's Strategy Research Pipeline is the recommended thinking workflow: generate a
+  candidate, turn it into a testable hint, run a Backtrack historical test, then review
+  risk/robustness metrics. `strategy-researcher` does not run the backtest itself; the
+  Backtrack UI remains the execution surface for simulations.
+- The original consolidation branch is `codex/stock-workspace-unification-20261028`.
+  The follow-up UI work is on `codex/skill-guided-ui-20261028`. The original local UI was
+  available at `http://127.0.0.1:4003/`; API
+  health is `http://127.0.0.1:8001/api/v1/health`. See `docs/CONSOLIDATION_CHECKLIST.md`
+  for verification details. The implementation is committed locally as `bf44580`.
+- Original consolidation verification: `ruff`, the full `pytest` suite, the frontend
+  production build, desktop/mobile browser review, and API health passed. Repeat-launch
+  was not completed because the in-flight import held the API open during graceful
+  shutdown. `mypy src` still reports 13 errors in four unchanged files; npm install
+  reported 14 dependency advisories (2 moderate, 9 high, 3 critical).
 
 This is the current engineering source of truth for the Backtrack repository. Read it before changing data imports, provider behavior, backtesting, persistence, replay, research, or trader-facing claims.
 
