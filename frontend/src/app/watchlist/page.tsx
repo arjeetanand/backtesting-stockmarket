@@ -5,6 +5,7 @@ import {
   AlertCircle,
   BookmarkCheck,
   CheckCircle2,
+  Clock3,
   RefreshCw,
   Trash2,
   XCircle,
@@ -24,7 +25,7 @@ type WatchlistItem = {
   stop_loss_price: number;
   current_price: number;
   pnl_pct: number;
-  status: "active" | "target_hit" | "stop_loss_hit";
+  status: "waiting_for_trigger" | "active" | "target_hit" | "stop_loss_hit";
   created_at: string;
 };
 
@@ -67,10 +68,12 @@ export default function WatchlistPage() {
   }, []);
 
   const totalCount = items.length;
+  const waitingCount = items.filter((x) => x.status === "waiting_for_trigger").length;
   const activeCount = items.filter((x) => x.status === "active").length;
   const targetHitCount = items.filter((x) => x.status === "target_hit").length;
   const stopHitCount = items.filter((x) => x.status === "stop_loss_hit").length;
-  const avgPnl = totalCount > 0 ? items.reduce((acc, curr) => acc + curr.pnl_pct, 0) / totalCount : 0;
+  const trackedItems = items.filter((x) => x.status !== "waiting_for_trigger");
+  const avgPnl = trackedItems.length > 0 ? trackedItems.reduce((acc, curr) => acc + curr.pnl_pct, 0) / trackedItems.length : 0;
 
   return (
     <div className="backtrack-page">
@@ -84,7 +87,7 @@ export default function WatchlistPage() {
             </div>
             <h1>Daily Watchlist &amp; Setup Tracker</h1>
             <p>
-              Monitor bookmarked breakout candidates against the latest imported daily NSE bars. Track entry prices, target gains (+15%), and stop-loss levels (-5%) without implying live quotes.
+              Review saved conditional plans against imported daily NSE bars. A plan waits until its trigger is reached; daily candles cannot confirm an intraday fill or which level traded first.
             </p>
           </div>
           <div className="bt-heading-actions">
@@ -102,31 +105,36 @@ export default function WatchlistPage() {
         {/* Summary Stats Grid */}
         <div className="watchlist-stats-grid">
           <div className="watchlist-stat-card">
-            <span>Total Bookmarked</span>
+            <span>Saved Plans</span>
             <strong>{totalCount}</strong>
-            <small>Active candidate setups</small>
+            <small>Local paper tracking</small>
           </div>
           <div className="watchlist-stat-card">
-            <span>Active Trades</span>
+            <span>Waiting for Trigger</span>
+            <strong style={{ color: "#4f46e5" }}>{waitingCount}</strong>
+            <small>Price has not crossed the reference level</small>
+          </div>
+          <div className="watchlist-stat-card">
+            <span>Triggered · Paper</span>
             <strong style={{ color: "#4f46e5" }}>{activeCount}</strong>
-            <small>Currently monitoring</small>
+            <small>Monitoring later daily bars</small>
           </div>
           <div className="watchlist-stat-card">
-            <span>Target Hit 🎯</span>
+            <span>Target Reached</span>
             <strong style={{ color: "#047857" }}>{targetHitCount}</strong>
-            <small>Achieved +15% gain</small>
+            <small>Paper target level reached</small>
           </div>
           <div className="watchlist-stat-card">
-            <span>Stop Loss Hit 🛑</span>
+            <span>Stop Reached</span>
             <strong style={{ color: "#e11d48" }}>{stopHitCount}</strong>
-            <small>Hit -5% stop loss</small>
+            <small>Paper invalidation level reached</small>
           </div>
           <div className="watchlist-stat-card">
-            <span>Average P&amp;L %</span>
+            <span>Average Paper Return</span>
             <strong className={avgPnl >= 0 ? "text-pos" : "text-neg"}>
-              {avgPnl >= 0 ? `+${fmt(avgPnl)}%` : `${fmt(avgPnl)}%`}
+              {trackedItems.length === 0 ? "—" : avgPnl >= 0 ? `+${fmt(avgPnl)}%` : `${fmt(avgPnl)}%`}
             </strong>
-            <small>Unrealized / Realized</small>
+            <small>Triggered plans vs latest close</small>
           </div>
         </div>
 
@@ -141,7 +149,7 @@ export default function WatchlistPage() {
           <div className="bt-panel-head">
             <div>
               <span className="bt-eyebrow">SAVED SETUPS</span>
-              <h2>Active &amp; Completed Watchlist Items ({items.length})</h2>
+              <h2>Saved Morning Plans ({items.length})</h2>
             </div>
           </div>
 
@@ -154,7 +162,7 @@ export default function WatchlistPage() {
             <div style={{ padding: "30px", textAlign: "center", color: "#64748b" }}>
               <BookmarkCheck size={32} style={{ color: "#94a3b8", marginBottom: "8px" }} />
               <p>Your watchlist is currently empty.</p>
-              <small>Open <a href="/market-scanner" className="bt-link">Market Scanner</a>, run a historical breakout scan, then choose <strong>&quot;Bookmark Setup&quot;</strong> on a candidate card.</small>
+              <small>Open <a href="/market-scanner" className="bt-link">Market Scanner</a>, build a morning plan, then choose <strong>&quot;Save Plan&quot;</strong> on a candidate.</small>
             </div>
           ) : (
             <div className="bt-table-wrap">
@@ -163,12 +171,12 @@ export default function WatchlistPage() {
                   <tr>
                     <th className="left">Stock</th>
                     <th className="left">Setup Type</th>
-                    <th className="right">Entry Date</th>
-                    <th className="right">Entry Price</th>
-                    <th className="right">Current Price</th>
-                    <th className="right">Target (+15%)</th>
-                    <th className="right">Stop Loss (-5%)</th>
-                    <th className="right">P&amp;L %</th>
+                    <th className="right">Saved Date</th>
+                    <th className="right">Trigger</th>
+                    <th className="right">Latest Close</th>
+                    <th className="right">Target</th>
+                    <th className="right">Stop</th>
+                    <th className="right">Paper Return</th>
                     <th className="center">Status</th>
                     <th className="center">Action</th>
                   </tr>
@@ -192,23 +200,28 @@ export default function WatchlistPage() {
                       <td className="right font-mono text-neg">₹{fmt(item.stop_loss_price)}</td>
                       <td className="right font-mono">
                         <strong className={item.pnl_pct >= 0 ? "text-pos" : "text-neg"}>
-                          {item.pnl_pct >= 0 ? `+${fmt(item.pnl_pct)}%` : `${fmt(item.pnl_pct)}%`}
+                          {item.status === "waiting_for_trigger" ? "—" : item.pnl_pct >= 0 ? `+${fmt(item.pnl_pct)}%` : `${fmt(item.pnl_pct)}%`}
                         </strong>
                       </td>
                       <td className="center">
                         {item.status === "target_hit" && (
                           <span className="watchlist-badge target-hit">
-                            <CheckCircle2 size={12} /> Target Hit
+                            <CheckCircle2 size={12} /> Target Reached
                           </span>
                         )}
                         {item.status === "stop_loss_hit" && (
                           <span className="watchlist-badge stop-hit">
-                            <XCircle size={12} /> Stop Loss Hit
+                            <XCircle size={12} /> Stop Reached
+                          </span>
+                        )}
+                        {item.status === "waiting_for_trigger" && (
+                          <span className="watchlist-badge waiting">
+                            <Clock3 size={12} /> Waiting for Trigger
                           </span>
                         )}
                         {item.status === "active" && (
                           <span className="watchlist-badge active">
-                            <BookmarkCheck size={12} /> Active
+                            <BookmarkCheck size={12} /> Triggered · Paper
                           </span>
                         )}
                       </td>

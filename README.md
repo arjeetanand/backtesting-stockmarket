@@ -14,6 +14,7 @@ It does not place real orders, connect to a broker, provide live quotes, or requ
 - On `/research`, follows one stock → local data → chart → strategy → backtest → results workflow with OHLCV, volume, indicators, signals, trades, equity, drawdown, and metrics.
 - Replays historical candles with simulated orders only.
 - Runs a seeded daily-bar scenario sample and compares it with a fixed-rule historical sample.
+- Builds a manual morning watchlist from the latest completed NSE daily candles, with conditional trigger, stop, and 2R target levels.
 - Persists backtests, research artifacts, import jobs, and replay sessions locally.
 
 ## Run locally

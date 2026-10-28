@@ -71,7 +71,9 @@ The search starts only after text is entered and asks the backend for a small re
 
 Market Insights is an index-aware daily view. It uses only locally cached official NSE candles, supports NIFTY 50, Sensex, Bank Nifty, and NIFTY 500, and offers 1D, 1W, 1M, and 3M periods. The Stock/Sector heatmap colors equal-sized tiles by local price return, while the breadth cards show advancing, declining, unchanged, and unavailable coverage. Missing candles stay unavailable and are never replaced with synthetic prices.
 
-Market Scanner keeps three concepts separate: a Formula is a reusable rule from the JSON catalogue, a Saved scan is a named local configuration, and a Recent run is a previous result. Opening the page or changing a formula never starts a request; use **Run scan** explicitly. Presets and recent-run metadata are stored in versioned browser-local storage keys.
+Market Scanner keeps formulas, saved scans, historical research, and the morning plan separate. Opening the page or changing a formula never starts a request; use **Build Morning Plan** or **Run scan** explicitly. Presets and recent-run metadata are stored in versioned browser-local storage keys.
+
+The default **Morning Plan** tab ranks technical setups from the latest completed local NSE daily bars. Run it manually at 9:00 IST for the regular NSE pre-open. Each plan shows the data date, previous-session high as a conditional entry trigger, previous-session low as invalidation, and a 2R target. Scores rank setups only; they are not probabilities or a promise of the best-performing stock. The app does not load pre-open auction prices, news, or intraday confirmation and does not schedule itself.
 
 The historical scanner remains available as an explicit research action. It is distinct from current-snapshot formula screening and from Market Insights returns.
 
@@ -124,7 +126,7 @@ The Market Scanner uses the local scanner API and real leaderboard values only. 
 
 FII/DII Insights uses the official NSE institutional-activity report, archives raw snapshots locally, and derives daily/weekly/monthly net-flow summaries from normalized SQLite rows. NSE's current public endpoint is a latest-session snapshot rather than a historical date-range archive, so the page reports incomplete local coverage instead of presenting one snapshot as a month. The Nifty 50 line is rendered only from locally archived official index closes; unavailable index data is never approximated.
 
-Breakout candidates follow one explicit handoff: **Bookmark Setup** saves the historical setup to **Daily Watchlist**, shows an in-page confirmation with a Watchlist link, and **Test history** opens Research with the scanner symbol, strategy, timeframe, and dates. Research handoffs override a previously restored local Research session so a stale symbol or result cannot silently replace the selected scanner candidate. Watchlist values are evaluated against the latest imported daily bars; they are not live quotes.
+Morning candidates follow one explicit handoff: **Save Plan** sends the displayed trigger, stop, and target to **Daily Watchlist**, while **Test history** opens Research with the scanner symbol, strategy, timeframe, and dates. The watchlist waits until a later daily bar reaches the trigger, then evaluates only subsequent bars; the trigger candle is left unresolved because daily OHLC cannot show which level traded first. Latest closes and paper returns are not live quotes or broker fills.
 
 ## Local swarm modules
 

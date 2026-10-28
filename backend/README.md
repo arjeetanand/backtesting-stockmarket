@@ -118,7 +118,7 @@ All routes are prefixed with `/api/v1`.
 ### Scanning, ML, and watchlist
 
 - `POST /market-scanner/run` — run a vectorized multi-stock strategy scan from the local NSE cache.
-- `POST /breakout-scanner/scan` — find local historical breakout setups by conviction threshold.
+- `POST /breakout-scanner/scan` — rank local NSE daily setups and return the latest data date plus conditional prior-high trigger, prior-low stop, and 2R target levels; it does not return live pre-open data.
 - `POST /ml/experiments` and `GET /ml/experiments` — run and list chronological, past-only ML research experiments.
 - `POST /data/sync-today` — import the current missing NSE archive day when available.
 - `POST /watchlist/add`, `GET /watchlist`, and `DELETE /watchlist/{item_id}` — persist, evaluate, and remove simulated setup bookmarks.
@@ -161,9 +161,9 @@ When adding a strategy, add its engine logic, chart indicators, frontend catalog
 - `GET /watchlist` — return current price, P&L, and status.
 - `DELETE /watchlist/{item_id}` — remove one saved setup.
 
-Target/stop status is evaluated only against candles on or after the item's
-entry date. Historical highs and lows from before a setup was bookmarked must
-not complete a new setup.
+Saved plans wait for a daily bar to reach the entry trigger. Target/stop status
+is evaluated only on later daily bars; the trigger candle is unresolved because
+daily OHLC cannot show which level traded first.
 
 ### Local SQLite concurrency
 

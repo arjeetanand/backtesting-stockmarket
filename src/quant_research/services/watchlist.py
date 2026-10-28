@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from quant_research.repositories.market_cache import SqliteMarketCache, WatchlistItem
 
@@ -29,18 +30,19 @@ class WatchlistService:
             stop_loss_price = round(entry_price * 0.95, 2)
 
         item_id = f"watch-{uuid4().hex[:8]}"
-        now_str = datetime.now(tz=UTC).isoformat()
+        now = datetime.now(tz=UTC)
+        now_str = now.isoformat()
 
         item = WatchlistItem(
             id=item_id,
             symbol=clean_symbol,
             company_name=company_name,
             setup_type=setup_type,
-            entry_date=now_str[:10],
+            entry_date=now.astimezone(ZoneInfo("Asia/Kolkata")).date().isoformat(),
             entry_price=entry_price,
             target_price=target_price,
             stop_loss_price=stop_loss_price,
-            status="active",
+            status="waiting_for_trigger",
             created_at=now_str,
         )
 
@@ -80,16 +82,24 @@ class WatchlistService:
                 bars_since_entry = [
                     bar for bar in bars if bar.timestamp.date().isoformat() >= item.entry_date
                 ]
-                if bars_since_entry:
-                    high_since = max(b.high for b in bars_since_entry)
-                    low_since = min(b.low for b in bars_since_entry)
-
-                    if high_since >= item.target_price:
-                        status = "target_hit"
-                    elif low_since <= item.stop_loss_price:
-                        status = "stop_loss_hit"
+                if item.status not in {"target_hit", "stop_loss_hit"}:
+                    trigger_index = next(
+                        (index for index, bar in enumerate(bars_since_entry) if bar.high >= item.entry_price),
+                        None,
+                    )
+                    if trigger_index is None:
+                        status = "waiting_for_trigger"
                     else:
+                        # Daily OHLC cannot reveal which level traded first on the trigger candle.
+                        outcome_bars = bars_since_entry[trigger_index + 1 :]
                         status = "active"
+                        for bar in outcome_bars:
+                            if bar.low <= item.stop_loss_price:
+                                status = "stop_loss_hit"
+                                break
+                            if bar.high >= item.target_price:
+                                status = "target_hit"
+                                break
 
                 if status != item.status:
                     self._cache.update_watchlist_status(item.id, status)
