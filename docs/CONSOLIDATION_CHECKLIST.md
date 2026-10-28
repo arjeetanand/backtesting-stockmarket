@@ -17,13 +17,17 @@
 - [x] Keep missing backend/data states explicit; do not introduce mock or fabricated market data.
 - [x] Add a regression check for malformed launcher state.
 - [x] Apply the Codex Strategy Research Pipeline to the workflow: candidate → testable hint → Backtrack backtest → risk/robustness review.
+- [x] Install Taste and Impeccable in Codex and apply a light-indigo design system to the personal, local app.
+- [x] Simplify navigation and add a human review gate before running an NSE historical simulation.
+- [x] Add a regression test for the research gate and a launcher check for live descendants after a process-group leader exits.
 
 ## Verification and handoff
 
-- [x] Run backend lint and test suite; `ruff` and `pytest` pass. `mypy src` reports 13 existing errors in four unchanged files (`market_cache.py`, `pattern_finder.py`, `breakout_scanner.py`, and `ml_research.py`).
-- [x] Run the frontend production build.
-- [x] Verify repeat-launch ownership behavior and the rendered desktop/mobile UI; confirm API health at `/api/v1/health`.
-- [x] Record local implementation commit `bf44580` and runtime URL `http://127.0.0.1:4003/` in this checklist and `handover.md`.
-- [x] Keep changes on `codex/stock-workspace-unification-20261028`; do not push or merge without authorization.
+- [x] Backend lint and full tests pass; `mypy src` reports 13 existing errors in four unchanged files (`market_cache.py`, `pattern_finder.py`, `breakout_scanner.py`, and `ml_research.py`).
+- [x] Frontend tests, lint, and production build pass; the local review gate and launcher descendant checks pass.
+- [x] Inspect the rendered UI in the browser at desktop and compact widths; a standalone Taste browser inspector could not launch Chrome.
+- [ ] Complete a clean `run.sh` restart after the active NSE import finishes; the current graceful shutdown is waiting for that background work.
+- [x] Consolidation commit `bf44580` is followed by this UI task on `codex/skill-guided-ui-20261028`.
+- [ ] Push, open PR, and merge to `main`; the user authorized this workflow, but GitHub credentials must be valid.
 
 The npm install reported 14 dependency advisories (2 moderate, 9 high, 3 critical); the lockfile was not changed to apply automatic upgrades.

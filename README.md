@@ -110,7 +110,7 @@ recoverable there. No legacy generated datasets or machine-specific paths were c
 
 ## Research workflow
 
-Use **Test a strategy** for the primary end-to-end path. Select a symbol from the local NSE catalogue, confirm the saved coverage and latest close, choose a daily date range, then load the available historical bars. The chart shows real local OHLCV and volume; missing data produces import guidance or an unavailable state and never synthetic prices. After the strategy and execution assumptions are set, run the deterministic historical simulation and review signal markers, trade selection, equity, drawdown, and the detailed ledger.
+Use **New research** for the primary idea-to-evidence path. Describe a rule, choose the NSE symbol and date range, and let the optional local helper prepare a proposal. Review the rule, assumptions, and risks; explicitly confirm that review; then check or import official NSE history and run the historical simulation. Backtrack shows real local OHLCV, trades, equity, drawdown, and metrics. Missing data stays unavailable rather than being replaced with synthetic prices. The visible checkpoints are one application workflow, not separate AI agents. If Ollama is unavailable, Backtrack labels the catalogue-based proposal as a fallback.
 
 The chart boundary is intentionally API-independent: `frontend/src/lib/research-chart.ts` adapts market-data and backtest responses into the typed contracts in `frontend/src/lib/chart-data.ts`, while `frontend/src/components/charts/FinancialChart.tsx` owns rendering and interaction. The backend's custom result adds candle `volume` and signal `id`/`trade_id` fields without removing existing result fields.
 

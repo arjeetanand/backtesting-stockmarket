@@ -2,6 +2,30 @@
 
 Last reviewed: 2026-10-28
 
+## 2026-10-28 light-indigo research UI
+
+- Confirmed scope: personal, local NSE research. The refresh keeps the light-indigo
+  framed-sheet design, simplifies navigation, and presents the existing analysis,
+  rule review, local-history check, simulation, and follow-up tools as one workflow.
+- The research page now requires an explicit review confirmation before checking or
+  running the test. Changing the hypothesis, symbol, rule, timeframe, date range, or risk
+  settings clears that confirmation; it is not restored from local storage.
+- Taste and Impeccable are installed as Codex skills. Their design notes are in
+  `PRODUCT.md`, `DESIGN.md`, `.taste-skill/direction.json`, and `.impeccable/design.json`.
+  `awesome-design-skills` is a catalog, while `img2threejs` is unrelated to this 2D stock
+  research UI; neither was installed as an app dependency.
+- Verification for this task: frontend tests (19), lint, and production build passed;
+  backend `ruff` and the full `pytest` suite passed. The group-leader shutdown regression
+  passes. `mypy src` still has 13 issues in four unchanged files. CUA browser inspection
+  covered the desktop and compact UI; the standalone Taste inspector could not launch
+  Chrome.
+- `./run.sh` is currently waiting for an NSE import background task to exit gracefully.
+  The existing import and its data were left untouched. Do not claim the app is available
+  until restart completes and `/api/v1/health` responds again.
+- Branch: `codex/skill-guided-ui-20261028`. The task changes are not yet committed. The
+  user authorized push, PR, and merge; GitHub authentication still needs to be verified.
+  See `docs/CONSOLIDATION_CHECKLIST.md` for status and remaining work.
+
 ## 2026-10-28 workspace consolidation
 
 - Backtrack remains the active stock-research repository. The landing page now presents
@@ -20,14 +44,16 @@ Last reviewed: 2026-10-28
   candidate, turn it into a testable hint, run a Backtrack historical test, then review
   risk/robustness metrics. `strategy-researcher` does not run the backtest itself; the
   Backtrack UI remains the execution surface for simulations.
-- The local task branch is `codex/stock-workspace-unification-20261028`. No push or merge
-  to `main` was performed. The local UI is available at `http://127.0.0.1:4003/`; API
+- The original consolidation branch is `codex/stock-workspace-unification-20261028`.
+  The follow-up UI work is on `codex/skill-guided-ui-20261028`. The original local UI was
+  available at `http://127.0.0.1:4003/`; API
   health is `http://127.0.0.1:8001/api/v1/health`. See `docs/CONSOLIDATION_CHECKLIST.md`
   for verification details. The implementation is committed locally as `bf44580`.
-- Verification: `ruff`, the full `pytest` suite, the frontend production build, browser
-  review at desktop and mobile widths, repeat-launch, and API health passed. `mypy src`
-  still reports 13 errors in four unchanged files; npm install reported 14 dependency
-  advisories (2 moderate, 9 high, 3 critical).
+- Original consolidation verification: `ruff`, the full `pytest` suite, the frontend
+  production build, desktop/mobile browser review, and API health passed. Repeat-launch
+  was not completed because the in-flight import held the API open during graceful
+  shutdown. `mypy src` still reports 13 errors in four unchanged files; npm install
+  reported 14 dependency advisories (2 moderate, 9 high, 3 critical).
 
 This is the current engineering source of truth for the Backtrack repository. Read it before changing data imports, provider behavior, backtesting, persistence, replay, research, or trader-facing claims.
 

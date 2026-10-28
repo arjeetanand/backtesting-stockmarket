@@ -96,11 +96,14 @@ def group_alive(process: subprocess.Popen[bytes]) -> bool:
         text=True,
     )
     if result.returncode == 0:
+        live_member = False
+        group_found = False
         for line in result.stdout.splitlines():
             fields = line.split()
             if len(fields) >= 2 and fields[0].isdigit() and int(fields[0]) == process.pid:
-                return not fields[1].startswith("Z")
-        return False
+                group_found = True
+                live_member = live_member or not fields[1].startswith("Z")
+        return group_found and live_member
     try:
         os.killpg(process.pid, 0)
         return True

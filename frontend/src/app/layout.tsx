@@ -14,10 +14,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        style={{ background: "#f7f9fb", color: "#191c1e" }}
-        className="min-h-screen"
-      >
+      <body className="min-h-screen bt-app-body">
         <Sidebar />
         <main className="min-h-screen bt-app-main">
           {children}

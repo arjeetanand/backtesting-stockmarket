@@ -34,3 +34,13 @@ def test_group_alive_ignores_exited_zombie_members(monkeypatch):
     )
 
     assert not run_stack.group_alive(SimpleNamespace(pid=42))
+
+
+def test_group_alive_waits_for_live_descendants_after_group_leader_exits(monkeypatch):
+    monkeypatch.setattr(
+        run_stack.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout="42 Z\n42 S\n"),
+    )
+
+    assert run_stack.group_alive(SimpleNamespace(pid=42))

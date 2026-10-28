@@ -60,7 +60,6 @@ export default function DashboardPage() {
   useEffect(() => {
     const controller = new AbortController();
     let current = true;
-    setLoadState("loading");
 
     void fetchWithTimeout(`${API_BASE_URL}/backtests`, { signal: controller.signal })
       .then(async (response) => {
@@ -142,7 +141,7 @@ export default function DashboardPage() {
           {loadState === "error" && (
             <div className="bt-panel bt-dashboard-state bt-dashboard-error" role="alert">
               <div><strong>Saved tests are unavailable</strong><p>Check that Backtrack’s local backend is running, then retry.</p></div>
-              <button type="button" className="bt-secondary" onClick={() => setRefreshKey((key) => key + 1)}>Try again</button>
+              <button type="button" className="bt-secondary" onClick={() => { setLoadState("loading"); setRefreshKey((key) => key + 1); }}>Try again</button>
             </div>
           )}
           {loadState === "ready" && runs.length === 0 && (
