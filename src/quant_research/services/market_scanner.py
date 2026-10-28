@@ -16,13 +16,13 @@ from quant_research.services.nse_import import SENSEX_NSE_STARTER
 UniverseType = Literal["nifty50", "nifty500", "all"]
 StrategyType = str
 
+NIFTY50_AS_OF = "2026-10-28"
 NIFTY50_SYMBOLS: set[str] = {
-    "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "BHARTIARTL", "ITC", "SBIN", "LTIM", "LARSEN",
-    "KOTAKBANK", "AXISBANK", "HCLTECH", "ADANIENT", "SUNPHARMA", "TATAMOTORS", "NTPC", "TATASTEEL",
-    "POWERGRID", "ULTRACEMCO", "TITAN", "BAJFINANCE", "M&M", "MARUTI", "ASIANPAINT", "ONGC",
-    "JSWSTEEL", "ADANIPORTS", "COALINDIA", "BAJAJFINSV", "BPCL", "EICHERMOT", "GRASIM", "HEROMOTOCO",
-    "HINDALCO", "HINDUNILVR", "INDUSINDBK", "CIPLA", "DRREDDY", "APOLLOHOSP", "DIVISLAB", "SBI LIFE",
-    "HDFCLIFE", "WIPRO", "TECHM", "NESTLEIND", "TATACONSUM", "BRITANNIA", "BEL"
+    "ADANIENT", "ADANIPORTS", "APOLLOHOSP", "ASIANPAINT", "AXISBANK", "BAJAJ-AUTO", "BAJAJFINSV", "BAJFINANCE",
+    "BEL", "BHARTIARTL", "BSE", "CIPLA", "COALINDIA", "DRREDDY", "EICHERMOT", "ETERNAL", "GRASIM", "HCLTECH",
+    "HDFCBANK", "HDFCLIFE", "HINDALCO", "HINDUNILVR", "ICICIBANK", "INDIGO", "INFY", "ITC", "JIOFIN", "JSWSTEEL",
+    "KOTAKBANK", "LT", "M&M", "MARUTI", "MAXHEALTH", "NESTLEIND", "NTPC", "ONGC", "POWERGRID", "RELIANCE", "SBILIFE",
+    "SBIN", "SHRIRAMFIN", "SUNPHARMA", "TATACONSUM", "TATASTEEL", "TCS", "TECHM", "TITAN", "TMPV", "TRENT", "ULTRACEMCO",
 }
 
 SECTOR_MAP: dict[str, str] = {
@@ -34,6 +34,7 @@ SECTOR_MAP: dict[str, str] = {
     "ITC": "FMCG & Retail", "HINDUNILVR": "FMCG & Retail", "NESTLEIND": "FMCG & Retail", "BRITANNIA": "FMCG & Retail", "TATACONSUM": "FMCG & Retail", "ASIANPAINT": "FMCG & Retail", "TITAN": "FMCG & Retail", "TRENT": "FMCG & Retail",
     "TATASTEEL": "Metals & Mining", "JSWSTEEL": "Metals & Mining", "HINDALCO": "Metals & Mining", "JINDALSTEL": "Metals & Mining", "VEDL": "Metals & Mining",
     "LARSEN": "Capital Goods & Infra", "LT": "Capital Goods & Infra", "ULTRACEMCO": "Capital Goods & Infra", "ADANIENT": "Capital Goods & Infra", "ADANIPORTS": "Capital Goods & Infra", "BEL": "Capital Goods & Infra", "HAL": "Capital Goods & Infra",
+    "BSE": "Financial Services", "INDIGO": "Services", "MAXHEALTH": "Healthcare", "TMPV": "Automobile",
     "BHARTIARTL": "Telecom & Media", "IDEA": "Telecom & Media"
 }
 

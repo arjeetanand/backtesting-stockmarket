@@ -1,11 +1,11 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
 from quant_research.api.routes.api import create_api_router
-from quant_research.api.schemas import StockResearchRequest
+from quant_research.api.schemas import StockResearchMorningScanResponse, StockResearchRequest
 from quant_research.domain.data.models import OHLCVBar
 from quant_research.repositories.artifacts import SqliteArtifactStore
 from quant_research.repositories.backtests import InMemoryBacktestRepository
@@ -16,6 +16,7 @@ from quant_research.services.stock_research import (
     ARTIFACT_KIND,
     StockResearchService,
     _add_indicators,
+    _entry_window_is_open,
     _simulate_period,
 )
 
@@ -52,6 +53,20 @@ def test_prior_breakout_levels_exclude_the_signal_day() -> None:
     assert enriched.loc[14, "rsi14"] == 50.0
 
 
+def test_morning_scan_universe_uses_official_nse_symbol_codes() -> None:
+    from quant_research.config import load_universe_catalog
+    from quant_research.services.market_scanner import NIFTY50_AS_OF, NIFTY50_SYMBOLS
+
+    catalog = next(item for item in load_universe_catalog().universes if item.universe_id == "nifty50")
+    assert len(NIFTY50_SYMBOLS) == 50
+    assert NIFTY50_SYMBOLS == set(catalog.symbols)
+    assert NIFTY50_AS_OF == catalog.as_of == "2026-10-28"
+    assert "LT" in NIFTY50_SYMBOLS
+    assert "SBILIFE" in NIFTY50_SYMBOLS
+    assert "LARSEN" not in NIFTY50_SYMBOLS
+    assert "SBI LIFE" not in NIFTY50_SYMBOLS
+
+
 def test_backtest_enters_on_next_session_and_resolves_ambiguous_bar_stop_first() -> None:
     frame = pd.DataFrame(
         {
@@ -75,6 +90,56 @@ def test_backtest_enters_on_next_session_and_resolves_ambiguous_bar_stop_first()
     assert trades[0]["entry_date"] == "2025-07-21"
     assert trades[0]["exit_reason"] == "stop"
     assert trades[0]["outcome"] == "loss"
+
+
+def test_backtest_counts_raw_signals_separately_from_closed_trades() -> None:
+    frame = pd.DataFrame(
+        {
+            "timestamp": [datetime(2025, 1, 1, tzinfo=UTC) + timedelta(days=index) for index in range(204)],
+            "open": [100.0] * 204,
+            "high": [101.0] * 204,
+            "low": [99.0] * 204,
+            "close": [100.0] * 204,
+            "volume": [1_000.0] * 204,
+            "atr14": [2.0] * 204,
+            "sma50": [90.0] * 204,
+            "entry_signal": [False] * 200 + [True, True, True, True],
+        }
+    )
+
+    metrics, trades = _simulate_period(frame, 200, len(frame))
+
+    assert metrics["signal_occurrences"] == 4
+    assert metrics["trades"] == len(trades) == 1
+
+
+def test_entry_window_uses_nse_weekends_holidays_and_market_open() -> None:
+    friday = date(2026, 10, 23)
+    assert _entry_window_is_open(friday, datetime(2026, 10, 26, 3, 44, tzinfo=UTC))
+    assert not _entry_window_is_open(friday, datetime(2026, 10, 26, 3, 45, tzinfo=UTC))
+
+    before_monday_holiday = date(2026, 9, 11)
+    assert _entry_window_is_open(before_monday_holiday, datetime(2026, 9, 15, 3, 44, tzinfo=UTC))
+    assert not _entry_window_is_open(before_monday_holiday, datetime(2026, 9, 15, 3, 45, tzinfo=UTC))
+
+    assert not _entry_window_is_open(date(2026, 11, 6), datetime(2026, 11, 6, 3, 0, tzinfo=UTC))
+    assert not _entry_window_is_open(date(2026, 10, 30), datetime(2026, 10, 29, 3, 0, tzinfo=UTC))
+    assert not _entry_window_is_open(date(2025, 12, 31), datetime(2026, 1, 1, 3, 0, tzinfo=UTC))
+
+
+def test_trigger_is_not_actionable_after_its_next_session_open() -> None:
+    setup = StockResearchService._trade_plan(
+        pd.DataFrame(
+            [{"timestamp": datetime(2026, 10, 23, tzinfo=UTC), "close": 110.0, "entry_signal": True}]
+        ),
+        {"prior20_high": 108.0, "atr14": 2.0, "sma50": 105.0, "sma200": 100.0},
+        [],
+        3,
+        datetime(2026, 10, 26, 3, 45, tzinfo=UTC),
+    )
+
+    assert setup["status"] == "stale_data"
+    assert "entry window has passed" in setup["reasons"][0]
 
 
 def test_profit_factor_uses_sized_cash_pnl_and_whole_shares() -> None:
@@ -117,7 +182,8 @@ def test_every_insufficient_data_attempt_is_saved_and_counted(tmp_path: Path) ->
 
     assert result["run_status"] == "insufficient_data"
     assert history["total_runs"] == 2
-    assert history["failed_attempts"] == 2
+    assert history["failed_attempts"] == 0
+    assert history["insufficient_data_runs"] == 2
     assert history["not_evaluable_runs"] == 2
     assert result["run_id"] in {run["run_id"] for run in history["runs"]}
     assert artifacts.get(ARTIFACT_KIND, result["run_id"]) is not None
@@ -143,9 +209,162 @@ def test_history_counts_completed_gate_outcomes_and_failed_attempts(tmp_path: Pa
     assert history["total_runs"] == 4
     assert history["completed_runs"] == 3
     assert history["failed_attempts"] == 1
+    assert history["insufficient_data_runs"] == 0
     assert history["qualified_runs"] == 1
     assert history["failed_gates"] == 1
     assert history["not_evaluable_runs"] == 2
+
+
+def test_morning_scan_only_surfaces_fresh_signals_that_pass_the_historical_gate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("quant_research.services.market_scanner.NIFTY50_SYMBOLS", {"PASS", "FAIL", "MISSING", "STALE"})
+    cache_path = tmp_path / "market.sqlite3"
+    service = StockResearchService(SqliteMarketCache(cache_path), SqliteArtifactStore(cache_path))
+    outcomes = {
+        "PASS": {
+            "run_id": "pass-run",
+            "company_name": "Passing Co",
+            "data_as_of": "2026-10-28",
+            "bar_count": 1_500,
+                "history_years": 6.0,
+            "run_status": "completed",
+            "validation_gate": {"status": "passed"},
+            "setup": {"status": "triggered", "entry_trigger": 110.0, "stop_loss": 100.0, "target_2r": 130.0},
+            "technical": {"close": 111.0},
+            "out_of_sample_metrics": {
+                "win_rate_pct": 72.0,
+                "trades": 40,
+                "wins": 29,
+                "losses": 11,
+                "expectancy_pct": 1.2,
+                "max_drawdown_pct": -8.0,
+            },
+        },
+        "FAIL": {
+            "run_id": "fail-run",
+            "company_name": "Failing Co",
+            "data_as_of": "2026-10-28",
+            "bar_count": 1_500,
+            "run_status": "completed",
+            "validation_gate": {"status": "failed"},
+            "setup": {"status": "triggered"},
+            "technical": {"close": 111.0},
+            "out_of_sample_metrics": {"win_rate_pct": 62.0, "trades": 40, "wins": 25, "losses": 15},
+        },
+        "MISSING": {
+            "run_id": "missing-run",
+            "company_name": None,
+            "data_as_of": None,
+            "bar_count": 0,
+            "run_status": "insufficient_data",
+            "validation_gate": {"status": "not_evaluable"},
+            "setup": None,
+        },
+        "STALE": {
+            "run_id": "stale-run",
+            "company_name": "Stale Co",
+            "data_as_of": "2026-10-23",
+            "bar_count": 1_500,
+            "run_status": "completed",
+            "validation_gate": {"status": "passed"},
+            "setup": {"status": "stale_data"},
+            "technical": {"close": 111.0},
+            "out_of_sample_metrics": {"win_rate_pct": 72.0, "trades": 40, "wins": 29, "losses": 11},
+        },
+    }
+    calls: list[str] = []
+
+    def fake_run(symbol: str, company_name: str | None = None, *, include_chart: bool = True) -> dict[str, object]:
+        calls.append(symbol)
+        assert include_chart is False
+        return outcomes[symbol]
+
+    monkeypatch.setattr(service, "run", fake_run)
+
+    result = service.scan_morning()
+
+    assert calls == ["FAIL", "MISSING", "PASS", "STALE"]
+    assert result["symbols_scanned"] == 4
+    assert result["symbols_with_data"] == 3
+    assert result["completed_runs"] == 3
+    assert result["analysis_errors"] == 0
+    assert result["insufficient_history"] == 0
+    assert result["missing_data"] == 1
+    assert result["passed_backtests"] == 2
+    assert result["failed_backtests"] == 1
+    assert result["not_evaluable"] == 1
+    assert result["stale_setups"] == 1
+    assert result["fresh_signals"] == 2
+    assert result["qualifying_setups"] == 1
+    candidate = result["candidates"][0]
+    assert candidate["run_id"] == "pass-run"
+    assert candidate["symbol"] == "PASS"
+    assert candidate["technical"]["close"] == 111.0
+    assert candidate["setup"]["entry_trigger"] == 110.0
+    assert candidate["out_of_sample_metrics"]["win_rate_pct"] == 72.0
+
+
+def test_morning_scan_returns_every_qualifying_candidate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    symbols = {f"PASS{index:02d}" for index in range(11)}
+    monkeypatch.setattr("quant_research.services.market_scanner.NIFTY50_SYMBOLS", symbols)
+    cache_path = tmp_path / "market.sqlite3"
+    service = StockResearchService(SqliteMarketCache(cache_path), SqliteArtifactStore(cache_path))
+
+    def fake_run(symbol: str, company_name: str | None = None, *, include_chart: bool = True) -> dict[str, object]:
+        assert include_chart is False
+        return {
+            "run_id": f"{symbol}-run",
+            "company_name": symbol,
+            "data_as_of": "2026-10-28",
+            "bar_count": 1_500,
+            "history_years": 6.0,
+            "run_status": "completed",
+            "validation_gate": {"status": "passed"},
+            "setup": {"status": "triggered"},
+            "technical": {"close": 111.0},
+            "out_of_sample_metrics": {
+                "win_rate_pct": 72.0,
+                "trades": 40,
+                "wins": 29,
+                "losses": 11,
+                "expectancy_pct": 1.2,
+                "max_drawdown_pct": -8.0,
+            },
+        }
+
+    monkeypatch.setattr(service, "run", fake_run)
+
+    result = service.scan_morning()
+
+    assert result["qualifying_setups"] == len(symbols)
+    assert {candidate["symbol"] for candidate in result["candidates"]} == symbols
+
+
+def test_morning_scan_api_validates_the_summary_contract(tmp_path: Path) -> None:
+    cache_path = tmp_path / "market.sqlite3"
+    router = create_api_router(
+        ResearchService(None, InMemoryBacktestRepository()),
+        HypothesisService(_StubLlm()),
+        market_cache=SqliteMarketCache(cache_path),
+        artifacts=SqliteArtifactStore(cache_path),
+    )
+    endpoint = next(route.endpoint for route in router.routes if route.path.endswith("/stock-research/morning-scan"))
+
+    result = endpoint()
+
+    assert isinstance(result, StockResearchMorningScanResponse)
+    assert result.status == "completed"
+    assert result.symbols_scanned > 0
+    assert result.not_evaluable == result.symbols_scanned
+    assert result.analysis_errors == 0
+    assert result.missing_data == result.symbols_scanned
+    assert result.stale_setups == 0
+    assert result.candidates == []
 
 
 def test_available_daily_history_completes_but_short_history_cannot_pass_gate(tmp_path: Path) -> None:
@@ -173,6 +392,7 @@ def test_available_daily_history_completes_but_short_history_cannot_pass_gate(tm
 
     assert result["run_status"] == "completed"
     assert result["bar_count"] == 260
+    assert len(result["chart"]) == result["bar_count"]
     assert result["technical"]["sma200"] is not None
     assert result["validation_gate"]["status"] == "not_evaluable"
     assert "at least 5 years" in " ".join(result["validation_gate"]["reasons"])
@@ -269,5 +489,6 @@ def test_api_records_missing_symbol_even_when_optional_catalogue_lookup_fails(tm
 
     assert result.run_status == "insufficient_data"
     assert history.total_runs == 1
-    assert history.failed_attempts == 1
+    assert history.failed_attempts == 0
+    assert history.insufficient_data_runs == 1
     assert history.not_evaluable_runs == 1

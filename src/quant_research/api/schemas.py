@@ -639,6 +639,7 @@ class StockResearchSetupResponse(BaseModel):
 
 class StockResearchMetricsResponse(BaseModel):
     trades: int
+    signal_occurrences: int
     wins: int
     losses: int
     flats: int
@@ -721,12 +722,48 @@ class StockResearchResponse(BaseModel):
     run_log: StockResearchRunLogResponse
 
 
+class StockResearchMorningCandidateResponse(BaseModel):
+    run_id: str
+    symbol: str
+    company_name: str
+    data_as_of: date
+    history_years: float
+    technical: StockResearchTechnicalResponse
+    setup: StockResearchSetupResponse
+    out_of_sample_metrics: StockResearchMetricsResponse
+
+
+class StockResearchMorningScanResponse(BaseModel):
+    scan_id: str
+    status: Literal["completed"]
+    started_at: datetime
+    finished_at: datetime
+    universe: Literal["NIFTY 50"]
+    universe_as_of: date
+    data_source: str
+    data_as_of: date | None
+    symbols_scanned: int
+    symbols_with_data: int
+    completed_runs: int
+    analysis_errors: int
+    insufficient_history: int
+    missing_data: int
+    passed_backtests: int
+    failed_backtests: int
+    not_evaluable: int
+    stale_setups: int
+    fresh_signals: int
+    qualifying_setups: int
+    candidates: list[StockResearchMorningCandidateResponse]
+
+
 class StockResearchRunSummaryResponse(BaseModel):
     run_id: str
     symbol: str
     run_status: Literal["completed", "insufficient_data", "failed"]
     logged_at: datetime | None
     data_as_of: date | None
+    signal_occurrences: int | None
     trades: int
     wins: int
     losses: int
@@ -738,6 +775,7 @@ class StockResearchHistoryResponse(BaseModel):
     total_runs: int
     completed_runs: int
     failed_attempts: int
+    insufficient_data_runs: int
     qualified_runs: int
     failed_gates: int
     not_evaluable_runs: int
