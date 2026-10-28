@@ -117,9 +117,10 @@ recoverable there. No legacy generated datasets or machine-specific paths were c
 The website uses a light-indigo frame, white research canvas, navy editorial headings, and
 pale periwinkle primary actions across its routes. Shared UI tokens and responsive rules
 are documented in [DESIGN.md](DESIGN.md); the theme keeps the existing local,
-historical-only research boundary. The overview now features an original, locally served
-notebook-researcher illustration in the same palette. A small version of the same character marks
-each section header, with a restrained thinking animation that respects reduced-motion settings.
+historical-only research boundary. The overview and route-family headers use six original,
+locally served transparent PNG illustrations without image optimization or crop. Compact
+headers use a crisp inline SVG notebook mark; its restrained thinking motion respects
+reduced-motion settings.
 
 ## Research workflow
 

@@ -460,3 +460,15 @@ Next owner/action:
 - The default Turbopack production build failed when sandbox permissions blocked a child-process startup for CSS processing; the isolated webpack production build passed. Reduced-motion handling was source-checked but not emulated in the browser. GitGuardian passed; GitHub Copilot review was unavailable because the account had no remaining review quota.
 - Run with `./run.sh`; UI port `4003`, API port `8001`. Current preview: `http://127.0.0.1:4003/`.
 - Next action: review the completed changes in the running app at `http://127.0.0.1:4003/`.
+
+## 15. Full-resolution illustrations across research routes
+
+- Date: 2026-10-28.
+- Branch: `codex/backtrack-illustration-system-20261028`.
+- Replace the reused cropped WebP with six transparent 1536×1024 PNG scenes for overview/research, markets, strategy, evidence review, replay, and local data. The shared header selects the scene by route; the custom Insights heading uses the market scene, and Home uses the overview scene.
+- Replace the small raster crop with an inline SVG notebook mark. Render each scene at its natural aspect ratio without Next image optimization, and eagerly load the visible header/hero illustration.
+- Update `DESIGN.md`, `README.md`, and `docs/UI_THEME_CHECKLIST.md`. No API, database, or market-data behavior changed.
+- Verification: frontend ESLint and the webpack production build pass; `git diff --check` passes. Live-browser sweep covered all 21 routes at 1185px: every route loaded a 1536px artwork source and had no document-width overflow. Home, Research, and Insights were visually inspected; no new console warnings appeared after eager loading was added.
+- Responsive media rules were source-checked, but the available browser control could not emulate 390px or 767px viewports. The checklist leaves those runtime checks pending.
+- Run with `./run.sh`; UI port `4003`, API port `8001`. Preview: `http://127.0.0.1:4003/`.
+- PR and merge details: pending.

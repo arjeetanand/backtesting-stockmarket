@@ -103,12 +103,13 @@ export default function DashboardPage() {
           </div>
           <figure className="bt-dashboard-illustration">
             <Image
-              src="/illustrations/research-notebook-mascot.webp"
+              src="/illustrations/overview-research.png"
               alt="A notebook mascot reviews printed historical price records with a magnifying glass."
-              width={960}
-              height={640}
+              width={1536}
+              height={1024}
               sizes="(min-width: 1440px) 22vw, (min-width: 1000px) 33vw, 100vw"
-              priority
+              loading="eager"
+              unoptimized
             />
           </figure>
           <aside className="bt-dashboard-loop" aria-label="Research workflow">

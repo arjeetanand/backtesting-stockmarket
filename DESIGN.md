@@ -140,7 +140,7 @@ Use 7px controls, 10px panels, and a 16px page sheet. Borders are thin and cool 
 
 ### Illustration
 
-Use the original notebook researcher mascot as the overview illustration and as a small mark beside shared section headings, including the custom Insights heading. Its subtle thinking tilt and thought dots use CSS only when motion is allowed; the reduced-motion view stays still. Keep charts, warnings, and trading decisions free of decorative art. Do not imply forecasts or recommendations.
+Use the locally stored, original 1536×1024 transparent PNG scenes in `frontend/public/illustrations/` for the overview and route-family headers. Render the full 3:2 composition with `object-fit: contain` and preserve the source PNG; do not crop the scene into an avatar or pass it through lossy optimization. Use the small inline SVG notebook mark in compact UI. Keep character movement subtle and disabled for reduced motion. Keep charts, warnings, and trading decisions free of decorative art, and do not imply forecasts or recommendations.
 
 ## Components
 
