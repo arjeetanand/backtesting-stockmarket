@@ -37,6 +37,7 @@ The home page guides the local-data → research → saved-results → compariso
 | `/` | Home and simple workflow entry points |
 | `/data` | Bulk NSE history download and local stock search |
 | `/research` | Hypothesis review, data preparation, and backtest handoff |
+| `/stock-research` | One-stock indicators, conditional levels, fixed-rule holdout, and persistent run log |
 | `/strategy` | Build indicator/rule strategies |
 | `/strategy-import` | Import and review YouTube strategy rules |
 | `/backtests` | Saved test history |
@@ -80,6 +81,8 @@ The **Daily structure zones** tab is a separate explicit scan over the selected 
 The **Liquidity flow** tab ranks the latest 20 local daily candles by a close-location × traded-value estimate, shows the top 20 on each side and makes the top three selectable in a split flow graph. Search any local NSE catalogue symbol to inspect its candidate price-action zones. It does not expose actual buyer/seller identities, order-book depth, or live orders.
 
 The historical scanner remains available as an explicit research action. It is distinct from current-snapshot formula screening and from Market Insights returns. Daily structure-zone scans are separate again: they identify recent price areas from local daily bars and never run automatically.
+
+`/stock-research` is the single-symbol explanation and validation flow. It reads local NSE daily bars, gives reasons for SMA/RSI/MACD/ATR/volume context, and shows conditional levels from a fixed long-only breakout rule. Its final 30% holdout is not optimized; the simulation starts at ₹1,00,000, buys whole shares, and includes stated costs. A run only passes the screen with at least five years, 30 out-of-sample trades, at least 70% wins, positive net expectancy and compounded return, and cash-based profit factor above one. The route persists every valid analysis request that reaches the service to `stock_analysis_run` artifacts and shows all-time counts with a recent ledger. Historical price returns are not fundamental growth forecasts; raw prices are not adjusted for splits or bonus issues, and no live price or order is supplied.
 
 ## Historical Market Scanner workflow
 

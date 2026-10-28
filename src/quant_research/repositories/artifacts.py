@@ -72,6 +72,14 @@ class SqliteArtifactStore:
             for row in rows
         ]
 
+    def count_by_json_value(self, kind: str, path: str) -> dict[str, int]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT json_extract(payload, ?) AS value, COUNT(*) FROM research_artifacts WHERE kind = ? GROUP BY value",
+                (path, kind),
+            ).fetchall()
+        return {str(value if value is not None else "unknown"): int(count) for value, count in rows}
+
     def delete(self, kind: str, artifact_key: str) -> bool:
         with self._connect() as connection:
             cursor = connection.execute(

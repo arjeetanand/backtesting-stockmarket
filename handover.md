@@ -217,6 +217,7 @@ Persistence is local single-user SQLite. There is no authentication, multi-user 
 | --- | --- | --- |
 | Home | `frontend/src/app/page.tsx` | Stock/date selection and clear entry points into testing, YouTube import, and replay |
 | Research | `frontend/src/app/research/page.tsx` | Hypothesis prompt, Ollama proposal, NSE data preparation, daily OHLCV/volume chart, backtest handoff, signals/trades/equity/drawdown, saved-session restore |
+| Stock Research | `frontend/src/app/stock-research/page.tsx` | Single-symbol indicator explanations, conditional price levels, fixed-rule OOS results, and attempt ledger |
 | Strategy Lab | `frontend/src/app/strategy/page.tsx` | Rule/indicator strategy configuration |
 | YouTube Import | `frontend/src/app/strategy-import/page.tsx` | URL/transcript extraction and human-review draft |
 | Manage Stock Data | `frontend/src/app/data/page.tsx` | Bulk quick/custom date-range import, local catalogue search, saved period/candle count, progress, and cache status |
@@ -530,3 +531,12 @@ Next owner/action:
 - Run the merged code with `./run.sh` on UI port `4003` and API port `8001`; then open **Market Scanner → Liquidity flow**.
 - Next action for actual buyer/seller identities or resting-order blocks: integrate a licensed intraday market-depth source and keep its data provenance separate from these historical OHLCV estimates.
 - Checklist: `docs/ORDER_FLOW_CHECKLIST.md`.
+
+## 20. Single-stock research and validation
+
+- `POST /api/v1/stock-research/run` reads the selected symbol's saved NSE daily candles and returns price ranges, SMA20/50/200, RSI14, MACD(12/26/9), ATR14, volume ratio, historical price returns, indicator reasons, and a conditional long-only plan. The UI lives at `/stock-research`; the typed client is `frontend/src/lib/stock-research.ts`.
+- The fixed rule is a daily close above the prior 20-session high, close>SMA50>SMA200, and volume above the preceding 20-session mean. It enters at the next session open, starts each train/test period with ₹1,00,000, buys whole shares with available equity, uses a 2×ATR stop and 2R target, exits at target/stop/SMA50-close/20-session limit, and resolves a same-daily-bar stop/target touch as stop-first. Profit factor uses summed net cash P&L after position sizing; the screen also requires positive compounded out-of-sample return. The 70/30 chronological split applies to bars after the 200-session indicator warm-up; there is no parameter tuning.
+- Fees model 0.1% slippage each side, delivery STT each side, buy-side stamp duty, and the SEBI turnover fee; brokerage, exchange transaction fees, GST, dividends, and corporate-action adjustments are excluded. Raw prices are not adjusted for splits or bonus issues, which can distort indicators, levels, and long-range results. Source links and assumptions are shown in the page. Daily OHLCV cannot establish future earnings growth; only historical price returns are reported.
+- Every successful, insufficient-data, and failed attempt is saved as a uniquely keyed `stock_analysis_run` artifact with timestamps, data fingerprint, results, gate status, and failure reason. `SqliteArtifactStore.count_by_json_value` supplies all-time run/gate counts without loading every stored chart into memory. Existing Testing History clear/delete includes this artifact kind.
+- The acceptance screen requires at least five years of history, 30 closed OOS trades, a 70%+ win rate, positive net expectancy, positive compounded return, and cash-based profit factor >1. Otherwise the result is `failed` if the sample can be evaluated or `not_evaluable` when history/trades are insufficient. This gate is a historical filter, not a performance guarantee.
+- Live-data sample coverage, test results, branch, commit, PR, and browser verification are recorded in `docs/STOCK_RESEARCH_CHECKLIST.md` at delivery.

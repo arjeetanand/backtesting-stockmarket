@@ -62,6 +62,9 @@ from quant_research.api.schemas import (
     ScreenerRunResponse,
     ScreenerUniverseResponse,
     SmaBacktestRequest,
+    StockResearchHistoryResponse,
+    StockResearchRequest,
+    StockResearchResponse,
     StructureZoneScanRequest,
     StructureZoneScanResponse,
     WatchlistAddRequest,
@@ -98,6 +101,8 @@ from quant_research.services.research import (
     ResearchServiceError,
     SmaBacktestCommand,
 )
+from quant_research.services.stock_research import ARTIFACT_KIND as STOCK_RESEARCH_ARTIFACT_KIND
+from quant_research.services.stock_research import StockResearchService
 from quant_research.services.time_machine import run_time_machine
 from quant_research.services.youtube_strategy import extract_strategy
 
@@ -1034,7 +1039,7 @@ def create_api_router(
     def clear_testing_history() -> dict[str, object]:
         """Delete saved tests and analysis artifacts without deleting market data."""
         deleted_runs = research.clear_backtests()
-        deleted_artifacts = artifacts.clear_kinds(("custom_backtest", "hypothesis", "robustness", "youtube_strategy", "replay_session")) if artifacts is not None else 0
+        deleted_artifacts = artifacts.clear_kinds(("custom_backtest", "hypothesis", "robustness", "youtube_strategy", "replay_session", STOCK_RESEARCH_ARTIFACT_KIND)) if artifacts is not None else 0
         return {
             "deleted_runs": deleted_runs,
             "deleted_artifacts": deleted_artifacts,
@@ -1057,13 +1062,13 @@ def create_api_router(
     @router.get("/research/artifacts/{kind}", tags=["research"])
     def list_saved_artifacts(kind: str, limit: int = Query(default=100, ge=1, le=500)) -> list[dict[str, Any]]:
         """Return saved computed artifacts so clients can reopen prior work."""
-        if artifacts is None or kind not in {"custom_backtest", "robustness", "hypothesis"}:
+        if artifacts is None or kind not in {"custom_backtest", "robustness", "hypothesis", STOCK_RESEARCH_ARTIFACT_KIND}:
             return []
         return artifacts.list_with_metadata(kind, limit=limit)
 
     @router.delete("/research/artifacts/{kind}/{artifact_key}", tags=["research"])
     def delete_saved_artifact(kind: str, artifact_key: str) -> Response:
-        if artifacts is None or kind not in {"custom_backtest", "robustness", "hypothesis", "youtube_strategy", "replay_session"}:
+        if artifacts is None or kind not in {"custom_backtest", "robustness", "hypothesis", "youtube_strategy", "replay_session", STOCK_RESEARCH_ARTIFACT_KIND}:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved testing artifact was not found.")
         if not artifacts.delete(kind, artifact_key):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved testing artifact was not found.")
@@ -1268,6 +1273,39 @@ def create_api_router(
 
         result = MarketFlowScannerService(market_cache).inspect_symbol(payload.symbol)
         return MarketFlowSymbolResponse.model_validate(result)
+
+    @router.post("/stock-research/run", response_model=StockResearchResponse, tags=["research"])
+    def run_stock_research(payload: StockResearchRequest) -> StockResearchResponse:
+        """Explain one symbol using local daily bars and record its fixed-rule test."""
+        if market_cache is None or artifacts is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Local NSE cache and research log are required.")
+        company_name = None
+        try:
+            instrument = next(
+                (item for item in market_cache.search_instruments(query=payload.symbol, limit=100) if item.symbol == payload.symbol),
+                None,
+            )
+            company_name = instrument.company_name if instrument is not None else None
+        except Exception:
+            # The catalogue label is optional; keep the run log even if this lookup fails.
+            pass
+        try:
+            result = StockResearchService(market_cache, artifacts).run(
+                payload.symbol,
+                company_name,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="The run failed and was recorded in local research history.") from exc
+        return StockResearchResponse.model_validate(result)
+
+    @router.get("/stock-research/runs", response_model=StockResearchHistoryResponse, tags=["research"])
+    def list_stock_research_runs(limit: Annotated[int, Query(ge=1, le=100)] = 25) -> StockResearchHistoryResponse:
+        """Show recent attempts and the all-time run and validation counts."""
+        if market_cache is None or artifacts is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Local NSE cache and research log are required.")
+        return StockResearchHistoryResponse.model_validate(StockResearchService(market_cache, artifacts).list_runs(limit))
 
     @router.post("/data/sync-today", tags=["data"])
     def sync_today_market_data() -> dict[str, Any]:

@@ -22,6 +22,7 @@ import {
   Activity,
   ChevronDown,
   Clock3,
+  TrendingUp,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -34,6 +35,7 @@ const mainNav = [
 ];
 
 const marketNav = [
+  { href: "/stock-research", label: "Stock research", icon: TrendingUp },
   { href: "/market-scanner", label: "Market scanner", icon: Search },
   { href: "/insights", label: "Market insights", icon: Activity },
   { href: "/watchlist", label: "Daily watchlist", icon: BookmarkCheck },
