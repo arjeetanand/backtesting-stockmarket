@@ -38,9 +38,11 @@ Last reviewed: 2026-10-28
   are `5003` and `6003`. It records its own runner PID under ignored `data/.runtime/`,
   checks ownership before restart, and stops only process groups it created.
 - Audit outcome: keep public `backtesting-stockmarket`; archive private `StockML`,
-  `stockpulse`, `stock-news-sentiment-analysis`, and `stock-news-analysis` on GitHub.
-  These are recoverable archives, not deletions. Older news and generated model artifacts
-  were not copied. Backtrack ML Lab already evaluates chronologically on local NSE data.
+  `stockpulse`, `stock-news-sentiment-analysis`, and
+  [`Financial_news_analysis`](https://github.com/arjeetanand/Financial_news_analysis),
+  the current account name for the listed stock-news analysis project. These are
+  recoverable archives, not deletions. Older news and generated model artifacts were not
+  copied. Backtrack ML Lab already evaluates chronologically on local NSE data.
 - Codex's Strategy Research Pipeline is the recommended thinking workflow: generate a
   candidate, turn it into a testable hint, run a Backtrack historical test, then review
   risk/robustness metrics. `strategy-researcher` does not run the backtest itself; the
