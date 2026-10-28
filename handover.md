@@ -516,3 +516,17 @@ Next owner/action:
 - The available browser stayed at desktop width; mobile viewport and forced API-error rendering were not checked. The local NSE cache is partial for this universe.
 - Structure-zone implementation was first verified on `codex/independent-structure-zones-20261028`; this workflow is now included with the order-flow board so the candidate zone and symbol ranking ship together.
 - Run with `./run.sh`; UI port `4003`, API port `8001`. Open `http://127.0.0.1:4003/market-scanner`.
+
+## 19. Daily pressure flow and selected-symbol zones
+
+- Date: 2026-10-28.
+- Branch: `codex/order-flow-liquidity-20261028`, based on `main` at `5feadf4`; it includes the structure-zone prerequisite commit `403e7e9` and the flow-board implementation commit `8d46b4d`.
+- PR: pending.
+- Rank up to 20 positive and 20 negative estimates across all local NSE catalogue symbols, NIFTY 500, or NIFTY 50. Estimate signed pressure as each candle's close location in its high-low range multiplied by close × volume, summed over the latest 20 saved daily sessions. Display average traded value separately and select from the top three on either side.
+- Search any NSE catalogue symbol to inspect the latest active daily demand/supply candidates using the existing structure-zone rule. These are candidate price ranges, not actual resting orders or proof of institutional activity.
+- Verification: full Python test suite, Ruff, frontend Vitest (19 tests), ESLint, and webpack production build pass. The live desktop browser scanned all 2,585 cached catalogue symbols (2,407 ranked, 4 without bars, 174 with insufficient history), showed the top-three split, selected a demand candidate, and inspected a typed TCS symbol. The data snapshot's latest candle was 2026-10-27.
+- `mypy src` reports the same 13 existing errors in `market_cache.py` (old `_lru_cache` typing), `pattern_finder.py`, `breakout_scanner.py`, and `ml_research.py`; there are no new-feature errors.
+- Mobile-width browser emulation was unavailable; responsive breakpoints were reviewed in CSS but not exercised in a mobile viewport. The feature preview uses an isolated copy of recent local NSE bars on UI port `5003` and API port `8002`; the existing application on `4003`/`8001` and its database were left untouched.
+- Run the merged code with `./run.sh` on UI port `4003` and API port `8001`; then open **Market Scanner → Liquidity flow**.
+- Next action for actual buyer/seller identities or resting-order blocks: integrate a licensed intraday market-depth source and keep its data provenance separate from these historical OHLCV estimates.
+- Checklist: `docs/ORDER_FLOW_CHECKLIST.md`.
