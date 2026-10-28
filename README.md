@@ -17,52 +17,40 @@ It does not place real orders, connect to a broker, provide live quotes, or requ
 
 ## Run locally
 
-Requirements: Python 3.12+, Node.js, and npm. Ollama is optional; it is used only for local hypothesis assistance and is not required for importing data or running backtests.
+Requirements: Python 3.12+, `uv`, Node.js, and npm. Ollama is optional; it is used only for local hypothesis assistance and is not required for importing data or running backtests.
 
 From the repository root, create the environment and install dependencies once:
 
 ```bash
-python3.12 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e "[dev]"
-cp .env.example .env
-npm --prefix frontend install
+uv sync --extra dev
+npm --prefix frontend ci
 ```
 
-Start the backend in Terminal 1:
+Start both services from the repository root:
 
 ```bash
-source .venv/bin/activate
-./scripts/dev-backend.sh 8000
+./run.sh
 ```
 
-Start the frontend in Terminal 2:
+Open the application at `http://localhost:4003`. API documentation is at `http://localhost:8001/docs`; confirm the backend with:
 
 ```bash
-./scripts/dev-frontend.sh 3000 8000
+curl http://127.0.0.1:8001/api/v1/health
 ```
 
-Open the application at `http://localhost:3000`. The API documentation is at `http://localhost:8000/docs`.
+The launcher uses web port `4003` and API port `8001`; the matching UI test slots are `5003` and `6003`. Press `Ctrl+C` to stop both services. Running `./run.sh` again gracefully restarts only the Backtrack processes it started and fails closed if either port belongs to another app. The frontend shows explicit unavailable/error states when the backend is stopped; it does not use mock or fabricated prices.
 
-Confirm that the backend is ready before using the UI:
-
-```bash
-curl http://127.0.0.1:8000/api/v1/health
-```
-
-The frontend shows explicit unavailable/error states when the backend is stopped; it does not use mock or fabricated prices. Stop either development server with `Ctrl+C`.
-
-Both launch scripts accept ports. For example, use `./scripts/dev-backend.sh 8001` and
-`./scripts/dev-frontend.sh 3001 8001` for a second frontend/backend pair. The frontend
-script sets `NEXT_PUBLIC_API_BASE_URL` to the backend port you pass; an explicitly set
-`NEXT_PUBLIC_API_BASE_URL` still takes precedence.
-
-Local `localhost` and `127.0.0.1` frontend ports are accepted by the backend CORS policy.
-If the dependencies are already installed, skip setup and run only the two server commands above. No NSE download is needed to start the app; use **Manage stock data** at `/data` to import the historical archive window required for your research.
+For a temporary UI instance that shares the same API, run
+`./scripts/dev-frontend.sh 5003 8001` or `./scripts/dev-frontend.sh 6003 8001` while that
+test port is free. The frontend script sets `NEXT_PUBLIC_API_BASE_URL` from the backend
+port; an explicitly set value still takes precedence. Local `localhost` and `127.0.0.1`
+frontend ports are accepted by the backend CORS policy. No NSE download is needed to start
+the app; use **Manage stock data** at `/data` to import the historical archive window
+required for your research.
 
 ## Download historical NSE data
 
-Open **Manage stock data** at `http://localhost:3000/data`.
+Open **Manage stock data** at `http://localhost:4003/data`.
 
 Choose one of the supported windows:
 
@@ -92,7 +80,7 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 
 | Route | Purpose |
 | --- | --- |
-| `/` | Simple starting point for a stock, date range, strategy test, YouTube import, or replay |
+| `/` | Research overview for the shared workflow, modules, and recent saved tests |
 | `/data` | Bulk NSE history download and local stock search |
 | `/research` | Describe an idea, review a proposal, prepare data, and run a backtest |
 | `/strategy` | Build indicator and rule-based strategies |
@@ -111,6 +99,14 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 | `/settings` | Local data, Ollama, and application status |
 
 See [PROJECT_GUIDE.md](PROJECT_GUIDE.md) for the complete user guide.
+
+## One stock research workspace
+
+Backtrack is the single active stock-research repository and website. Its ML Lab already
+covers chronological model evaluation using locally imported NSE data, while its scanner,
+market insights, strategy tests, robustness checks, and replay share the same workspace.
+Four older private stock prototypes were archived on GitHub after the audit; they remain
+recoverable there. No legacy generated datasets or machine-specific paths were copied.
 
 ## Research workflow
 

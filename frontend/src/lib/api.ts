@@ -15,7 +15,7 @@ export async function fetchWithTimeout(input: RequestInfo | URL, init: RequestIn
       timer = window.setTimeout(() => {
         settled = true;
         controller.abort();
-        reject(new Error("Could not connect to the local data service. Start the backend on port 8000, then try again."));
+        reject(new Error("Could not connect to the local data service. Start Backtrack's local backend, then try again."));
       }, timeoutMs);
       void fetch(input, { ...init, signal: controller.signal }).then((response) => {
         if (settled) return;

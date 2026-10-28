@@ -1,6 +1,33 @@
 # Backtrack engineering handover
 
-Last reviewed: 2026-07-23
+Last reviewed: 2026-10-28
+
+## 2026-10-28 workspace consolidation
+
+- Backtrack remains the active stock-research repository. The landing page now presents
+  one workflow across NSE data import, strategy tests, scanning, robustness, ML, insights,
+  and chart replay; recent test rows come from the local backtest API.
+- The interface labels the data as historical NSE daily archives and marks replay orders
+  as simulated. It does not add live quotes, broker access, or trade execution.
+- `./run.sh` manages the local stack on UI port `4003` and API port `8001`; UI test ports
+  are `5003` and `6003`. It records its own runner PID under ignored `data/.runtime/`,
+  checks ownership before restart, and stops only process groups it created.
+- Audit outcome: keep public `backtesting-stockmarket`; archive private `StockML`,
+  `stockpulse`, `stock-news-sentiment-analysis`, and `stock-news-analysis` on GitHub.
+  These are recoverable archives, not deletions. Older news and generated model artifacts
+  were not copied. Backtrack ML Lab already evaluates chronologically on local NSE data.
+- Codex's Strategy Research Pipeline is the recommended thinking workflow: generate a
+  candidate, turn it into a testable hint, run a Backtrack historical test, then review
+  risk/robustness metrics. `strategy-researcher` does not run the backtest itself; the
+  Backtrack UI remains the execution surface for simulations.
+- The local task branch is `codex/stock-workspace-unification-20261028`. No push or merge
+  to `main` was performed. The local UI is available at `http://127.0.0.1:4003/`; API
+  health is `http://127.0.0.1:8001/api/v1/health`. See `docs/CONSOLIDATION_CHECKLIST.md`
+  for verification details and the implementation commit.
+- Verification: `ruff`, the full `pytest` suite, the frontend production build, browser
+  review at desktop and mobile widths, repeat-launch, and API health passed. `mypy src`
+  still reports 13 errors in four unchanged files; npm install reported 14 dependency
+  advisories (2 moderate, 9 high, 3 critical).
 
 This is the current engineering source of truth for the Backtrack repository. Read it before changing data imports, provider behavior, backtesting, persistence, replay, research, or trader-facing claims.
 

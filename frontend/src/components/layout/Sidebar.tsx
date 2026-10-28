@@ -53,7 +53,7 @@ export default function Sidebar() {
       {/* Brand Header */}
       <div className="bt-sidebar-brand">
         <div className="bt-sidebar-title">backtrack</div>
-        <p className="bt-sidebar-subtitle">Research Workstation</p>
+        <p className="bt-sidebar-subtitle">NSE research workspace</p>
       </div>
 
       {/* Main Navigation Area */}
@@ -105,34 +105,11 @@ export default function Sidebar() {
 
       {/* Footer Status Bar */}
       <div className="bt-sidebar-footer">
-        <div className="bt-sidebar-status">
-          <span style={{ position: "relative", display: "flex", height: "8px", width: "8px" }}>
-            <span
-              style={{
-                position: "absolute",
-                display: "inline-flex",
-                height: "100%",
-                width: "100%",
-                borderRadius: "50%",
-                background: "#10b981",
-                opacity: 0.75,
-                animation: "ping 1s cubic-bezier(0,0,0.2,1) infinite",
-              }}
-            />
-            <span
-              style={{
-                position: "relative",
-                display: "inline-flex",
-                borderRadius: "50%",
-                height: "8px",
-                width: "8px",
-                background: "#10b981",
-              }}
-            />
-          </span>
-          <span>Data connection</span>
+        <div className="bt-sidebar-status" title="Backtests and replay orders are simulations">
+          <span className="bt-sidebar-status-dot" aria-hidden="true" />
+          <span>Research mode</span>
         </div>
-        <span className="bt-sidebar-online">READY</span>
+        <span className="bt-sidebar-online">SIM</span>
       </div>
     </aside>
   );
