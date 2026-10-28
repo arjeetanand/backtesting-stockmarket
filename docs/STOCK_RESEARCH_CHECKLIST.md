@@ -12,7 +12,7 @@
 - [x] Report historical price returns only. The local OHLCV cache has no fundamentals or analyst earnings estimates, so it cannot support a factual future-business-growth forecast.
 - [x] Run the full backend suite, Ruff, frontend Vitest (19 tests), ESLint, and webpack production build. `mypy src` retains 13 errors in four pre-existing, unchanged source files.
 - [x] Source-check responsive navigation: Stock Research is available under the mobile **More → Explore markets** menu; wide tables use horizontal scrolling. Exact mobile-width rendering was unavailable because the browser connection exposes no viewport override.
-- [ ] Record final branch, commit, PR, and merge state.
+- [x] Record delivery: implementation branch `codex/single-stock-analysis-20261028`, source commit `d47adb3`, PR [#15](https://github.com/arjeetanand/backtesting-stockmarket/pull/15), squash-merged into `main` as `a64a87a329a3e9c1c436a8f00ac856e350407c05`; GitHub reported the repository check passing.
 
 ## Evidence and delivery
 
@@ -22,4 +22,4 @@
 - The production `npm run build` defaults to Turbopack, which rejects this worktree's existing `frontend/node_modules` symlink outside the sandbox; the webpack production build completed successfully.
 - Full backend pytest suite and Ruff passed. Frontend Vitest passed (19 tests), ESLint passed, and `next build --webpack` passed. `mypy src` reports 13 existing errors across four unchanged files (`repositories/market_cache.py`, `pattern_finder.py`, `services/breakout_scanner.py`, `services/ml_research.py`).
 - Final local run ledger: 29 completed; 0 failed attempts; 0 passed; 0 failed gates; 29 not evaluable because the supplied four-year histories and small OOS trade counts do not satisfy the minimum screen.
-- Branch, commit, PR, and merge status: pending.
+- The merged implementation is on `origin/main` at `a64a87a`; PR #15 was squash-merged after its required check passed.
