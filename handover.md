@@ -498,5 +498,5 @@ Next owner/action:
 - Verification: full Ruff and pytest passed; frontend ESLint and isolated webpack production build passed. Full `mypy src` still reports 13 existing errors in unchanged `market_cache.py`, `pattern_finder.py`, `breakout_scanner.py`, and `ml_research.py`; it reports none in this feature's service, schema, or route.
 - Browser check at `http://127.0.0.1:4003/market-scanner`: NIFTY 50 returned 29 active zones from 49 of 50 cached symbols, with the latest bar dated 2026-10-27 and one symbol lacking enough history. The initial, loading, partial-coverage, and result states rendered; changing universe cleared old results. A confirmation-day edge case was fixed and rechecked in the live scan.
 - The available browser stayed at desktop width; mobile viewport and forced API-error rendering were not checked. The local NSE cache is partial for this universe.
-- Local commit details: pending final commit. No push or merge was authorized.
+- Implementation commit: `af9a8cb` (`Add independent daily structure-zone scan`). No push or merge was authorized.
 - Run with `./run.sh`; UI port `4003`, API port `8001`. Open `http://127.0.0.1:4003/market-scanner`.
