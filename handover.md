@@ -22,9 +22,10 @@ Last reviewed: 2026-10-28
 - `./run.sh` is currently waiting for an NSE import background task to exit gracefully.
   The existing import and its data were left untouched. Do not claim the app is available
   until restart completes and `/api/v1/health` responds again.
-- Branch: `codex/skill-guided-ui-20261028`. The task changes are not yet committed. The
-  user authorized push, PR, and merge; GitHub authentication still needs to be verified.
-  See `docs/CONSOLIDATION_CHECKLIST.md` for status and remaining work.
+- Branch: `codex/skill-guided-ui-20261028`; implementation commit `a1cf1ae`. The user
+  authorized the PR workflow. [PR #1](https://github.com/arjeetanand/backtesting-stockmarket/pull/1)
+  contains the branch; GitHub is the current source for its check and merge state. See
+  `docs/CONSOLIDATION_CHECKLIST.md` for verification and the runtime restart status.
 
 ## 2026-10-28 workspace consolidation
 

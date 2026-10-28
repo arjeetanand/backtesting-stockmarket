@@ -27,7 +27,7 @@
 - [x] Frontend tests, lint, and production build pass; the local review gate and launcher descendant checks pass.
 - [x] Inspect the rendered UI in the browser at desktop and compact widths; a standalone Taste browser inspector could not launch Chrome.
 - [ ] Complete a clean `run.sh` restart after the active NSE import finishes; the current graceful shutdown is waiting for that background work.
-- [x] Consolidation commit `bf44580` is followed by this UI task on `codex/skill-guided-ui-20261028`.
-- [ ] Push, open PR, and merge to `main`; the user authorized this workflow, but GitHub credentials must be valid.
+- [x] Consolidation commit `bf44580` is followed by redesign commit `a1cf1ae` on `codex/skill-guided-ui-20261028`.
+- [x] Push the branch and open [PR #1](https://github.com/arjeetanand/backtesting-stockmarket/pull/1); GitHub shows its current check and merge state.
 
 The npm install reported 14 dependency advisories (2 moderate, 9 high, 3 critical); the lockfile was not changed to apply automatic upgrades.
