@@ -404,6 +404,8 @@ Next owner/action:
 
 - Date: 2026-10-28.
 - Branch: `codex/day-trader-time-machine-20261028`.
+- Implementation commit: `a87e591` (`Add local daily-bar Time Machine simulator`).
+- PR: [#4](https://github.com/arjeetanand/backtesting-stockmarket/pull/4), targeting `main`.
 - Installed the reviewed day-trader-skill repository's 11 skill folders globally for Codex at commit `3d0f4ef6986f4984b7c6bd46f7ff4f87744c3abd`.
 - Added `/time-machine`, its typed API client, sidebar entry, bounded request/response schemas, and a local-cache-only seeded daily-bar simulator. The endpoint validates cached OHLC before sampling and does not mutate persistence.
 - Updated `README.md`, `PROJECT_GUIDE.md`, `TESTING.md`, `backend/README.md`, `frontend/README.md`, and `docs/TIME_MACHINE_CHECKLIST.md`.
@@ -411,4 +413,4 @@ Next owner/action:
 - Verification: full Ruff and pytest pass; targeted mypy for the new route, schema, and service passes; frontend lint and production build pass. Full `mypy src` still reports 13 errors in existing `market_cache.py`, `pattern_finder.py`, `breakout_scanner.py`, and `ml_research.py`.
 - Browser check: real cached RELIANCE scenario result rendered; no visible horizontal overflow at `695 × 730`. The browser tool could not emulate the exact `390 × 844` viewport.
 - Limits: daily candles only, fees/slippage excluded, sample counts are not probabilities, and no broker orders or live data. Same-day stop and target touches count as stop first.
-- Next action: commit the task branch, push it, open a PR, and merge after remote checks pass.
+- Next action: merge PR #4 after the latest remote checks pass.

@@ -9,4 +9,5 @@
 - [x] Run backend and frontend checks; inspect the rendered result in a desktop browser.
 - [x] Check a narrow `695 × 730` browser viewport; panels stack without visible horizontal overflow.
 - [ ] Check the exact `390 × 844` viewport; the available browser tool does not expose viewport emulation.
-- [ ] Commit task-owned changes, push the branch, raise the PR, and merge it to `main`.
+- [x] Commit task-owned changes, push the branch, and raise PR #4.
+- [ ] Merge PR #4 to `main` after its latest remote checks pass.
