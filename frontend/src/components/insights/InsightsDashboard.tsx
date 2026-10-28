@@ -26,6 +26,7 @@ import {
   type InsightsResponse,
   type InsightView,
 } from "@/lib/insights-api";
+import ThinkingMascot from "@/components/illustrations/ThinkingMascot";
 
 const UNIVERSES: Array<{ value: InsightUniverse; label: string; description: string }> = [
   { value: "nifty50", label: "NIFTY 50", description: "Large-cap benchmark" },
@@ -270,7 +271,7 @@ export default function InsightsDashboard() {
         <section className="bt-heading-row insights-heading">
           <div>
             <div className="bt-kicker"><Activity size={13} /> MARKET INSIGHTS</div>
-            <h1>Market breadth at a glance</h1>
+            <h1><ThinkingMascot animate /><span>Market breadth at a glance</span></h1>
             <p>See how the selected index moved using locally imported official NSE daily bars.</p>
           </div>
           <div className="insights-source-badge"><Database size={14} /> Local NSE daily data</div>

@@ -140,7 +140,7 @@ Use 7px controls, 10px panels, and a 16px page sheet. Borders are thin and cool 
 
 ### Illustration
 
-Use the original notebook researcher mascot as a product signature on the research overview. Keep its cream, lavender, and indigo print style local and restrained; leave charts, warnings, and trading decisions free of decorative art. Do not imply forecasts or recommendations.
+Use the original notebook researcher mascot as the overview illustration and as a small mark beside shared section headings, including the custom Insights heading. Its subtle thinking tilt and thought dots use CSS only when motion is allowed; the reduced-motion view stays still. Keep charts, warnings, and trading decisions free of decorative art. Do not imply forecasts or recommendations.
 
 ## Components
 
