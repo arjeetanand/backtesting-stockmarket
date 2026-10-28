@@ -10,6 +10,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8
 const pageTitles: Record<string, { title: string; category: string }> = {
   "/": { title: "Research overview", category: "" },
   "/research": { title: "Test a strategy", category: "" },
+  "/time-machine": { title: "Time machine", category: "" },
   "/strategy": { title: "Build rules", category: "" },
   "/backtests": { title: "My tests", category: "" },
   "/comparison": { title: "Compare tests", category: "" },

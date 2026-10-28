@@ -2,6 +2,25 @@
 
 Last reviewed: 2026-10-28
 
+## 2026-10-28 editorial light-indigo theme
+
+- Restyled shared application surfaces around a light-indigo frame, white work canvas,
+  navy headings, restrained lavender/indigo emphasis, and pale periwinkle primary actions.
+  Common colors now use the shared tokens; explanatory labels and compact status text are
+  readable at phone widths. Research behavior and the local NSE-only boundary are intact.
+- Added the shared top-bar title for `/time-machine`. Design guidance and task checks are
+  in `DESIGN.md` and `docs/UI_THEME_CHECKLIST.md`; the root and frontend READMEs link to them.
+- Verification: `npm --prefix frontend run lint` and `npm --prefix frontend run build`
+  pass. Browser inspection covered all 21 routes at 390px, 767px, and 1440px with no
+  horizontal overflow or route errors. Desktop overview and phone Research were reviewed
+  in the browser; the local development screenshot includes Next.js's dev-only badge.
+- Branch and source commit: `codex/intelligence-daily-ui-theme-20261028`, `a01e9c5`.
+  [PR #6](https://github.com/arjeetanand/backtesting-stockmarket/pull/6) is the live
+  record of review and merge status.
+- Run locally from the repository root with `./run.sh`: UI `http://localhost:4003`, API
+  `http://localhost:8001`; matching UI test ports are `5003` and `6003`.
+- No backend behavior, broker integration, live market feed, or local market data changed.
+
 ## 2026-10-28 light-indigo research UI
 
 - Confirmed scope: personal, local NSE research. The refresh keeps the light-indigo
