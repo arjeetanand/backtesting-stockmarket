@@ -226,10 +226,12 @@ def _simulate_period(frame: pd.DataFrame, start_index: int, end_index: int) -> t
     losses = sum(trade["outcome"] == "loss" for trade in trades)
     flats = sum(trade["outcome"] == "flat" for trade in trades)
     returns = [float(trade["net_return_pct"]) for trade in trades]
+    signal_occurrences = sum(bool(rows[index]["entry_signal"]) for index in range(max(start_index, 200), max(start_index, end_index - 1)))
     gross_wins = sum(float(trade["net_pnl"]) for trade in trades if trade["net_pnl"] > 0)
     gross_losses = abs(sum(float(trade["net_pnl"]) for trade in trades if trade["net_pnl"] < 0))
     metrics = {
         "trades": len(trades),
+        "signal_occurrences": signal_occurrences,
         "wins": wins,
         "losses": losses,
         "flats": flats,
@@ -250,7 +252,110 @@ class StockResearchService:
         self._cache = cache
         self._artifacts = artifacts
 
-    def run(self, symbol: str, company_name: str | None = None) -> dict[str, Any]:
+    def scan_morning(self) -> dict[str, Any]:
+        """Backtest the fixed rule across the local NIFTY 50 list and keep only fresh, qualified signals."""
+        from quant_research.services.market_scanner import NIFTY50_AS_OF, NIFTY50_SYMBOLS
+
+        scan_id = uuid4().hex
+        started_at = datetime.now(UTC)
+        symbols = sorted(NIFTY50_SYMBOLS)
+        try:
+            instruments = {item.symbol: item for item in self._cache.search_instruments(limit=2_000)}
+        except Exception:
+            logger.exception("Could not load the NSE catalogue for morning scan %s", scan_id)
+            instruments = {}
+
+        counts = {
+            "symbols_scanned": len(symbols),
+            "symbols_with_data": 0,
+            "completed_runs": 0,
+            "analysis_errors": 0,
+            "insufficient_history": 0,
+            "missing_data": 0,
+            "passed_backtests": 0,
+            "failed_backtests": 0,
+            "not_evaluable": 0,
+            "fresh_signals": 0,
+        }
+        latest_dates: list[str] = []
+        candidates: list[dict[str, Any]] = []
+
+        for symbol in symbols:
+            instrument = instruments.get(symbol)
+            try:
+                result = self.run(symbol, instrument.company_name if instrument else None, include_chart=False)
+            except Exception as exc:
+                counts["analysis_errors"] += 1
+                counts["not_evaluable"] += 1
+                logger.warning("Morning scan %s could not analyze %s: %s", scan_id, symbol, type(exc).__name__)
+                continue
+
+            if result["data_as_of"]:
+                latest_dates.append(result["data_as_of"])
+                counts["symbols_with_data"] += 1
+            if result["bar_count"] == 0:
+                counts["missing_data"] += 1
+            if result["run_status"] == "completed":
+                counts["completed_runs"] += 1
+            else:
+                if result["run_status"] == "failed":
+                    counts["analysis_errors"] += 1
+                elif result["bar_count"] > 0:
+                    counts["insufficient_history"] += 1
+
+            gate_status = result["validation_gate"]["status"]
+            if gate_status == "passed":
+                counts["passed_backtests"] += 1
+            elif gate_status == "failed":
+                counts["failed_backtests"] += 1
+            else:
+                counts["not_evaluable"] += 1
+
+            setup = result.get("setup")
+            if not setup or setup["status"] != "triggered":
+                continue
+            counts["fresh_signals"] += 1
+            metrics = result.get("out_of_sample_metrics") or {}
+            if gate_status != "passed":
+                continue
+
+            candidates.append(
+                {
+                    "run_id": result["run_id"],
+                    "symbol": symbol,
+                    "company_name": result.get("company_name") or symbol,
+                    "data_as_of": result["data_as_of"],
+                    "history_years": result["history_years"],
+                    "technical": result["technical"],
+                    "setup": setup,
+                    "out_of_sample_metrics": metrics,
+                }
+            )
+
+        candidates.sort(
+            key=lambda item: (
+                item["out_of_sample_metrics"]["win_rate_pct"],
+                item["out_of_sample_metrics"]["expectancy_pct"],
+                item["out_of_sample_metrics"]["max_drawdown_pct"],
+            ),
+            reverse=True,
+        )
+        finished_at = datetime.now(UTC)
+        return {
+            "scan_id": scan_id,
+            "status": "completed",
+            "started_at": started_at.isoformat(),
+            "finished_at": finished_at.isoformat(),
+            "universe": "NIFTY 50",
+            "universe_as_of": NIFTY50_AS_OF,
+            "data_source": "Local official NSE daily archive cache",
+            "data_as_of": max(latest_dates, default=None),
+            **counts,
+            "qualifying_setups": len(candidates),
+            "candidates": candidates[:10],
+        }
+
+    def run(self, symbol: str, company_name: str | None = None, *, include_chart: bool = True) -> dict[str, Any]:
         run_id = uuid4().hex
         started_at = datetime.now(UTC).isoformat()
         normalized = symbol.strip().upper().removesuffix(".NS")
@@ -300,7 +405,7 @@ class StockResearchService:
             split_index = min(max(split_index, 200), len(frame) - 1)
             training, _ = _simulate_period(frame, 200, split_index)
             out_of_sample, trades = _simulate_period(frame, split_index, len(frame))
-            technical, chart, evidence = self._technical_summary(frame)
+            technical, chart, evidence = self._technical_summary(frame, include_chart)
             setup = self._trade_plan(frame, technical, evidence, age_days)
             gate = self._validation_gate(history_years, out_of_sample)
             finished_at = datetime.now(UTC).isoformat()
@@ -325,7 +430,7 @@ class StockResearchService:
                 "out_of_sample_metrics": self._with_dates(out_of_sample, frame, split_index, len(frame)),
                 "validation_gate": gate,
                 "trades": trades,
-                "chart": self._chart_points(frame),
+                "chart": chart,
                 "cost_assumptions": {
                     "entry_slippage_pct": ENTRY_SLIPPAGE * 100,
                     "exit_slippage_pct": EXIT_SLIPPAGE * 100,
@@ -359,7 +464,8 @@ class StockResearchService:
         return {
             "total_runs": sum(statuses.values()),
             "completed_runs": statuses.get("completed", 0),
-            "failed_attempts": statuses.get("failed", 0) + statuses.get("insufficient_data", 0),
+            "failed_attempts": statuses.get("failed", 0),
+            "insufficient_data_runs": statuses.get("insufficient_data", 0),
             "qualified_runs": gates.get("passed", 0),
             "failed_gates": gates.get("failed", 0),
             "not_evaluable_runs": gates.get("not_evaluable", 0),
@@ -408,7 +514,10 @@ class StockResearchService:
         }
 
     @staticmethod
-    def _technical_summary(frame: pd.DataFrame) -> tuple[dict[str, Any], list[dict[str, Any]], list[str]]:
+    def _technical_summary(
+        frame: pd.DataFrame,
+        include_chart: bool = True,
+    ) -> tuple[dict[str, Any], list[dict[str, Any]], list[str]]:
         current = frame.iloc[-1]
         close = float(current["close"])
         sma20 = _value(current, "sma20")
@@ -461,12 +570,12 @@ class StockResearchService:
             reasons.append(f"Latest close is {'above' if close > prior_high else 'not above'} the prior 20-session high of ₹{prior_high:,.2f}.")
         if volume_ratio is not None:
             reasons.append(f"Latest volume is {volume_ratio:.2f}× the previous 20-session average.")
-        return technical, StockResearchService._chart_points(frame), reasons
+        return technical, StockResearchService._chart_points(frame) if include_chart else [], reasons
 
     @staticmethod
     def _chart_points(frame: pd.DataFrame) -> list[dict[str, Any]]:
         points: list[dict[str, Any]] = []
-        for _, row in frame.tail(252).iterrows():
+        for _, row in frame.iterrows():
             points.append(
                 {
                     "timestamp": pd.Timestamp(row["timestamp"]).date().isoformat(),
@@ -576,6 +685,7 @@ class StockResearchService:
             "logged_at": log.get("finished_at", run.get("_saved_at")),
             "data_as_of": run.get("data_as_of"),
             "trades": metrics.get("trades", 0),
+            "signal_occurrences": metrics.get("signal_occurrences"),
             "wins": metrics.get("wins", 0),
             "losses": metrics.get("losses", 0),
             "validation_status": gate.get("status", "not_evaluable"),

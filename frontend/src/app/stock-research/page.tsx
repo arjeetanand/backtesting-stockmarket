@@ -22,8 +22,10 @@ import type { IndicatorSeries, NormalizedCandle } from "@/lib/chart-data";
 import {
   getStockResearchHistory,
   runStockResearch,
+  scanMorningStockResearch,
   type StockResearchHistory,
   type StockResearchMetrics,
+  type StockResearchMorningScan,
   type StockResearchResult,
 } from "@/lib/stock-research";
 
@@ -39,31 +41,41 @@ const number = (value: number | null | undefined, digits = 2) => value == null |
 const costPct = (value: number) => `${Number(value.toFixed(6))}%`;
 const normalizeSymbol = (value: string) => value.trim().toUpperCase().replace(/\.NS$/, "");
 const date = (value: string | null | undefined) => value ? new Date(value).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+const nseFinancialResultsUrl = (symbol: string) => `https://www.nseindia.com/companies-listing/corporate-filings-financial-results?symbol=${encodeURIComponent(symbol)}&tabIndex=equity`;
 
 const GATE_COPY: Record<StockResearchResult["validation_gate"]["status"], string> = {
-  passed: "Cleared this historical screen",
-  failed: "Did not clear this historical screen",
-  not_evaluable: "Not enough evidence to judge",
+  passed: "Met the historical screen",
+  failed: "Did not meet the historical screen",
+  not_evaluable: "Not enough past data to score",
 };
 
-function gateTone(status: StockResearchResult["validation_gate"]["status"]): string {
-  return `stock-research-gate ${status}`;
-}
+const SETUP_COPY: Record<NonNullable<StockResearchResult["setup"]>["status"], { title: string; body: string }> = {
+  triggered: {
+    title: "The rule's entry conditions were met",
+    body: "The latest completed daily candle met this fixed rule. A next-session opening price or fill is not known yet.",
+  },
+  watch: {
+    title: "Some conditions are met; wait for the rest",
+    body: "The longer trend is aligned, but the completed-candle breakout and volume checks were not both met.",
+  },
+  stale_data: {
+    title: "The saved daily data may be old",
+    body: "Refresh the local NSE history before relying on any reference levels. This screen uses the date shown below.",
+  },
+  no_long_setup: {
+    title: "This rule did not find a long setup",
+    body: "The latest saved candle does not meet this fixed rule's long-term trend condition.",
+  },
+};
 
 function profitFactor(metrics: StockResearchMetrics): string {
   if (metrics.profit_factor !== null) return number(metrics.profit_factor);
   return metrics.trades > 0 && metrics.losses === 0 ? "∞" : "—";
 }
 
-function MetricCard({ label, value, note, tone }: { label: string; value: string; note: string; tone?: "gain" | "loss" }) {
-  return <article className={`bt-stat-card stock-research-metric${tone ? ` ${tone}` : ""}`}>
-    <span>{label}</span><strong>{value}</strong><small>{note}</small>
-  </article>;
-}
-
 function MetricsTable({ title, metrics }: { title: string; metrics: StockResearchMetrics | null }) {
   return <section className="stock-research-metrics-panel bt-panel">
-    <div className="bt-panel-head"><h3>{title}</h3><span>{metrics ? `${metrics.trades} closed trades` : "No sample"}</span></div>
+    <div className="bt-panel-head"><h3>{title}</h3><span>{metrics ? `${metrics.signal_occurrences} rule signals · ${metrics.trades} closed trades` : "No sample"}</span></div>
     {!metrics ? <p className="stock-research-muted">This period has no evaluable test metrics.</p> : <dl className="stock-research-metric-list">
       <div><dt>Wins / losses / flat</dt><dd>{metrics.wins} / {metrics.losses} / {metrics.flats}</dd></div>
       <div><dt>Win rate</dt><dd>{number(metrics.win_rate_pct, 1)}%</dd></div>
@@ -83,6 +95,10 @@ export default function StockResearchPage() {
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [running, setRunning] = useState(false);
+  const [runningSymbol, setRunningSymbol] = useState<string | null>(null);
+  const [morningScan, setMorningScan] = useState<StockResearchMorningScan | null>(null);
+  const [scanLoading, setScanLoading] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const historyRequestId = useRef(0);
 
@@ -116,10 +132,15 @@ export default function StockResearchPage() {
     return () => { historyRequestId.current += 1; };
   }, []);
 
-  const run = async () => {
-    const requestedSymbol = normalizeSymbol(symbol);
-    if (!requestedSymbol) return;
+  const run = async (symbolToRun = symbol) => {
+    const requestedSymbol = normalizeSymbol(symbolToRun);
+    if (!requestedSymbol) {
+      setError("Enter an NSE symbol or choose a company from the list.");
+      return;
+    }
+    setSymbol(requestedSymbol);
     setRunning(true);
+    setRunningSymbol(requestedSymbol);
     setError(null);
     setHistoryError(null);
     setResult(null);
@@ -133,6 +154,23 @@ export default function StockResearchPage() {
       await refreshHistory();
     } finally {
       setRunning(false);
+      setRunningSymbol(null);
+    }
+  };
+
+  const runMorningScan = async () => {
+    setScanLoading(true);
+    setScanError(null);
+    setMorningScan(null);
+    try {
+      const nextScan = await scanMorningStockResearch();
+      setMorningScan(nextScan);
+    } catch (scanRequestError) {
+      setScanError(scanRequestError instanceof Error ? scanRequestError.message : "The morning scan could not be completed.");
+    } finally {
+      setScanLoading(false);
+      setHistoryLoading(true);
+      await refreshHistory();
     }
   };
 
@@ -169,18 +207,84 @@ export default function StockResearchPage() {
         <div>
           <div className="bt-kicker"><Activity size={13} aria-hidden="true" /> ONE STOCK · EXPLAINED FROM DAILY NSE HISTORY</div>
           <h1>Stock research</h1>
-          <p>Search a symbol to see its price range, moving averages, momentum, a rule-based trade plan, and the rule’s historical out-of-sample record.</p>
+          <p>Choose one NSE-listed company. We’ll explain the latest saved daily data, show conditional price levels, and check one fixed rule against past data.</p>
         </div>
         <span className="stock-research-source"><ShieldCheck size={14} aria-hidden="true" /> Local NSE archive</span>
       </section>
 
+      <section className="stock-research-morning bt-panel" aria-labelledby="stock-research-morning-title">
+        <div className="stock-research-section-heading">
+          <div><span className="bt-eyebrow">MORNING SHORTLIST</span><h2 id="stock-research-morning-title">Find stocks that passed both checks</h2><p>Scan the local NIFTY 50 daily archive. A candidate must have a fresh daily trigger and pass the historical screen. This is not a live alert or a recommendation.</p></div>
+          <button className="bt-primary stock-research-scan-button" type="button" onClick={() => void runMorningScan()} disabled={scanLoading || running}>
+            {scanLoading ? <><LoaderCircle size={15} className="spin" aria-hidden="true" /> Checking saved history…</> : <><Activity size={15} aria-hidden="true" /> Scan NIFTY 50</>}
+          </button>
+        </div>
+
+        {scanError && <div className="bt-alert-error stock-research-scan-error" role="alert"><AlertTriangle size={15} aria-hidden="true" /><span>{scanError} This scan uses only the local daily archive; check NSE data and try again.</span></div>}
+        {scanLoading && <div className="stock-research-scan-loading" role="status"><LoaderCircle size={17} className="spin" aria-hidden="true" /><span>Checking the NIFTY 50 against saved daily bars. This may take a minute.</span></div>}
+        {!scanLoading && !scanError && !morningScan && <p className="stock-research-scan-prompt">No scan has been run in this view yet. You can also search for one company below.</p>}
+
+        {morningScan && <div className="stock-research-scan-results" aria-live="polite">
+          <div className="stock-research-scan-intro">
+            <div><strong>{morningScan.qualifying_setups === 0 ? "No candidates are ready from the available data" : `${morningScan.qualifying_setups} ${morningScan.qualifying_setups === 1 ? "stock matched" : "stocks matched"} both checks`}</strong><p>NIFTY 50 constituents dated {date(morningScan.universe_as_of)} · local daily data through {date(morningScan.data_as_of)}. Only fresh rule triggers with a passed historical screen appear below.</p></div>
+            <span className="stock-research-scan-source">{morningScan.data_source}</span>
+          </div>
+          <dl className="stock-research-scan-topline">
+            <div><dt>Stocks checked</dt><dd>{morningScan.symbols_scanned}</dd></div>
+            <div><dt>Fresh rule triggers</dt><dd>{morningScan.fresh_signals}</dd></div>
+            <div><dt>Ready to review</dt><dd>{morningScan.qualifying_setups}</dd></div>
+          </dl>
+          <details className="stock-research-scan-count-details">
+            <summary>Show data coverage and full scan counts</summary>
+            <dl className="stock-research-scan-counts">
+              <div><dt>Stocks with saved data</dt><dd>{morningScan.symbols_with_data}</dd></div>
+              <div><dt>Analyses completed</dt><dd>{morningScan.completed_runs}</dd></div>
+              <div><dt>Missing saved data</dt><dd>{morningScan.missing_data}</dd></div>
+              <div><dt>Not enough history</dt><dd>{morningScan.insufficient_history}</dd></div>
+              <div><dt>Analysis errors</dt><dd>{morningScan.analysis_errors}</dd></div>
+              <div><dt>Passed historical screen</dt><dd>{morningScan.passed_backtests}</dd></div>
+              <div><dt>Did not pass historical screen</dt><dd>{morningScan.failed_backtests}</dd></div>
+              <div><dt>Past data could not be scored</dt><dd>{morningScan.not_evaluable}</dd></div>
+            </dl>
+            <p>Coverage and gate outcomes can overlap: a stock with missing or short history is also not evaluable. Each symbol attempt is saved in Research history; this combined scan summary is not retained after reload.</p>
+          </details>
+          {!morningScan.candidates.length ? <div className="stock-research-empty-inline"><Clock3 size={15} aria-hidden="true" />No NIFTY 50 stock in the available local data met both checks. Open the full scan counts to see missing history or analysis errors, or search one symbol below.</div> : <div className="stock-research-candidates">
+            {morningScan.candidates.map((candidate) => <article className="stock-research-candidate" key={candidate.run_id}>
+              <div className="stock-research-candidate-head">
+                <div><span className="stock-research-candidate-qualified">Fresh trigger · historical screen passed</span><h3>{candidate.company_name || candidate.symbol} <small>{candidate.symbol}</small></h3><p>Daily data through {date(candidate.data_as_of)} · {candidate.history_years.toFixed(1)} years saved</p></div>
+              <span className="stock-research-candidate-winrate">{number(candidate.out_of_sample_metrics.win_rate_pct, 1)}% <small>win rate in past sample</small></span>
+              </div>
+              <dl className="stock-research-candidate-levels">
+                <div><dt>Latest close</dt><dd>{money(candidate.technical.close)}</dd></div>
+                <div><dt>Entry trigger</dt><dd>{money(candidate.setup.entry_trigger)}</dd></div>
+                <div><dt>Stop level</dt><dd>{money(candidate.setup.stop_loss)}</dd></div>
+                <div><dt>Target · 2 risk units</dt><dd>{money(candidate.setup.target_2r)}</dd></div>
+                <div><dt>Pattern appearances</dt><dd>{candidate.out_of_sample_metrics.signal_occurrences} daily signals</dd></div>
+                <div><dt>Closed trades</dt><dd>{candidate.out_of_sample_metrics.trades}</dd></div>
+                <div><dt>Past wins</dt><dd>{candidate.out_of_sample_metrics.wins} of {candidate.out_of_sample_metrics.trades}</dd></div>
+              </dl>
+              <details className="stock-research-candidate-reasons">
+                <summary>Why did this stock match?</summary>
+                <ul>{candidate.setup.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
+                <strong>Rule exit</strong><ul>{candidate.setup.exit_rules.map((rule) => <li key={rule}>{rule}</li>)}</ul>
+              </details>
+              <button type="button" className="bt-secondary stock-research-candidate-review" onClick={() => void run(candidate.symbol)} disabled={running || scanLoading}>
+                {runningSymbol === candidate.symbol ? <><LoaderCircle size={14} className="spin" aria-hidden="true" /> Building full review…</> : "Review full analysis"}
+              </button>
+              <small className="stock-research-candidate-ledger-note">This opens the chart and full trade details as a separate logged analysis.</small>
+            </article>)}
+          </div>}
+          {!morningScan.candidates.length && (morningScan.missing_data > 0 || morningScan.insufficient_history > 0) && <a className="stock-research-data-link" href="/data">Import more official NSE history</a>}
+        </div>}
+      </section>
+
       <section className="bt-panel stock-research-search" aria-label="Choose a stock">
-        <div className="stock-research-search-copy"><span className="bt-eyebrow">START WITH A SYMBOL</span><strong>Which stock should we inspect?</strong><small>Search the local NSE catalogue or enter a symbol, then run the analysis.</small></div>
+        <div className="stock-research-search-copy"><span className="bt-eyebrow">START WITH A SYMBOL</span><strong>Which company should we look at?</strong><small>Search by company name or NSE symbol, for example RELIANCE.</small></div>
         <div className="stock-research-search-control">
           <label className="bt-field-label" htmlFor="stock-research-symbol">NSE symbol or company</label>
-          <SymbolCombobox value={symbol} onChange={(next) => { setSymbol(next); setResult(null); setError(null); }} label="" inputId="stock-research-symbol" maxLength={50} disabled={running} />
+          <SymbolCombobox value={symbol} onChange={(next) => { setSymbol(next); setResult(null); setError(null); }} label="" inputId="stock-research-symbol" maxLength={50} disabled={running || scanLoading} />
         </div>
-        <button type="button" className="bt-primary stock-research-run" onClick={() => void run()} disabled={running || !canRun}>
+        <button type="button" className="bt-primary stock-research-run" onClick={() => void run()} disabled={running || scanLoading || !canRun}>
           {running ? <><LoaderCircle size={15} className="spin" aria-hidden="true" /> Analyzing history…</> : <><Activity size={15} aria-hidden="true" /> Analyze stock</>}
         </button>
       </section>
@@ -190,78 +294,108 @@ export default function StockResearchPage() {
 
       {result && <>
         <section className="stock-research-result-head">
-          <div><span className="bt-eyebrow">{result.run_status === "completed" ? "LATEST ANALYSIS" : "DATA STATUS"}</span><h2>{result.company_name || result.symbol} <small>{result.symbol}</small></h2><p>{result.message}</p></div>
+          <div><span className="bt-eyebrow">{result.run_status === "completed" ? "LATEST DAILY-BAR REVIEW" : "DATA STATUS"}</span><h2>{result.company_name || result.symbol} <small>{result.symbol}</small></h2><p>{result.message}</p></div>
           <span className={`stock-research-pill ${result.run_status}`}><span />{result.run_status.replaceAll("_", " ")}</span>
         </section>
 
         {result.run_status === "insufficient_data" && <section className="stock-research-empty bt-panel" role="status">
-          <Database size={20} aria-hidden="true" /><div><strong>No usable local history for {result.symbol}</strong><p>{result.message} Import the official NSE daily archive from Data, then run the analysis again.</p></div>
+          <Database size={20} aria-hidden="true" /><div><strong>No usable local history for {result.symbol}</strong><p>{result.message} Import the official NSE daily archive, then run the analysis again.</p><a className="stock-research-data-link" href="/data">Open NSE data</a></div>
         </section>}
 
         {technical && setup && <>
-          <section className={gateTone(result.validation_gate.status)} aria-live="polite">
-            <div className="stock-research-gate-icon">{result.validation_gate.status === "passed" ? <CheckCircle2 size={19} /> : result.validation_gate.status === "failed" ? <AlertTriangle size={19} /> : <Info size={19} />}</div>
-            <div className="stock-research-gate-copy"><strong>{GATE_COPY[result.validation_gate.status]}</strong><p>{result.validation_gate.reasons.join(" ")}</p></div>
-            <span>{result.validation_gate.minimum_win_rate_pct}% win rate · {result.validation_gate.minimum_oos_trades}+ OOS trades</span>
-          </section>
-
-          <section className="stock-research-kpis" aria-label="Stock and backtest summary">
-            <MetricCard label="Latest close" value={money(technical.close)} note={`NSE daily · ${date(result.data_as_of)}`} />
-            <MetricCard label="52-week range" value={`${money(technical.low_52w)} – ${money(technical.high_52w)}`} note={`${percent((technical.close / technical.low_52w - 1) * 100)} from 52-week low`} />
-            <MetricCard label="Historical OOS win rate" value={oos ? `${number(oos.win_rate_pct, 1)}%` : "—"} note={oos ? `${oos.wins} wins · ${oos.losses} losses · ${oos.trades} trades` : "No out-of-sample period"} tone={oos && oos.win_rate_pct >= 70 ? "gain" : "loss"} />
-            <MetricCard label="Historical price return · 1 year" value={percent(technical.return_1y_pct)} note="Past price movement; not a future growth forecast" tone={technical.return_1y_pct != null && technical.return_1y_pct >= 0 ? "gain" : "loss"} />
+          <section className="stock-research-summary" aria-live="polite">
+            <div className={`stock-research-summary-copy ${setup.status}`}>
+              <span className="bt-eyebrow">WHAT THE LATEST SAVED DATA SAYS</span>
+              <h2>{SETUP_COPY[setup.status].title}</h2>
+              <p>{SETUP_COPY[setup.status].body}</p>
+              <p className="stock-research-as-of"><strong>Daily data through {date(result.data_as_of)}</strong><span>{result.chart.length.toLocaleString("en-IN")} saved sessions · {result.data_source}</span></p>
+            </div>
+            <aside className={`stock-research-gate ${result.validation_gate.status}`} aria-label="Historical screen result">
+              <div className="stock-research-gate-icon" aria-hidden="true">{result.validation_gate.status === "passed" ? <CheckCircle2 size={19} /> : result.validation_gate.status === "failed" ? <AlertTriangle size={19} /> : <Info size={19} />}</div>
+              <div className="stock-research-gate-copy"><span className="bt-eyebrow">HISTORICAL SCREEN ONLY</span><strong>{GATE_COPY[result.validation_gate.status]}</strong><p>The {result.validation_gate.minimum_win_rate_pct}% win-rate cutoff is a rule for past data. Passing is not a forecast, promise, or recommendation.</p></div>
+            </aside>
           </section>
 
           <section className="stock-research-plan bt-panel">
-            <div className="stock-research-section-heading"><div><span className="bt-eyebrow">RULE-BASED SCENARIO</span><h2>Entry, risk &amp; targets</h2><p>{setup.status === "triggered" ? "The last completed daily candle met the rule; the next open is still unknown." : setup.status === "watch" ? "Trend is aligned; wait for the full breakout and volume rule." : setup.status === "stale_data" ? "Saved data is stale; refresh the NSE history before using these reference levels." : "The long trend filter is not aligned, so there is no qualifying long setup."}</p></div><span className={`stock-research-pill ${setup.status}`}><span />{setup.status.replaceAll("_", " ")}</span></div>
+            <div className="stock-research-section-heading"><div><span className="bt-eyebrow">CONDITIONAL PRICE LEVELS</span><h2>If this rule triggers</h2><p>These are reference prices from saved daily candles. They are not a current quote, order, or known fill.</p></div><span className={`stock-research-pill ${setup.status}`}><span />{setup.status.replaceAll("_", " ")}</span></div>
             <div className="stock-research-levels">
-              <div><span>Entry trigger reference</span><strong>{money(setup.entry_trigger)}</strong><small>Prior 20-session high · confirmation uses daily close + volume</small></div>
-              <div className="risk-level"><span>Stop · 1R risk</span><strong>{money(setup.stop_loss)}</strong><small>{money(setup.risk_per_share)} risk/share from the trigger reference</small></div>
-              <div><span>Target · 1R</span><strong>{money(setup.target_1r)}</strong><small>One risk unit above the reference</small></div>
-              <div className="target-level"><span>Target · 2R</span><strong>{money(setup.target_2r)}</strong><small>Two risk units above the reference</small></div>
+              <div><span>Entry trigger</span><strong>{money(setup.entry_trigger)}</strong><small>Prior 20-session high; the rule also checks daily close and volume</small></div>
+              <div className="risk-level"><span>Stop level</span><strong>{money(setup.stop_loss)}</strong><small>{money(setup.risk_per_share)} price risk per share below the trigger</small></div>
+              <div><span>Target · 1 risk unit</span><strong>{money(setup.target_1r)}</strong><small>One stop-distance above the trigger</small></div>
+              <div className="target-level"><span>Target · 2 risk units</span><strong>{money(setup.target_2r)}</strong><small>Two stop-distances above the trigger</small></div>
             </div>
-            <p className="stock-research-level-note"><Info size={14} aria-hidden="true" />{setup.level_note}</p>
-            <div className="stock-research-exit-rules"><strong>When the fixed rule exits</strong>{setup.exit_rules.map((rule) => <p key={rule}>{rule}</p>)}</div>
+            <p className="stock-research-level-note"><Info size={14} aria-hidden="true" /><span>{setup.level_note} “Risk unit” means the price distance from the entry trigger to the stop.</span></p>
+            <div className="stock-research-exit-rules"><strong>Exact exit rule</strong><ul>{setup.exit_rules.map((rule) => <li key={rule}>{rule}</li>)}</ul></div>
           </section>
 
-          <section className="stock-research-chart bt-panel">
-            <div className="stock-research-section-heading"><div><span className="bt-eyebrow">PRICE &amp; TREND</span><h2>{result.symbol} daily candles</h2><p>Most recent 252 saved sessions with 20, 50 and 200-session moving averages.</p></div><span className="stock-research-date-range">{date(result.history_start)} – {date(result.data_as_of)} · {result.bar_count.toLocaleString("en-IN")} bars</span></div>
-            <FinancialChart candles={candles} indicators={indicators} title={`${result.symbol} daily NSE history`} description="Historical daily OHLCV with 20, 50 and 200-session simple moving averages." height={290} initialVisibleCandles={90} emptyMessage="No local daily candles were returned for this symbol." />
-          </section>
+          <details className="stock-research-disclosure bt-panel">
+            <summary><span><strong>Explore the daily price chart and indicators</strong><small>Price range, moving averages, momentum, volume, and the reasons behind this readout</small></span></summary>
+            <div className="stock-research-disclosure-body">
+              <section className="stock-research-chart">
+                <div className="stock-research-section-heading"><div><span className="bt-eyebrow">PRICE HISTORY</span><h2>{result.symbol} daily candles</h2><p>Full saved daily history with 20, 50 and 200-session moving averages.</p></div><span className="stock-research-date-range">{date(result.history_start)} – {date(result.data_as_of)} · {result.chart.length.toLocaleString("en-IN")} bars</span></div>
+                <FinancialChart candles={candles} indicators={indicators} title={`${result.symbol} daily NSE history`} description="Historical daily OHLCV with 20, 50 and 200-session simple moving averages." height={290} initialVisibleCandles={90} emptyMessage="No local daily candles were returned for this symbol." />
+              </section>
 
-          <section className="stock-research-analysis bt-panel">
-            <div className="stock-research-section-heading"><div><span className="bt-eyebrow">WHY THIS READOUT</span><h2>Indicators with plain-language reasons</h2><p>These describe the saved daily bars and the exact filters used by this fixed rule.</p></div></div>
-            <div className="stock-research-indicators">
-              <div><span>Simple moving averages</span><strong>20d {money(technical.sma20)} · 50d {money(technical.sma50)} · 200d {money(technical.sma200)}</strong><small>Price versus its averages shows recent and longer trend context.</small></div>
-              <div><span>RSI · 14</span><strong>{number(technical.rsi14, 1)}</strong><small>Momentum gauge; high or low readings alone do not time a reversal.</small></div>
-              <div><span>MACD · 12 / 26 / 9</span><strong>{number(technical.macd)} · signal {number(technical.macd_signal)}</strong><small>Histogram {number(technical.macd_histogram)}; above zero means MACD is above its signal.</small></div>
-              <div><span>ATR · 14</span><strong>{money(technical.atr14)} · {number(technical.atr14_pct)}%</strong><small>Recent volatility used to size stop distance; it does not predict direction.</small></div>
-              <div><span>Prior 20-session range</span><strong>{money(technical.prior20_low)} – {money(technical.prior20_high)}</strong><small>Breakout comparisons use prior sessions, excluding the signal day.</small></div>
-              <div><span>Volume versus prior 20 sessions</span><strong>{technical.volume_ratio_20 == null ? "—" : `${number(technical.volume_ratio_20)}×`}</strong><small>Current day volume divided by the preceding 20-session average.</small></div>
+              <section className="stock-research-analysis">
+                <div className="stock-research-section-heading"><div><span className="bt-eyebrow">PRICE FACTS &amp; INDICATORS</span><h2>What is behind the summary</h2><p>These describe saved daily bars. None is a forecast by itself.</p></div></div>
+                <dl className="stock-research-price-facts">
+                  <div><dt>Latest close</dt><dd>{money(technical.close)}</dd><small>NSE daily · {date(result.data_as_of)}</small></div>
+                  <div><dt>52-week range</dt><dd>{money(technical.low_52w)} – {money(technical.high_52w)}</dd><small>{percent((technical.close / technical.low_52w - 1) * 100)} from the 52-week low</small></div>
+                  <div><dt>Past 1-year price change</dt><dd>{percent(technical.return_1y_pct)}</dd><small>Past price movement, not a future growth forecast</small></div>
+                </dl>
+                <div className="stock-research-indicators">
+                  <div><span>Simple moving averages</span><strong>20-day {money(technical.sma20)} · 50-day {money(technical.sma50)} · 200-day {money(technical.sma200)}</strong><small>Price versus its averages shows recent and longer trend context.</small></div>
+                  <div><span>RSI · 14</span><strong>{number(technical.rsi14, 1)}</strong><small>Momentum gauge; high or low readings alone do not time a reversal.</small></div>
+                  <div><span>MACD · 12 / 26 / 9</span><strong>{number(technical.macd)} · signal {number(technical.macd_signal)}</strong><small>Histogram {number(technical.macd_histogram)}; above zero means MACD is above its signal.</small></div>
+                  <div><span>ATR · 14</span><strong>{money(technical.atr14)} · {number(technical.atr14_pct)}%</strong><small>Recent volatility used to set stop distance; it does not predict direction.</small></div>
+                  <div><span>Prior 20-session range</span><strong>{money(technical.prior20_low)} – {money(technical.prior20_high)}</strong><small>Breakout comparisons use prior sessions, excluding the signal day.</small></div>
+                  <div><span>Volume versus prior 20 sessions</span><strong>{technical.volume_ratio_20 == null ? "—" : `${number(technical.volume_ratio_20)}×`}</strong><small>Current day volume divided by the preceding 20-session average.</small></div>
+                </div>
+                <h3 className="stock-research-subheading">Reasons behind this readout</h3>
+                {result.technical_reasons.length ? <ul className="stock-research-reasons">{result.technical_reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul> : <p className="stock-research-muted">No additional indicator reasons are available for this data.</p>}
+                <div className="stock-research-returns" aria-label="Historical price returns">
+                  <div><span>1 month</span><strong>{percent(technical.return_1m_pct)}</strong></div><div><span>3 months</span><strong>{percent(technical.return_3m_pct)}</strong></div><div><span>1 year</span><strong>{percent(technical.return_1y_pct)}</strong></div><div><span>3 years</span><strong>{percent(technical.return_3y_pct)}</strong></div>
+                </div>
+                <div className="stock-research-growth-note">
+                  <p>{result.growth_note} The local OHLCV archive contains share prices and volume; it cannot forecast company growth. For company results, see NSE&apos;s official filings for {result.symbol}.</p>
+                  <a href={nseFinancialResultsUrl(result.symbol)} target="_blank" rel="noreferrer">NSE financial results for {result.symbol}<ExternalLink size={13} aria-hidden="true" /></a>
+                </div>
+              </section>
             </div>
-            <ul className="stock-research-reasons">{result.technical_reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
-            <div className="stock-research-returns" aria-label="Historical price returns">
-              <div><span>1 month</span><strong>{percent(technical.return_1m_pct)}</strong></div><div><span>3 months</span><strong>{percent(technical.return_3m_pct)}</strong></div><div><span>1 year</span><strong>{percent(technical.return_1y_pct)}</strong></div><div><span>3 years</span><strong>{percent(technical.return_3y_pct)}</strong></div>
+          </details>
+
+          <details className="stock-research-disclosure bt-panel">
+            <summary><span><strong>See how the fixed rule performed on past data</strong><small>{result.history_years.toFixed(1)} years of saved history · training and held-out periods · individual trades</small></span></summary>
+            <div className="stock-research-disclosure-body">
+              <section className="stock-research-backtest">
+                <div className="stock-research-section-heading"><div><span className="bt-eyebrow">HISTORICAL TEST</span><h2>Past results, split into two periods</h2><p>The first 70% of sessions are used for training; the final 30% are held out and shown separately. No parameter optimization is used.</p></div><span className="stock-research-date-range">{date(result.history_start)} – {date(result.data_as_of)} · {result.data_source}</span></div>
+                <div className="stock-research-metrics-grid"><MetricsTable title="Training period · first 70%" metrics={result.training_metrics} /><MetricsTable title="Held-out period · final 30%" metrics={oos ?? null} /></div>
+              </section>
+
+              <section className="stock-research-trades">
+                <div className="stock-research-section-heading"><div><span className="bt-eyebrow">HELD-OUT SAMPLE</span><h2>Past entries and exits</h2><p>Closed trades in the final held-out period, after the modeled transaction costs.</p></div><span className="stock-research-date-range">{oos?.wins ?? 0} wins · {oos?.losses ?? 0} losses · {oos?.trades ?? 0} trades</span></div>
+                {!latestTrades.length ? <div className="stock-research-empty-inline">There were no completed trades in this held-out period. Without enough trades, the historical screen cannot be scored.</div> : <div className="bt-table-wrap"><table className="bt-table"><thead><tr><th>Signal</th><th>Entry</th><th>Exit</th><th className="right">Entry price</th><th className="right">Exit price</th><th className="right">Net return</th><th className="right">Net P/L</th><th>Exit reason</th></tr></thead><tbody>{latestTrades.map((trade) => <tr key={`${trade.signal_date}-${trade.entry_date}-${trade.exit_date}`}><td>{date(trade.signal_date)}</td><td>{date(trade.entry_date)}</td><td>{date(trade.exit_date)}</td><td className="right">{money(trade.entry_price)}</td><td className="right">{money(trade.exit_price)}</td><td className={`right ${trade.net_return_pct >= 0 ? "stock-positive" : "stock-negative"}`}>{percent(trade.net_return_pct)}</td><td className={`right ${trade.net_pnl >= 0 ? "stock-positive" : "stock-negative"}`}>{money(trade.net_pnl)}</td><td>{trade.exit_reason.replaceAll("_", " ")}</td></tr>)}</tbody></table>{(result.trades.length > 30) && <p className="stock-research-table-note">Showing the most recent 30 of {result.trades.length} held-out trades.</p>}</div>}
+              </section>
+
+              <section className="stock-research-screen-criteria">
+                <h3>What the historical screen checks</h3>
+                <p>It requires at least {result.validation_gate.minimum_history_years} years of data, {result.validation_gate.minimum_oos_trades} or more held-out trades, at least {result.validation_gate.minimum_win_rate_pct}% wins, positive average net return and total return after modeled costs, and a profit factor above 1 when there were losses. These are screening rules for past data only—not a forecast, promise, or recommendation.</p>
+                {result.validation_gate.reasons.length ? <ul className="stock-research-reasons">{result.validation_gate.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul> : <p className="stock-research-muted">This sample met each stated historical screen condition.</p>}
+              </section>
             </div>
-            <p className="stock-research-muted">{result.growth_note}</p>
-          </section>
+          </details>
 
-          <section className="stock-research-backtest">
-            <div className="stock-research-section-heading"><div><span className="bt-eyebrow">HISTORICAL CHECK</span><h2>Did this rule work on unseen history?</h2><p>After the 200-session indicator warm-up, the first 70% establish the training period; the final 30% are held out and reported separately.</p></div><span className="stock-research-date-range">{result.history_years.toFixed(1)} years · {result.data_source}</span></div>
-            <div className="stock-research-metrics-grid"><MetricsTable title="Training period · 70%" metrics={result.training_metrics} /><MetricsTable title="Out-of-sample · final 30%" metrics={oos ?? null} /></div>
-          </section>
-
-          <section className="stock-research-trades bt-panel">
-            <div className="stock-research-section-heading"><div><span className="bt-eyebrow">OUT-OF-SAMPLE TRADES</span><h2>Historical entries &amp; exits</h2><p>Closed trades from the held-out period after modeled transaction costs.</p></div><span className="stock-research-date-range">{oos?.wins ?? 0} wins · {oos?.losses ?? 0} losses</span></div>
-            {!latestTrades.length ? <div className="stock-research-empty-inline">No completed trades in this out-of-sample window. A 0-trade result cannot satisfy the acceptance gate.</div> : <div className="bt-table-wrap"><table className="bt-table"><thead><tr><th>Signal</th><th>Entry</th><th>Exit</th><th className="right">Entry price</th><th className="right">Exit price</th><th className="right">Net return</th><th className="right">Net P/L</th><th>Exit reason</th></tr></thead><tbody>{latestTrades.map((trade) => <tr key={`${trade.signal_date}-${trade.entry_date}-${trade.exit_date}`}><td>{date(trade.signal_date)}</td><td>{date(trade.entry_date)}</td><td>{date(trade.exit_date)}</td><td className="right">{money(trade.entry_price)}</td><td className="right">{money(trade.exit_price)}</td><td className={`right ${trade.net_return_pct >= 0 ? "stock-positive" : "stock-negative"}`}>{percent(trade.net_return_pct)}</td><td className={`right ${trade.net_pnl >= 0 ? "stock-positive" : "stock-negative"}`}>{money(trade.net_pnl)}</td><td>{trade.exit_reason.replaceAll("_", " ")}</td></tr>)}</tbody></table>{(result.trades.length > 30) && <p className="stock-research-table-note">Showing the most recent 30 of {result.trades.length} out-of-sample trades.</p>}</div>}
-          </section>
-
-          <section className="stock-research-costs bt-panel">
-            <div className="stock-research-section-heading"><div><span className="bt-eyebrow">ASSUMPTIONS &amp; SOURCES</span><h2>How the test is modeled</h2></div></div>
-            <div className="stock-research-method-grid"><div><strong>Fixed long-only rule</strong><p>Daily close above prior 20-session high, close above SMA50, SMA50 above SMA200, and volume above the previous 20-session average. No parameter optimization.</p></div><div><strong>Execution and sizing</strong><p>Signals enter at the following session open. The simulation starts with ₹1,00,000 and buys whole shares with available equity. Stops use 2×ATR14, target is 2R, exits follow SMA50 or a 20-session limit. If stop and target both touch in one daily candle, stop is assumed first.</p></div><div><strong>Costs in the simulation</strong><p>{result.cost_assumptions ? `Slippage ${costPct(result.cost_assumptions.entry_slippage_pct)} each side; STT ${costPct(result.cost_assumptions.stt_pct_per_side)} each side; stamp duty ${costPct(result.cost_assumptions.stamp_duty_pct_buy_side)} on buy; SEBI fee ${costPct(result.cost_assumptions.sebi_turnover_fee_pct_per_side)} each side.` : "Unavailable."} Excludes {result.cost_assumptions?.excluded.join(", ") ?? "other charges"}.</p></div></div>
-            <div className="stock-research-links"><a href="https://www.nseindia.com/static/market-data/eod-historical-data-subscription" target="_blank" rel="noreferrer">NSE historical data <ExternalLink size={12} /></a><a href="https://ta-lib.org/functions/sma" target="_blank" rel="noreferrer">SMA reference <ExternalLink size={12} /></a><a href="https://github.com/TA-Lib/ta-lib/blob/main/ta_codegen/input/rsi/rsi.md" target="_blank" rel="noreferrer">RSI reference <ExternalLink size={12} /></a><a href="https://ta-lib.org/functions/macdfix.html" target="_blank" rel="noreferrer">MACD reference <ExternalLink size={12} /></a><a href="https://ta-lib.org/functions/atr.html" target="_blank" rel="noreferrer">ATR reference <ExternalLink size={12} /></a><a href="https://www.nseindia.com/static/invest/first-time-investor-sebi-turnover-fees-stt-other-levies" target="_blank" rel="noreferrer">NSE levy schedule <ExternalLink size={12} /></a></div>
-            <p className="stock-research-muted">A historical win rate—even if it passes the screen—is not a guarantee of future results. Prices are not adjusted for splits or bonus issues; these events can distort indicators, trade levels, and long-range backtests.</p>
-          </section>
+          <details className="stock-research-disclosure bt-panel">
+            <summary><span><strong>Review the rule, costs, and sources</strong><small>Exact entry conditions, sizing assumptions, excluded costs, and references</small></span></summary>
+            <div className="stock-research-disclosure-body">
+              <section className="stock-research-costs">
+                <div className="stock-research-section-heading"><div><span className="bt-eyebrow">METHOD &amp; SOURCES</span><h2>How this result was made</h2></div></div>
+                <div className="stock-research-method-grid"><div><strong>Fixed long-only rule</strong><p>Daily close above prior 20-session high, close above SMA50, SMA50 above SMA200, and volume above the previous 20-session average. No parameter optimization.</p></div><div><strong>Execution and sizing</strong><p>Signals enter at the following session open. The simulation starts with ₹1,00,000 and buys whole shares with available equity. Stops use 2×ATR14, target is 2R, exits follow SMA50 or a 20-session limit. If stop and target both touch in one daily candle, stop is assumed first.</p></div><div><strong>Costs in the simulation</strong><p>{result.cost_assumptions ? `Slippage ${costPct(result.cost_assumptions.entry_slippage_pct)} each side; STT ${costPct(result.cost_assumptions.stt_pct_per_side)} each side; stamp duty ${costPct(result.cost_assumptions.stamp_duty_pct_buy_side)} on buy; SEBI fee ${costPct(result.cost_assumptions.sebi_turnover_fee_pct_per_side)} each side.` : "Unavailable."} Excludes {result.cost_assumptions?.excluded.join(", ") ?? "other charges"}.</p></div></div>
+                <div className="stock-research-links"><a href="https://www.nseindia.com/static/market-data/eod-historical-data-subscription" target="_blank" rel="noreferrer">NSE historical data <ExternalLink size={12} aria-hidden="true" /></a><a href="https://ta-lib.org/functions/sma" target="_blank" rel="noreferrer">SMA reference <ExternalLink size={12} aria-hidden="true" /></a><a href="https://github.com/TA-Lib/ta-lib/blob/main/ta_codegen/input/rsi/rsi.md" target="_blank" rel="noreferrer">RSI reference <ExternalLink size={12} aria-hidden="true" /></a><a href="https://ta-lib.org/functions/macdfix.html" target="_blank" rel="noreferrer">MACD reference <ExternalLink size={12} aria-hidden="true" /></a><a href="https://ta-lib.org/functions/atr.html" target="_blank" rel="noreferrer">ATR reference <ExternalLink size={12} aria-hidden="true" /></a><a href="https://www.nseindia.com/static/invest/first-time-investor-sebi-turnover-fees-stt-other-levies" target="_blank" rel="noreferrer">NSE levy schedule <ExternalLink size={12} aria-hidden="true" /></a></div>
+                <p className="stock-research-muted">The scan applies current NIFTY 50 members to each symbol’s full saved history; it does not include former constituents and is not a survivorship-free index backtest. Ticker changes may also split a company’s history across symbols. A historical win rate—even if it passes the screen—is not a guarantee of future results. Prices are not adjusted for splits or bonus issues; these events can distort indicators, trade levels, and long-range backtests.</p>
+              </section>
+            </div>
+          </details>
         </>}
       </>}
 
@@ -272,14 +406,15 @@ export default function StockResearchPage() {
           <div><span>Total attempts</span><strong>{count(history?.total_runs)}</strong></div>
           <div><span>Completed</span><strong>{count(history?.completed_runs)}</strong></div>
           <div><span>Failed attempts</span><strong>{count(history?.failed_attempts)}</strong></div>
+          <div><span>Insufficient data</span><strong>{count(history?.insufficient_data_runs)}</strong></div>
           <div><span>Passed validation</span><strong>{count(history?.qualified_runs)}</strong></div>
           <div><span>Failed validation</span><strong>{count(history?.failed_gates)}</strong></div>
           <div><span>Not evaluable</span><strong>{count(history?.not_evaluable_runs)}</strong></div>
         </div>
-        {history?.runs.length ? <div className="bt-table-wrap"><table className="bt-table"><thead><tr><th>Run time</th><th>Stock</th><th>Status</th><th>OOS trades</th><th>Wins / losses</th><th>Validation</th></tr></thead><tbody>{history.runs.map((runItem) => <tr key={runItem.run_id}><td>{date(runItem.logged_at)}</td><td><strong>{runItem.symbol || "—"}</strong></td><td>{runItem.run_status.replaceAll("_", " ")}{runItem.failure_reason && <small className="stock-research-failure">{runItem.failure_reason}</small>}</td><td>{runItem.trades}</td><td>{runItem.wins} / {runItem.losses}</td><td><span className={`stock-research-history-gate ${runItem.validation_status}`}>{runItem.validation_status.replaceAll("_", " ")}</span></td></tr>)}</tbody></table></div> : !historyLoading && !historyError ? <div className="stock-research-empty-inline"><Clock3 size={15} aria-hidden="true" />No research runs are logged yet. The first attempt will appear here.</div> : null}
+        {history?.runs.length ? <div className="bt-table-wrap"><table className="bt-table"><thead><tr><th>Run time</th><th>Stock</th><th>Status</th><th>Rule signals</th><th>Closed trades</th><th>Wins / losses</th><th>Historical screen</th></tr></thead><tbody>{history.runs.map((runItem) => <tr key={runItem.run_id}><td>{date(runItem.logged_at)}</td><td><strong>{runItem.symbol || "—"}</strong></td><td>{runItem.run_status.replaceAll("_", " ")}{runItem.failure_reason && <small className="stock-research-failure">{runItem.failure_reason}</small>}</td><td>{runItem.signal_occurrences == null ? "—" : runItem.signal_occurrences}</td><td>{runItem.trades}</td><td>{runItem.wins} / {runItem.losses}</td><td><span className={`stock-research-history-gate ${runItem.validation_status}`}>{runItem.validation_status.replaceAll("_", " ")}</span></td></tr>)}</tbody></table></div> : !historyLoading && !historyError ? <div className="stock-research-empty-inline"><Clock3 size={15} aria-hidden="true" />No research runs are logged yet. The first attempt will appear here.</div> : null}
       </section>
 
-      <footer className="stock-research-footer"><Info size={14} aria-hidden="true" /><span>Run ID: <code>{result?.run_id ?? "—"}</code> · Start and finish times are recorded in the local SQLite research log. The app does not place orders.</span>{oos && <span className="stock-research-footer-counts"><ArrowUpRight size={13} /> {oos.wins} wins <ArrowDownRight size={13} /> {oos.losses} losses</span>}</footer>
+      <footer className="stock-research-footer"><Info size={14} aria-hidden="true" /><span>Run ID: <code>{result?.run_id ?? "—"}</code> · Start and finish times are recorded in the local SQLite research log. No live prices or orders are provided.</span>{oos && <span className="stock-research-footer-counts"><ArrowUpRight size={13} /> {oos.wins} held-out wins <ArrowDownRight size={13} /> {oos.losses} losses</span>}</footer>
     </main>
   </div>;
 }

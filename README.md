@@ -13,7 +13,7 @@ It does not place real orders, connect to a broker, provide live quotes, or requ
 - Tests SMA, RSI/EMA, configurable rule, strategy-library, and imported YouTube ideas.
 - Scans local daily NSE history for transparent bullish and bearish structure zones, their break level, retests, invalidation, and data coverage; ranks positive and negative 20-session close-pressure estimates in a selectable flow view.
 - On `/research`, follows one stock → local data → chart → strategy → backtest → results workflow with OHLCV, volume, indicators, signals, trades, equity, drawdown, and metrics.
-- On `/stock-research`, explains one stock's daily trend, momentum, volatility, historical price ranges, and conditional entry/stop/targets, then tests a fixed rule on held-out history and logs every attempt locally.
+- On `/stock-research`, scans the built-in NIFTY 50 basket and shows only fresh daily triggers whose fixed-rule held-out test passes the evidence gate; search one stock for its indicators, conditional levels, candles, trade history, and local run log.
 - Replays historical candles with simulated orders only.
 - Runs a seeded daily-bar scenario sample and compares it with a fixed-rule historical sample.
 - Builds a manual morning watchlist from the latest completed NSE daily candles, with conditional trigger, stop, and 2R target levels.
@@ -90,7 +90,7 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 | `/` | Guided path from local NSE data to research, saved results, and comparison |
 | `/data` | Bulk NSE history download and local stock search |
 | `/research` | Describe an idea, review a proposal, prepare data, and run a backtest |
-| `/stock-research` | Explain one NSE symbol's indicators and conditional plan; review its fixed-rule historical test and persistent run ledger |
+| `/stock-research` | Run a gated NIFTY 50 morning scan or explain one symbol's indicators, conditional plan, historical test, candles, and persistent run ledger |
 | `/strategy` | Build indicator and rule-based strategies |
 | `/strategy-import` | Extract reviewable rules from a YouTube URL or transcript |
 | `/backtests` | Reopen saved historical tests |

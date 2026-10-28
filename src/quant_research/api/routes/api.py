@@ -63,6 +63,7 @@ from quant_research.api.schemas import (
     ScreenerUniverseResponse,
     SmaBacktestRequest,
     StockResearchHistoryResponse,
+    StockResearchMorningScanResponse,
     StockResearchRequest,
     StockResearchResponse,
     StructureZoneScanRequest,
@@ -1299,6 +1300,17 @@ def create_api_router(
         except Exception as exc:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="The run failed and was recorded in local research history.") from exc
         return StockResearchResponse.model_validate(result)
+
+    @router.post("/stock-research/morning-scan", response_model=StockResearchMorningScanResponse, tags=["research"])
+    def scan_stock_research_morning() -> StockResearchMorningScanResponse:
+        """Backtest the fixed stock-research rule across the local NIFTY 50 symbols."""
+        if market_cache is None or artifacts is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Local NSE cache and research log are required.")
+        try:
+            result = StockResearchService(market_cache, artifacts).scan_morning()
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="The morning scan failed; individual analysis attempts are recorded when available.") from exc
+        return StockResearchMorningScanResponse.model_validate(result)
 
     @router.get("/stock-research/runs", response_model=StockResearchHistoryResponse, tags=["research"])
     def list_stock_research_runs(limit: Annotated[int, Query(ge=1, le=100)] = 25) -> StockResearchHistoryResponse:

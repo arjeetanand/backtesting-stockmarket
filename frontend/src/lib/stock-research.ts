@@ -4,6 +4,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8
 
 export type StockResearchMetrics = {
   trades: number;
+  signal_occurrences: number;
   wins: number;
   losses: number;
   flats: number;
@@ -120,6 +121,7 @@ export type StockResearchHistory = {
   total_runs: number;
   completed_runs: number;
   failed_attempts: number;
+  insufficient_data_runs: number;
   qualified_runs: number;
   failed_gates: number;
   not_evaluable_runs: number;
@@ -129,6 +131,7 @@ export type StockResearchHistory = {
     run_status: "completed" | "insufficient_data" | "failed";
     logged_at: string | null;
     data_as_of: string | null;
+    signal_occurrences: number | null;
     trades: number;
     wins: number;
     losses: number;
@@ -137,8 +140,40 @@ export type StockResearchHistory = {
   }>;
 };
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, init, 30_000);
+export type StockResearchMorningScan = {
+  scan_id: string;
+  status: "completed";
+  started_at: string;
+  finished_at: string;
+  universe: "NIFTY 50";
+  universe_as_of: string;
+  data_source: string;
+  data_as_of: string | null;
+  symbols_scanned: number;
+  symbols_with_data: number;
+  completed_runs: number;
+  analysis_errors: number;
+  insufficient_history: number;
+  missing_data: number;
+  passed_backtests: number;
+  failed_backtests: number;
+  not_evaluable: number;
+  fresh_signals: number;
+  qualifying_setups: number;
+  candidates: Array<{
+    run_id: string;
+    symbol: string;
+    company_name: string;
+    data_as_of: string;
+    history_years: number;
+    technical: NonNullable<StockResearchResult["technical"]>;
+    setup: NonNullable<StockResearchResult["setup"]>;
+    out_of_sample_metrics: StockResearchMetrics;
+  }>;
+};
+
+async function request<T>(path: string, init?: RequestInit, timeoutMs = 30_000): Promise<T> {
+  const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, init, timeoutMs);
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     const record = payload !== null && typeof payload === "object" ? payload as Record<string, unknown> : {};
@@ -156,6 +191,10 @@ export function runStockResearch(symbol: string): Promise<StockResearchResult> {
   });
 }
 
+export function scanMorningStockResearch(): Promise<StockResearchMorningScan> {
+  return request<StockResearchMorningScan>("/stock-research/morning-scan", { method: "POST" }, 120_000);
+}
+
 export function getStockResearchHistory(): Promise<StockResearchHistory> {
-  return request<StockResearchHistory>("/stock-research/runs?limit=25");
+  return request<StockResearchHistory>("/stock-research/runs?limit=100");
 }
