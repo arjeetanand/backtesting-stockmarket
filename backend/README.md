@@ -119,12 +119,15 @@ All routes are prefixed with `/api/v1`.
 
 - `POST /market-scanner/run` — run a vectorized multi-stock strategy scan from the local NSE cache.
 - `POST /breakout-scanner/scan` — rank local NSE daily setups and return the latest data date plus conditional prior-high trigger, prior-low stop, and 2R target levels; it does not return live pre-open data.
+- `POST /structure-zones/scan` — find recent valid daily structure zones in a configured local universe.
 - `POST /ml/experiments` and `GET /ml/experiments` — run and list chronological, past-only ML research experiments.
 - `POST /data/sync-today` — import the current missing NSE archive day when available.
 - `POST /watchlist/add`, `GET /watchlist`, and `DELETE /watchlist/{item_id}` — persist, evaluate, and remove simulated setup bookmarks.
 
 Watchlist status is evaluated only against local daily bars on or after the setup's
 entry date. A pre-entry high or low must not mark a newly saved setup as completed.
+
+The structure-zone endpoint uses only locally cached `1day` bars. Its independent rule confirms a 20-session range break with a large directional candle, uses the latest opposite candle in the previous three sessions as the zone, and hides zones invalidated by a later close through the far edge. It returns the last-bar date, universe coverage, touch-session count, distance, and break level; it does not fetch data, claim institutional flow, or make live updates.
 
 `GET /market-data` is the chart-read path for a selected symbol, timeframe, and datetime range. The custom backtest response includes the existing candles, indicators, trades, equity, drawdown, and metrics plus real candle `volume` and stable signal `id`/`trade_id` fields. `422` responses are used for insufficient history and unsupported strategy parameters so the frontend can show an actionable correction.
 

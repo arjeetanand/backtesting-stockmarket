@@ -232,7 +232,7 @@ Persistence is local single-user SQLite. There is no authentication, multi-user 
 | Options Learn | `frontend/src/app/options/page.tsx` | Educational payoff and breakeven calculator |
 | Analytics | `frontend/src/app/analytics/page.tsx` | Performance and trade-quality analysis |
 | Market Insights | `frontend/src/app/insights/page.tsx` and `frontend/src/components/insights/InsightsDashboard.tsx` | Index-aware daily breadth, stock/sector heatmaps, period selectors, coverage metadata, and top movers |
-| Market Scanner | `frontend/src/app/market-scanner/page.tsx` | Manual morning plans from local NSE daily bars, explicit formula scans, saved presets, recent runs, and historical research |
+| Market Scanner | `frontend/src/app/market-scanner/page.tsx` | Morning plans, formula and historical scans, breakout results, daily structure zones, and local coverage states |
 | FII / DII Insights | `frontend/src/app/insights/fii-dii/page.tsx` | Official NSE institutional-flow cards, combo chart, filters, and ledger |
 | Settings | `frontend/src/app/settings/page.tsx` | Local configuration and provider status |
 
@@ -316,7 +316,7 @@ API schemas live in `src/quant_research/api/schemas.py`; route behavior lives in
 
 `GET /insights/fii-dii` returns locally normalized official NSE FII/FPI-DII rows, daily/weekly/monthly summaries, chart points, available Nifty 50 index closes, and a coverage note when the requested range is not locally complete. `POST /insights/fii-dii/import` and `GET /insights/fii-dii/import/{job_id}` manage the background report snapshot import. Raw snapshots are kept under `data/nse_archives/fii_dii/`; the SQLite cache owns normalized `fii_dii_rows`, `fii_dii_snapshots`, and `nifty50_closes` tables. The current public NSE FII/DII endpoint is latest-session only; historical sessions are not invented from date query parameters.
 
-`GET /screeners/catalog` and `GET /screeners/universes` expose the checked-in JSON formula and index-membership catalogues. `POST /screeners/run` performs an explicit current-snapshot formula evaluation, and `GET /insights/{universe}?period=1d|1w|1m|3m` returns local daily breadth, selected-index constituents, sector aggregates, top movers, data freshness, and coverage/missing-symbol metadata. Formula definitions live in `src/quant_research/config/scanner_catalog.json`; index membership lives in `src/quant_research/config/index_universes.json`. Scanner presets and recent-run metadata are browser-local and do not require a SQLite migration.
+`GET /screeners/catalog` and `GET /screeners/universes` expose the checked-in JSON formula and index-membership catalogues. `POST /screeners/run` performs an explicit current-snapshot formula evaluation, `POST /structure-zones/scan` scans a selected configured universe using local daily bars, and `GET /insights/{universe}?period=1d|1w|1m|3m` returns local daily breadth, selected-index constituents, sector aggregates, top movers, data freshness, and coverage/missing-symbol metadata. Formula definitions live in `src/quant_research/config/scanner_catalog.json`; index membership lives in `src/quant_research/config/index_universes.json`. Scanner presets and recent-run metadata are browser-local and do not require a SQLite migration. The structure-zone scan is read-only and does not add a database table.
 
 ### Replay
 
@@ -503,3 +503,16 @@ Next owner/action:
 - Run from an up-to-date checkout with `./run.sh`; UI port `4003`, API port `8001`. After updating the local checkout, use **Build Morning Plan** manually around 9:00 IST when its NSE daily cache is current.
 - No position sizing is shown because the user has not set an account risk budget. No broker execution was added. The scan is a heuristic and cannot promise the day's best-performing stock.
 - Checklist: `docs/NSE_MORNING_PLAN_CHECKLIST.md`.
+
+## 18. Independent daily structure-zone scanner
+
+- Date: 2026-10-28.
+- Branch: `codex/independent-structure-zones-20261028`.
+- Add a read-only `POST /structure-zones/scan` route and a **Daily structure zones** tab in Market Scanner. It reads the selected configured universe from the local NSE daily cache and reports recent active bullish/bearish zones, source/confirmation dates, prior range boundary, ATR displacement, touch sessions, invalidation edge, per-symbol data date, and coverage.
+- Rule: require a close beyond the preceding 20-session range, body at least 1.25 times the prior 14-session average true range, and close in the outer quarter of the candle. The zone is the full range of the latest opposite candle within the preceding three bars. Close through the far edge invalidates it; confirmations older than 60 bars are omitted.
+- This is an independent transparent OHLCV heuristic. It uses no intraday/live feed, makes no claim about institutional activity, and does not place orders. The scan writes no data and adds no database migration.
+- Verification: full Ruff and pytest passed; frontend ESLint and isolated webpack production build passed. Full `mypy src` still reports 13 existing errors in unchanged `market_cache.py`, `pattern_finder.py`, `breakout_scanner.py`, and `ml_research.py`; it reports none in this feature's service, schema, or route.
+- Browser check at `http://127.0.0.1:4003/market-scanner`: NIFTY 50 returned 29 active zones from 49 of 50 cached symbols, with the latest bar dated 2026-10-27 and one symbol lacking enough history. The initial, loading, partial-coverage, and result states rendered; changing universe cleared old results. A confirmation-day edge case was fixed and rechecked in the live scan.
+- The available browser stayed at desktop width; mobile viewport and forced API-error rendering were not checked. The local NSE cache is partial for this universe.
+- Structure-zone implementation was first verified on `codex/independent-structure-zones-20261028`; this workflow is now included with the order-flow board so the candidate zone and symbol ranking ship together.
+- Run with `./run.sh`; UI port `4003`, API port `8001`. Open `http://127.0.0.1:4003/market-scanner`.

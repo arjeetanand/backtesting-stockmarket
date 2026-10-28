@@ -46,7 +46,7 @@ The home page guides the local-data → research → saved-results → compariso
 | `/comparison` | Compare saved tests |
 | `/robustness` | Robustness and walk-forward analysis |
 | `/bias-validity` | Bias and validity checks |
-| `/market-scanner` | Multi-stock strategy and breakout scanning |
+| `/market-scanner` | Multi-stock formula, historical strategy, breakout, and daily structure-zone scanning |
 | `/insights` | Local NSE index breadth, stock/sector heatmaps, and top movers |
 | `/insights/fii-dii` | Official NSE FII/FPI-DII institutional-flow chart and ledger |
 | `/watchlist` | Persisted simulated setup tracking |
@@ -75,7 +75,9 @@ Market Scanner keeps formulas, saved scans, historical research, and the morning
 
 The default **Morning Plan** tab ranks technical setups from the latest completed local NSE daily bars. Run it manually at 9:00 IST for the regular NSE pre-open. Each plan shows the data date, previous-session high as a conditional entry trigger, previous-session low as invalidation, and a 2R target. Scores rank setups only; they are not probabilities or a promise of the best-performing stock. The app does not load pre-open auction prices, news, or intraday confirmation and does not schedule itself.
 
-The historical scanner remains available as an explicit research action. It is distinct from current-snapshot formula screening and from Market Insights returns.
+The **Daily structure zones** tab is a separate explicit scan over the selected configured universe. It uses local 1-day NSE candles, reports per-symbol latest-bar dates and coverage, and returns only recent zones that have not closed through their invalidation edge. Its deterministic rule is documented in `PROJECT_GUIDE.md`; it is not a live or intraday feed.
+
+The historical scanner remains available as an explicit research action. It is distinct from current-snapshot formula screening and from Market Insights returns. Daily structure-zone scans are separate again: they identify recent price areas from local daily bars and never run automatically.
 
 ## Historical Market Scanner workflow
 

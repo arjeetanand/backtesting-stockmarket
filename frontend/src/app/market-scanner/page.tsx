@@ -31,12 +31,14 @@ import {
   normalizeScannerCatalog,
   runBreakoutScan as fetchBreakoutScan,
   runHistoricalScan,
+  runStructureZoneScan,
   runScreenerScan,
   scannerApiErrorMessage,
   type BreakoutScannerResponse,
   type BreakoutSetup,
   type ScannerFormula,
   type ScannerUniverse,
+  type StructureZoneScanResponse,
   type ScreenerRunResponse,
 } from "@/lib/scanner-api";
 import {
@@ -116,6 +118,16 @@ function rupees(val: number): string {
   return `₹${val.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 }
 
+function price(value: number): string {
+  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 }).format(value);
+}
+
+function dayLabel(value: string | null): string {
+  if (!value) return "Unavailable";
+  const parsed = new Date(`${value}T12:00:00`);
+  return Number.isNaN(parsed.getTime()) ? value : new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric" }).format(parsed);
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -157,7 +169,7 @@ function heatmapTone(value: number, min: number, max: number): string {
 }
 
 export default function MarketScannerPage() {
-  const [activeTab, setActiveTab] = useState<"heatmap" | "breakout">("breakout");
+  const [activeTab, setActiveTab] = useState<"heatmap" | "breakout" | "structure">("breakout");
   const today = new Date().toISOString().slice(0, 10);
   const defaultScanStart = new Date(new Date(`${today}T00:00:00`).setFullYear(new Date(`${today}T00:00:00`).getFullYear() - 2)).toISOString().slice(0, 10);
 
@@ -198,6 +210,10 @@ export default function MarketScannerPage() {
   const [breakoutResult, setBreakoutResult] = useState<BreakoutScannerResponse | null>(null);
   const [loadingBreakout, setLoadingBreakout] = useState(false);
   const [breakoutError, setBreakoutError] = useState<string | null>(null);
+
+  const [structureResult, setStructureResult] = useState<StructureZoneScanResponse | null>(null);
+  const [loadingStructure, setLoadingStructure] = useState(false);
+  const [structureError, setStructureError] = useState<string | null>(null);
 
   const [scannerTimeSec, setScannerTimeSec] = useState<number | null>(null);
   const [selectedSector, setSelectedSector] = useState<string | null>(null);
@@ -308,6 +324,18 @@ export default function MarketScannerPage() {
       setScannerError(scannerApiErrorMessage(err, "The historical scan took too long. Try NIFTY 50 or a shorter local dataset.", "Error running historical scanner."));
     } finally {
       setLoadingScanner(false);
+    }
+  };
+
+  const runStructureScan = async () => {
+    setLoadingStructure(true);
+    setStructureError(null);
+    try {
+      setStructureResult(await runStructureZoneScan(universe));
+    } catch (err) {
+      setStructureError(scannerApiErrorMessage(err, "The daily structure scan timed out. Try a smaller configured universe or check local NSE history.", "Error scanning daily structure zones."));
+    } finally {
+      setLoadingStructure(false);
     }
   };
 
@@ -481,6 +509,14 @@ export default function MarketScannerPage() {
             {breakoutResult && (
               <span className="scanner-tab-badge">{breakoutResult.total_candidates}</span>
             )}
+          </button>
+          <button
+            type="button"
+            className={`scanner-tab-btn ${activeTab === "structure" ? "is-active" : ""}`}
+            onClick={() => setActiveTab("structure")}
+          >
+            <Layers size={16} /> Daily structure zones
+            {structureResult && <span className="scanner-tab-badge">{structureResult.total_zones}</span>}
           </button>
         </div>
 
@@ -918,6 +954,118 @@ export default function MarketScannerPage() {
               </>
             )}
             </div>
+          </>
+        )}
+
+        {activeTab === "structure" && (
+          <>
+            <section className="bt-panel scanner-control-panel bt-scanner-filter-panel structure-zone-controls">
+              <div className="bt-panel-head">
+                <div>
+                  <span className="bt-eyebrow">LOCAL DAILY CANDLES</span>
+                  <h2>Daily structure zones</h2>
+                  <p className="bt-field-help">
+                    Backtrack checks for a strong daily close through the previous 20-session range, preceded by an opposite candle. It marks that candle’s full range and tracks later touches and invalidation using local NSE history.
+                  </p>
+                </div>
+                <div className="structure-zone-actions">
+                  <label className="scanner-rail-field">
+                    <span>Market universe</span>
+                    <select className="bt-field-input" value={universe} onChange={(event) => { setUniverse(event.target.value); setStructureResult(null); setStructureError(null); }} disabled={loadingStructure}>
+                      {availableUniverses.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                    </select>
+                  </label>
+                  <button type="button" className="bt-primary scanner-rail-run" onClick={() => void runStructureScan()} disabled={loadingStructure || catalogLoading}>
+                    {loadingStructure ? <RefreshCw size={14} className="spin" /> : <Play size={14} />}
+                    {loadingStructure ? "Scanning…" : "Run daily scan"}
+                  </button>
+                </div>
+              </div>
+              <p className="structure-zone-disclaimer">
+                This is a transparent daily-bar research heuristic, not a live feed, institutional-flow detector, trade recommendation, or prediction. Nothing runs until you press Run daily scan.
+              </p>
+              {structureError && <div className="bt-alert-error" role="alert"><AlertCircle size={16} /> {structureError}</div>}
+            </section>
+
+            {loadingStructure && (
+              <div className="bt-panel bt-loading-state" role="status" aria-live="polite">
+                <RefreshCw size={18} className="spin" />
+                <span>Checking the selected universe’s locally saved daily bars…</span>
+              </div>
+            )}
+
+            {!loadingStructure && structureResult && (
+              <>
+                <section className="bt-panel scanner-breakout-explainer" aria-label="Daily structure scan summary">
+                  <div>
+                    <strong>{structureResult.total_zones} active zones · {availableUniverses.find((item) => item.id === structureResult.universe)?.label ?? structureResult.universe}</strong>
+                    <p>Scanned {structureResult.scanned_symbols} of {structureResult.requested_symbols} requested symbols · latest cached bar {dayLabel(structureResult.data_as_of)}.</p>
+                  </div>
+                  <span className="bt-field-help">{structureResult.coverage_status} coverage</span>
+                </section>
+
+                {(structureResult.missing_symbols.length > 0 || structureResult.insufficient_history_symbols.length > 0) && (
+                  <div className="bt-alert-warning structure-zone-coverage" role="status">
+                    <Info size={15} />
+                    {structureResult.missing_symbols.length > 0 && <span>{structureResult.missing_symbols.length} {structureResult.missing_symbols.length === 1 ? "symbol has" : "symbols have"} no local bars. </span>}
+                    {structureResult.insufficient_history_symbols.length > 0 && <span>{structureResult.insufficient_history_symbols.length} {structureResult.insufficient_history_symbols.length === 1 ? "symbol has" : "symbols have"} too little daily history for this rule. </span>}
+                    <Link href="/data" className="bt-link">Manage NSE history →</Link>
+                  </div>
+                )}
+
+                {structureResult.zones.length === 0 ? (
+                  <div className="bt-panel scanner-reference-empty" role="status">
+                    <Database size={21} />
+                    <strong>{structureResult.scanned_symbols === 0 ? "No usable daily history in this universe" : "No active zones matched this rule"}</strong>
+                    <span>{structureResult.scanned_symbols === 0 ? "Import official NSE daily archives, then run the scan again." : "The scan only reports recent confirmed zones whose invalidation level has not been crossed on a daily close."}</span>
+                    {structureResult.scanned_symbols === 0 && <Link href="/data" className="bt-secondary-btn"><Database size={13} /> Manage stock data</Link>}
+                  </div>
+                ) : (
+                  <div className="breakout-grid structure-zone-grid" role="list" aria-label="Active daily structure zones">
+                    {structureResult.zones.map((zone) => (
+                      <article key={`${zone.symbol}-${zone.direction}-${zone.confirmed_date}`} className="breakout-card structure-zone-card" role="listitem">
+                        <div className="breakout-card-head">
+                          <div>
+                            <strong>{zone.symbol}</strong>
+                            <small>{zone.company_name} · {zone.sector}</small>
+                          </div>
+                          <span className={`structure-zone-direction ${zone.direction}`}>{zone.direction}</span>
+                        </div>
+
+                        <div className="structure-zone-band">
+                          <span>DAILY ZONE RANGE</span>
+                          <strong>{price(zone.zone_low)} – {price(zone.zone_high)}</strong>
+                          <small>Latest close {price(zone.close)} · {zone.distance_pct === 0 ? "inside the zone" : `${zone.distance_pct.toFixed(2)}% from the zone`}</small>
+                        </div>
+
+                        <div className="breakout-stats-grid structure-zone-stats">
+                          <div><span>State</span><strong>{zone.state === "testing" ? "Testing" : zone.state === "retested" ? "Retested" : "Untested"}</strong></div>
+                          <div><span>Confirmed</span><strong>{dayLabel(zone.confirmed_date)}</strong></div>
+                          <div><span>Break level</span><strong>{price(zone.break_level)}</strong></div>
+                          <div><span>Impulse / prior ATR</span><strong>{zone.impulse_atr.toFixed(2)}×</strong></div>
+                        </div>
+
+                        <p className="structure-zone-note">
+                          Last bar {dayLabel(zone.data_as_of)} · source candle {dayLabel(zone.source_candle_date)} · {zone.touch_sessions} later touch session{zone.touch_sessions === 1 ? "" : "s"} · {zone.bars_since_confirmation} bar{zone.bars_since_confirmation === 1 ? "" : "s"} since confirmation. A daily close {zone.direction === "bullish" ? "below" : "above"} {price(zone.direction === "bullish" ? zone.zone_low : zone.zone_high)} invalidates this zone.
+                        </p>
+
+                        <div className="structure-zone-card-actions">
+                          <Link href={`/research?symbol=${encodeURIComponent(zone.symbol)}&source=structure-zones`} className="bt-secondary-btn">Open in Research ↗</Link>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            {!loadingStructure && !structureResult && !structureError && (
+              <div className="bt-panel scanner-reference-empty" role="status">
+                <Layers size={21} />
+                <strong>Run a local daily structure scan</strong>
+                <span>Select a configured universe and press Run daily scan. Results use only saved NSE candles and include their as-of date and coverage.</span>
+              </div>
+            )}
           </>
         )}
 

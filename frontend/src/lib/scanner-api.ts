@@ -85,6 +85,38 @@ export type HistoricalScanResponse = {
   coverage_status?: string;
 };
 
+export type StructureZone = {
+  symbol: string;
+  company_name: string;
+  sector: string;
+  direction: "bullish" | "bearish";
+  zone_low: number;
+  zone_high: number;
+  source_candle_date: string;
+  confirmed_date: string;
+  data_as_of: string;
+  break_level: number;
+  impulse_atr: number;
+  close: number;
+  distance_pct: number;
+  touch_sessions: number;
+  bars_since_confirmation: number;
+  state: "untested" | "retested" | "testing";
+};
+
+export type StructureZoneScanResponse = {
+  universe: string;
+  data_as_of: string | null;
+  requested_symbols: number;
+  available_symbols: number;
+  scanned_symbols: number;
+  missing_symbols: string[];
+  insufficient_history_symbols: string[];
+  coverage_status: "complete" | "partial" | "unavailable";
+  total_zones: number;
+  zones: StructureZone[];
+};
+
 export type ScannerCatalogResponse = {
   formulas: ScannerFormula[];
   universes: ScannerUniverse[];
@@ -289,6 +321,15 @@ export async function runBreakoutScan(config: { minConviction: number }): Promis
     body: JSON.stringify({ min_conviction: config.minConviction, limit: 60 }),
   }, 60_000);
   return await assertOk(response, "Could not scan breakout setups.") as BreakoutScannerResponse;
+}
+
+export async function runStructureZoneScan(universe: string): Promise<StructureZoneScanResponse> {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/structure-zones/scan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ universe }),
+  }, 60_000);
+  return await assertOk(response, "Could not scan daily structure zones.") as StructureZoneScanResponse;
 }
 
 export function scannerApiErrorMessage(error: unknown, timeoutMessage: string, fallback: string): string {
