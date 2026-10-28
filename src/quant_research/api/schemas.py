@@ -751,6 +751,7 @@ class StockResearchMorningScanResponse(BaseModel):
     passed_backtests: int
     failed_backtests: int
     not_evaluable: int
+    stale_setups: int
     fresh_signals: int
     qualifying_setups: int
     candidates: list[StockResearchMorningCandidateResponse]

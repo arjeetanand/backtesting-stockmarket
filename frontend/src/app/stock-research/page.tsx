@@ -245,6 +245,7 @@ export default function StockResearchPage() {
               <div><dt>Passed historical screen</dt><dd>{morningScan.passed_backtests}</dd></div>
               <div><dt>Did not pass historical screen</dt><dd>{morningScan.failed_backtests}</dd></div>
               <div><dt>Past data could not be scored</dt><dd>{morningScan.not_evaluable}</dd></div>
+              <div><dt>Stale data or expired entry windows</dt><dd>{morningScan.stale_setups}</dd></div>
             </dl>
             <p>Coverage and gate outcomes can overlap: a stock with missing or short history is also not evaluable. Each symbol attempt is saved in Research history; this combined scan summary is not retained after reload.</p>
           </details>

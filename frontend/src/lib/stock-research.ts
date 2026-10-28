@@ -158,6 +158,7 @@ export type StockResearchMorningScan = {
   passed_backtests: number;
   failed_backtests: number;
   not_evaluable: number;
+  stale_setups: number;
   fresh_signals: number;
   qualifying_setups: number;
   candidates: Array<{

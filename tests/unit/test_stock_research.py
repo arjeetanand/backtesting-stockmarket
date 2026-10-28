@@ -219,7 +219,7 @@ def test_morning_scan_only_surfaces_fresh_signals_that_pass_the_historical_gate(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("quant_research.services.market_scanner.NIFTY50_SYMBOLS", {"PASS", "FAIL", "MISSING"})
+    monkeypatch.setattr("quant_research.services.market_scanner.NIFTY50_SYMBOLS", {"PASS", "FAIL", "MISSING", "STALE"})
     cache_path = tmp_path / "market.sqlite3"
     service = StockResearchService(SqliteMarketCache(cache_path), SqliteArtifactStore(cache_path))
     outcomes = {
@@ -262,6 +262,17 @@ def test_morning_scan_only_surfaces_fresh_signals_that_pass_the_historical_gate(
             "validation_gate": {"status": "not_evaluable"},
             "setup": None,
         },
+        "STALE": {
+            "run_id": "stale-run",
+            "company_name": "Stale Co",
+            "data_as_of": "2026-10-23",
+            "bar_count": 1_500,
+            "run_status": "completed",
+            "validation_gate": {"status": "passed"},
+            "setup": {"status": "stale_data"},
+            "technical": {"close": 111.0},
+            "out_of_sample_metrics": {"win_rate_pct": 72.0, "trades": 40, "wins": 29, "losses": 11},
+        },
     }
     calls: list[str] = []
 
@@ -274,16 +285,17 @@ def test_morning_scan_only_surfaces_fresh_signals_that_pass_the_historical_gate(
 
     result = service.scan_morning()
 
-    assert calls == ["FAIL", "MISSING", "PASS"]
-    assert result["symbols_scanned"] == 3
-    assert result["symbols_with_data"] == 2
-    assert result["completed_runs"] == 2
+    assert calls == ["FAIL", "MISSING", "PASS", "STALE"]
+    assert result["symbols_scanned"] == 4
+    assert result["symbols_with_data"] == 3
+    assert result["completed_runs"] == 3
     assert result["analysis_errors"] == 0
     assert result["insufficient_history"] == 0
     assert result["missing_data"] == 1
-    assert result["passed_backtests"] == 1
+    assert result["passed_backtests"] == 2
     assert result["failed_backtests"] == 1
     assert result["not_evaluable"] == 1
+    assert result["stale_setups"] == 1
     assert result["fresh_signals"] == 2
     assert result["qualifying_setups"] == 1
     candidate = result["candidates"][0]
@@ -351,6 +363,7 @@ def test_morning_scan_api_validates_the_summary_contract(tmp_path: Path) -> None
     assert result.not_evaluable == result.symbols_scanned
     assert result.analysis_errors == 0
     assert result.missing_data == result.symbols_scanned
+    assert result.stale_setups == 0
     assert result.candidates == []
 
 

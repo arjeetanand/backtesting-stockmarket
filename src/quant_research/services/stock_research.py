@@ -313,6 +313,7 @@ class StockResearchService:
             "passed_backtests": 0,
             "failed_backtests": 0,
             "not_evaluable": 0,
+            "stale_setups": 0,
             "fresh_signals": 0,
         }
         latest_dates: list[str] = []
@@ -350,6 +351,8 @@ class StockResearchService:
                 counts["not_evaluable"] += 1
 
             setup = result.get("setup")
+            if setup and setup["status"] == "stale_data":
+                counts["stale_setups"] += 1
             if not setup or setup["status"] != "triggered":
                 continue
             counts["fresh_signals"] += 1
