@@ -492,9 +492,12 @@ Next owner/action:
 ## 17. NSE morning plan and conditional watchlist
 
 - Date: 2026-10-28.
-- Branch: `codex/nse-morning-watchlist-20261028`.
+- Branch: `codex/nse-morning-watchlist-20261028`, based on `main` at `a96dc40`.
+- Implementation commit: `0599a54` (`Add NSE morning plan and conditional watchlist`).
 - Build a manual morning plan from each candidate's latest completed NSE daily bar: prior high as the reference entry trigger, prior low as invalidation, and a target at 2R. Show the candle date and label levels as conditional.
 - The scan is not scheduled and has no pre-open auction, news, or intraday feed. Run it manually around the regular NSE pre-open and confirm price/volume after the regular session opens.
 - Saving a plan sends the explicit levels to the local watchlist. It waits for a daily high to reach the trigger, then evaluates only subsequent daily candles. The trigger candle is unresolved because daily OHLC cannot establish level order; ambiguous later candles resolve stop-first.
-- No position sizing is shown because the user has not set an account risk budget. No broker execution was added.
+- Verification on the main-based branch: full pytest, Ruff, frontend ESLint, and webpack production build pass. Full mypy reports 13 existing errors in `market_cache.py`, `pattern_finder.py`, `breakout_scanner.py`, and `ml_research.py`.
+- Browser preview used synthetic bars and covered desktop plus the available 487px narrow width; exact 390px emulation was unavailable. The original app on port 4003 was left untouched.
+- No position sizing is shown because the user has not set an account risk budget. No broker execution was added. The scan is a heuristic and cannot promise the day's best-performing stock.
 - Checklist: `docs/NSE_MORNING_PLAN_CHECKLIST.md`.

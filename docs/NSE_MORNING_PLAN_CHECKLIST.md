@@ -6,5 +6,5 @@
 - [x] Document that the trigger candle is unresolved at daily granularity and ambiguous later candles resolve stop-first.
 - [x] Run focused backend regression tests (8 passed), full backend tests, Ruff, frontend ESLint, and webpack production build.
 - [x] Run full mypy; the same 13 existing issues remain in `market_cache.py`, `pattern_finder.py`, and untyped `ta` imports. No new task-specific type errors appeared.
-- [ ] Inspect the full diff and verify the task branch/commit.
+- [x] Inspect the full diff and verify the task branch is based on `main` at `a96dc40`; implementation commit `0599a54`.
 - [x] Review the rendered scanner and watchlist at desktop and the available narrow width (487px); no document-wide horizontal overflow or browser console errors. The in-app browser did not honor an exact 390px width.
