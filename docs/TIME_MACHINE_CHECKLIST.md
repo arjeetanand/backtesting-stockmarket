@@ -10,4 +10,4 @@
 - [x] Check a narrow `695 × 730` browser viewport; panels stack without visible horizontal overflow.
 - [ ] Check the exact `390 × 844` viewport; the available browser tool does not expose viewport emulation.
 - [x] Commit task-owned changes, push the branch, and raise PR #4.
-- [ ] Merge PR #4 to `main` after its latest remote checks pass.
+- [x] Merge PR #4 to `main` after its latest remote checks pass (squash commit `06d64be`).
