@@ -120,6 +120,8 @@ All routes are prefixed with `/api/v1`.
 - `POST /market-scanner/run` — run a vectorized multi-stock strategy scan from the local NSE cache.
 - `POST /breakout-scanner/scan` — rank local NSE daily setups and return the latest data date plus conditional prior-high trigger, prior-low stop, and 2R target levels; it does not return live pre-open data.
 - `POST /structure-zones/scan` — find recent valid daily structure zones in a configured local universe.
+- `POST /market-flow/scan` — rank positive/negative 20-session daily close-pressure estimates across all local NSE symbols, NIFTY 50, or NIFTY 500; accepts an optional selected symbol for zone inspection.
+- `POST /market-flow/symbol` — inspect one locally cached symbol for recent daily price-action zones.
 - `POST /ml/experiments` and `GET /ml/experiments` — run and list chronological, past-only ML research experiments.
 - `POST /data/sync-today` — import the current missing NSE archive day when available.
 - `POST /watchlist/add`, `GET /watchlist`, and `DELETE /watchlist/{item_id}` — persist, evaluate, and remove simulated setup bookmarks.

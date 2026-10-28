@@ -11,7 +11,7 @@ It does not place real orders, connect to a broker, provide live quotes, or requ
 - Bulk-loads every supported equity, BE, and ETF row from each archive into SQLite.
 - Keeps raw archive rows for future research and normalized OHLCV candles for fast tests.
 - Tests SMA, RSI/EMA, configurable rule, strategy-library, and imported YouTube ideas.
-- Scans local daily NSE history for transparent bullish and bearish structure zones, their break level, retests, invalidation, and data coverage.
+- Scans local daily NSE history for transparent bullish and bearish structure zones, their break level, retests, invalidation, and data coverage; ranks positive and negative 20-session close-pressure estimates in a selectable flow view.
 - On `/research`, follows one stock → local data → chart → strategy → backtest → results workflow with OHLCV, volume, indicators, signals, trades, equity, drawdown, and metrics.
 - Replays historical candles with simulated orders only.
 - Runs a seeded daily-bar scenario sample and compares it with a fixed-rule historical sample.
@@ -97,7 +97,7 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 | `/comparison` | Compare saved tests |
 | `/robustness` | Sensitivity, Monte Carlo, walk-forward, and stress checks |
 | `/bias-validity` | Look-ahead, data-quality, and overfitting checks |
-| `/market-scanner` | Formula screening, sector analysis, historical scans, breakouts, and daily structure zones |
+| `/market-scanner` | Formula screening, sector analysis, morning plans, daily structure zones, and a local pressure-flow board |
 | `/ml-lab` | Chronological, cost-aware ML research experiments |
 | `/pattern-finder` | Detect repeatable historical price patterns and test them locally |
 | `/options` | Educational options payoff and breakeven calculator |
@@ -169,6 +169,7 @@ npm --prefix frontend run build
 
 - NSE data is daily historical archive data, not a real-time feed.
 - Daily structure zones are an independent Backtrack OHLCV heuristic. They are confirmed range breaks with a nearby opposite candle, not evidence of institutional activity, and they do not use intraday data.
+- Market flow ranks the close-location value of the latest 20 saved daily candles, weighted by traded value, and marks candidate daily price zones for a selected symbol. It cannot identify buyers or sellers, measure bid/ask depth, or provide live order blocks.
 - The current research chart and strategy engine support the local `1day` NSE path; other timeframes remain explicit unavailable/configuration states until normalized data exists.
 - FII/DII Insights uses NSE's separate provisional FII/FPI-DII report, archives raw snapshots under `data/nse_archives/fii_dii/`, and never derives institutional flows from stock prices. NSE's public report currently exposes the latest session only; older days appear after they have been captured locally, and the UI labels incomplete coverage instead of fabricating a month.
 - Replay and backtesting are simulations, not trading execution.

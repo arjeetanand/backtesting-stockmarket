@@ -77,6 +77,8 @@ The default **Morning Plan** tab ranks technical setups from the latest complete
 
 The **Daily structure zones** tab is a separate explicit scan over the selected configured universe. It uses local 1-day NSE candles, reports per-symbol latest-bar dates and coverage, and returns only recent zones that have not closed through their invalidation edge. Its deterministic rule is documented in `PROJECT_GUIDE.md`; it is not a live or intraday feed.
 
+The **Liquidity flow** tab ranks the latest 20 local daily candles by a close-location × traded-value estimate, shows the top 20 on each side and makes the top three selectable in a split flow graph. Search any local NSE catalogue symbol to inspect its candidate price-action zones. It does not expose actual buyer/seller identities, order-book depth, or live orders.
+
 The historical scanner remains available as an explicit research action. It is distinct from current-snapshot formula screening and from Market Insights returns. Daily structure-zone scans are separate again: they identify recent price areas from local daily bars and never run automatically.
 
 ## Historical Market Scanner workflow

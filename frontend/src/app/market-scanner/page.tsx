@@ -10,6 +10,7 @@ import {
   Database,
   Flame,
   Globe,
+  GitBranch,
   HelpCircle,
   Info,
   Layers,
@@ -25,6 +26,7 @@ import {
   Zap,
 } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
+import MarketFlowBoard from "@/components/scanner/MarketFlowBoard";
 import { getUnifiedComparisonList } from "@/lib/strategy-library";
 import {
   getScannerCatalog,
@@ -169,7 +171,7 @@ function heatmapTone(value: number, min: number, max: number): string {
 }
 
 export default function MarketScannerPage() {
-  const [activeTab, setActiveTab] = useState<"heatmap" | "breakout" | "structure">("breakout");
+  const [activeTab, setActiveTab] = useState<"heatmap" | "breakout" | "structure" | "liquidity">("breakout");
   const today = new Date().toISOString().slice(0, 10);
   const defaultScanStart = new Date(new Date(`${today}T00:00:00`).setFullYear(new Date(`${today}T00:00:00`).getFullYear() - 2)).toISOString().slice(0, 10);
 
@@ -512,6 +514,13 @@ export default function MarketScannerPage() {
           </button>
           <button
             type="button"
+            className={`scanner-tab-btn ${activeTab === "liquidity" ? "is-active" : ""}`}
+            onClick={() => setActiveTab("liquidity")}
+          >
+            <GitBranch size={16} /> Liquidity flow
+          </button>
+          <button
+            type="button"
             className={`scanner-tab-btn ${activeTab === "structure" ? "is-active" : ""}`}
             onClick={() => setActiveTab("structure")}
           >
@@ -519,6 +528,8 @@ export default function MarketScannerPage() {
             {structureResult && <span className="scanner-tab-badge">{structureResult.total_zones}</span>}
           </button>
         </div>
+
+        {activeTab === "liquidity" && <MarketFlowBoard />}
 
         {/* Tab 1: Universe Screener & Sector Heatmap */}
         {activeTab === "heatmap" && (

@@ -117,6 +117,44 @@ export type StructureZoneScanResponse = {
   zones: StructureZone[];
 };
 
+export type MarketFlowCandidate = {
+  symbol: string;
+  company_name: string;
+  sector: string;
+  close: number;
+  data_as_of: string;
+  average_daily_turnover_inr: number;
+  directional_pressure_inr: number;
+  pressure_score_pct: number;
+  bars_used: number;
+};
+
+export type MarketFlowSymbol = {
+  symbol: string;
+  company_name: string;
+  sector: string;
+  status: "ready" | "missing" | "insufficient_history";
+  close: number | null;
+  data_as_of: string | null;
+  zones: StructureZone[];
+};
+
+export type MarketFlowScanResponse = {
+  universe: "all" | "nifty50" | "nifty500";
+  data_source: "official_nse_daily_ohlcv_local_cache";
+  data_as_of: string | null;
+  lookback_sessions: number;
+  requested_symbols: number;
+  available_symbols: number;
+  ranked_symbols: number;
+  missing_symbols: number;
+  insufficient_history_symbols: number;
+  coverage_status: "complete" | "partial" | "unavailable";
+  buyers: MarketFlowCandidate[];
+  sellers: MarketFlowCandidate[];
+  selected: MarketFlowSymbol | null;
+};
+
 export type ScannerCatalogResponse = {
   formulas: ScannerFormula[];
   universes: ScannerUniverse[];
@@ -330,6 +368,24 @@ export async function runStructureZoneScan(universe: string): Promise<StructureZ
     body: JSON.stringify({ universe }),
   }, 60_000);
   return await assertOk(response, "Could not scan daily structure zones.") as StructureZoneScanResponse;
+}
+
+export async function runMarketFlowScan(config: { universe: MarketFlowScanResponse["universe"]; selectedSymbol?: string }): Promise<MarketFlowScanResponse> {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/market-flow/scan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ universe: config.universe, selected_symbol: config.selectedSymbol || undefined }),
+  }, 120_000);
+  return await assertOk(response, "Could not scan daily pressure estimates.") as MarketFlowScanResponse;
+}
+
+export async function inspectMarketFlowSymbol(symbol: string): Promise<MarketFlowSymbol> {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/market-flow/symbol`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ symbol }),
+  });
+  return await assertOk(response, "Could not inspect daily price-action zones.") as MarketFlowSymbol;
 }
 
 export function scannerApiErrorMessage(error: unknown, timeoutMessage: string, fallback: string): string {
