@@ -5,31 +5,41 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 import ThinkingMascot from "@/components/illustrations/ThinkingMascot";
+import SectionArtwork from "@/components/illustrations/SectionArtwork";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
-const pageTitles: Record<string, { title: string; category: string }> = {
-  "/": { title: "Research overview", category: "" },
-  "/research": { title: "Test a strategy", category: "" },
-  "/time-machine": { title: "Time machine", category: "" },
-  "/strategy": { title: "Build rules", category: "" },
-  "/backtests": { title: "My tests", category: "" },
-  "/comparison": { title: "Compare tests", category: "" },
-  "/analytics": { title: "Understand a test", category: "" },
-  "/ml-lab": { title: "ML Lab", category: "" },
-  "/market-scanner": { title: "Market Scanner", category: "" },
-  "/insights": { title: "Market Insights", category: "" },
-  "/watchlist": { title: "Daily Watchlist", category: "" },
-  "/pattern-finder": { title: "Pattern Finder", category: "" },
-  "/robustness": { title: "Check reliability", category: "" },
-  "/bias-validity": { title: "Risk check", category: "" },
-  "/strategy-import": { title: "Strategy library", category: "" },
-  "/options": { title: "Learning centre", category: "" },
-  "/data": { title: "Manage stock data", category: "" },
-  "/settings": { title: "Settings", category: "" },
-  "/replay": { title: "Replay a chart", category: "" },
-  "/insights/fii-dii": { title: "FII / DII Insights", category: "" },
+const pageTitles: Record<string, string> = {
+  "/": "Research overview",
+  "/research": "Test a strategy",
+  "/time-machine": "Time machine",
+  "/strategy": "Build rules",
+  "/backtests": "My tests",
+  "/comparison": "Compare tests",
+  "/analytics": "Understand a test",
+  "/ml-lab": "ML Lab",
+  "/market-scanner": "Market Scanner",
+  "/insights": "Market Insights",
+  "/watchlist": "Daily Watchlist",
+  "/pattern-finder": "Pattern Finder",
+  "/robustness": "Check reliability",
+  "/bias-validity": "Risk check",
+  "/strategy-import": "Strategy library",
+  "/options": "Learning centre",
+  "/data": "Manage stock data",
+  "/settings": "Settings",
+  "/replay": "Replay a chart",
+  "/insights/fii-dii": "FII / DII Insights",
 };
+
+const pageIllustrations = [
+  { routes: ["/insights", "/market-scanner", "/watchlist", "/pattern-finder"], src: "/illustrations/market-insights.png" },
+  { routes: ["/strategy", "/strategy-import", "/options"], src: "/illustrations/strategy-rules.png" },
+  { routes: ["/backtests", "/comparison", "/analytics", "/robustness", "/bias-validity", "/ml-lab"], src: "/illustrations/evidence-review.png" },
+  { routes: ["/replay", "/time-machine"], src: "/illustrations/historical-replay.png" },
+  { routes: ["/data", "/settings"], src: "/illustrations/local-data.png" },
+  { routes: ["/research"], src: "/illustrations/overview-research.png" },
+];
 
 interface TopBarProps {
   title?: string;
@@ -43,10 +53,10 @@ export default function TopBar({ title }: TopBarProps = {}) {
   const matchedKey = Object.keys(pageTitles).sort((left, right) => right.length - left.length).find((key) =>
     key === "/" ? pathname === "/" : pathname.startsWith(key)
   );
-  const fallback = matchedKey
-    ? pageTitles[matchedKey]
-    : { title: "Quant Terminal", category: "Backtrack" };
-  const displayTitle = title ?? fallback.title;
+  const displayTitle = title ?? (matchedKey ? pageTitles[matchedKey] : "Quant Terminal");
+  const artwork = pageIllustrations.find(({ routes }) =>
+    routes.some((route) => pathname === route || pathname.startsWith(`${route}/`))
+  )?.src ?? "/illustrations/overview-research.png";
 
   const syncToday = async () => {
     setSyncing(true);
@@ -63,11 +73,14 @@ export default function TopBar({ title }: TopBarProps = {}) {
   };
 
   return (
-    <header className="bt-topbar">
+    <header className={`bt-topbar${pathname === "/" ? " bt-topbar-home" : ""}`}>
       <div className="bt-topbar-breadcrumb">
         <ThinkingMascot animate />
         <h2 className="bt-topbar-title">{displayTitle}</h2>
       </div>
+      {pathname !== "/" ? (
+        <SectionArtwork src={artwork} className="bt-topbar-art" />
+      ) : null}
       <div className="bt-topbar-actions">
         <button
           type="button"
