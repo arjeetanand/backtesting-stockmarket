@@ -4,8 +4,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { RefreshCw } from "lucide-react";
-import ThinkingMascot from "@/components/illustrations/ThinkingMascot";
-import SectionArtwork from "@/components/illustrations/SectionArtwork";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
@@ -32,15 +30,6 @@ const pageTitles: Record<string, string> = {
   "/insights/fii-dii": "FII / DII Insights",
 };
 
-const pageIllustrations = [
-  { routes: ["/insights", "/market-scanner", "/watchlist", "/pattern-finder"], src: "/illustrations/market-insights.png" },
-  { routes: ["/strategy", "/strategy-import", "/options"], src: "/illustrations/strategy-rules.png" },
-  { routes: ["/backtests", "/comparison", "/analytics", "/robustness", "/bias-validity", "/ml-lab"], src: "/illustrations/evidence-review.png" },
-  { routes: ["/replay", "/time-machine"], src: "/illustrations/historical-replay.png" },
-  { routes: ["/data", "/settings"], src: "/illustrations/local-data.png" },
-  { routes: ["/research"], src: "/illustrations/overview-research.png" },
-];
-
 interface TopBarProps {
   title?: string;
   subtitle?: string;
@@ -54,9 +43,6 @@ export default function TopBar({ title }: TopBarProps = {}) {
     key === "/" ? pathname === "/" : pathname.startsWith(key)
   );
   const displayTitle = title ?? (matchedKey ? pageTitles[matchedKey] : "Quant Terminal");
-  const artwork = pageIllustrations.find(({ routes }) =>
-    routes.some((route) => pathname === route || pathname.startsWith(`${route}/`))
-  )?.src ?? "/illustrations/overview-research.png";
 
   const syncToday = async () => {
     setSyncing(true);
@@ -73,14 +59,10 @@ export default function TopBar({ title }: TopBarProps = {}) {
   };
 
   return (
-    <header className={`bt-topbar${pathname === "/" ? " bt-topbar-home" : ""}`}>
+    <header className="bt-topbar">
       <div className="bt-topbar-breadcrumb">
-        <ThinkingMascot animate />
         <h2 className="bt-topbar-title">{displayTitle}</h2>
       </div>
-      {pathname !== "/" ? (
-        <SectionArtwork src={artwork} className="bt-topbar-art" />
-      ) : null}
       <div className="bt-topbar-actions">
         <button
           type="button"

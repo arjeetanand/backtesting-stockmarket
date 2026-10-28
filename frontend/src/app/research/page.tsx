@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { BarChart3, Check, CheckCircle, ChevronRight, Circle, Code2, Loader2, MessageSquare, Play, Send, Sparkles, Star } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
+import SectionArtwork from "@/components/illustrations/SectionArtwork";
 import { getMarketAvailability, getMarketData, type MarketAvailability, type MarketDataBar } from "@/lib/market-data";
 import { SymbolCombobox } from "@/components/data/SymbolCombobox";
 import { STRATEGY_LIBRARY, UNIFIED_STRATEGIES } from "@/lib/strategy-library";
@@ -547,7 +548,7 @@ export default function ResearchPage() {
       <div className="bt-grid-2">
         <section className="bt-panel bt-proposal-panel" style={{ padding: "20px" }}>
           <div className="bt-row-between bt-proposal-heading"><div><div className="bt-row"><Code2 size={16} aria-hidden="true" /><h3>Review the proposed rule</h3></div><p className="bt-section-explanation">Backtrack turns your idea into a draft. Check its assumptions before running the simulation.</p></div><span className="bt-ai-badge">{analysis ? (isLlmGenerated ? "Local model draft" : "Curated rule") : "Waiting"}</span></div>
-          {!analysis ? <div className="bt-proposal-empty"><span>Describe an idea above to prepare a reviewable rule.</span></div> : <>
+          {!analysis ? <div className="bt-proposal-empty"><SectionArtwork src="/illustrations/strategy-rules.png" className="bt-research-rule-art" /><span>Describe an idea above. Backtrack will draft a rule here so you can check its assumptions before running anything.</span></div> : <>
             <div className="bt-proposal-summary">
               <div className="bt-proposal-rule"><span className="bt-eyebrow">Rule being tested</span><strong>{selectedStrategy?.name ?? strategyId}</strong><p>{analysis.summary}</p><small>{selectedStrategy?.description ?? analysis.suggested_backtest.rationale}</small></div>
               <div className="bt-proposal-settings"><span>{symbol.trim().toUpperCase()} · {TIMEFRAMES.find((item) => item.value === timeframe)?.label ?? timeframe}</span><span>Fast {analysis.suggested_backtest.fast_window} / slow {analysis.suggested_backtest.slow_window}</span><span>{moneyLabel(positionSizeAmount)} per trade · {stopLossPct}% stop · {takeProfitPct}% target</span></div>

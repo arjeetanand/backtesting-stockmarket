@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import {
   Activity,
@@ -15,6 +14,7 @@ import {
   Search,
 } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
+import SectionArtwork from "@/components/illustrations/SectionArtwork";
 import ThinkingMascot from "@/components/illustrations/ThinkingMascot";
 import { fetchWithTimeout } from "@/lib/api";
 
@@ -28,7 +28,6 @@ type SavedRun = {
 };
 
 const tools = [
-  { href: "/research", label: "STRATEGY LAB", title: "Test an idea", detail: "Turn a rule into a cost-aware historical test.", icon: FlaskConical },
   { href: "/market-scanner", label: "DISCOVERY", title: "Scan the market", detail: "Find technical matches in locally saved daily data.", icon: Search },
   { href: "/robustness", label: "VALIDATION", title: "Challenge the result", detail: "Check stability across parameters and market paths.", icon: Gauge },
   { href: "/ml-lab", label: "MODEL RESEARCH", title: "Explore ML signals", detail: "Compare past-only models on later unseen dates.", icon: BrainCircuit },
@@ -89,11 +88,11 @@ export default function DashboardPage() {
         <section className="bt-dashboard-hero" aria-labelledby="dashboard-title">
           <div className="bt-dashboard-hero-main">
             <div className="bt-dashboard-kicker"><span aria-hidden="true" /> OFFICIAL NSE · DAILY RESEARCH</div>
-            <h1 id="dashboard-title">Make the idea<br /><em>prove itself.</em></h1>
-            <p>One local research desk for Indian equities. Load the history you have, test the rules you can explain, then challenge the result.</p>
+            <h1 id="dashboard-title">Turn an idea into<br /><em>historical evidence.</em></h1>
+            <p>Prepare NSE daily history, review a strategy rule, run a backtest, then inspect the saved results. Everything stays on this device.</p>
             <div className="bt-dashboard-actions">
-              <Link href="/research" className="bt-dashboard-primary">Start a strategy test <ArrowUpRight size={16} /></Link>
-              <Link href="/data" className="bt-dashboard-secondary"><Database size={15} /> Manage NSE history</Link>
+              <Link href="/data" className="bt-dashboard-primary"><Database size={15} /> Check or get NSE data <ArrowUpRight size={16} /></Link>
+              <Link href="/research" className="bt-dashboard-secondary"><FlaskConical size={15} /> I have data — test an idea</Link>
             </div>
             <div className="bt-dashboard-boundary">
               <span>Historical daily data</span><i aria-hidden="true" />
@@ -101,32 +100,22 @@ export default function DashboardPage() {
               <span>Simulated orders</span>
             </div>
           </div>
-          <figure className="bt-dashboard-illustration">
-            <Image
-              src="/illustrations/overview-research.png"
-              alt="A notebook mascot reviews printed historical price records with a magnifying glass."
-              width={1536}
-              height={1024}
-              sizes="(min-width: 1440px) 22vw, (min-width: 1000px) 33vw, 100vw"
-              loading="eager"
-              unoptimized
-            />
-          </figure>
           <aside className="bt-dashboard-loop" aria-label="Research workflow">
-            <div className="bt-dashboard-loop-head"><span>THE RESEARCH LOOP</span><span>01 — 03</span></div>
+            <div className="bt-dashboard-loop-head"><span>FROM DATA TO EVIDENCE</span><span>01 — 03</span></div>
+            <SectionArtwork src="/illustrations/overview-research.png" className="bt-dashboard-illustration" />
             <ol>
-              <li><b>01</b><span><strong>Bring the data</strong><small>Official NSE archives, saved locally</small></span></li>
-              <li><b>02</b><span><strong>Test the rule</strong><small>Next-candle fills, costs included</small></span></li>
-              <li><b>03</b><span><strong>Check the evidence</strong><small>Drawdown, bias, and robustness</small></span></li>
+              <li><b>01</b><span><strong>Prepare NSE data</strong><small>Import daily history to this device</small></span><Link href="/data" aria-label="Prepare NSE data">Open data <ArrowRight size={13} /></Link></li>
+              <li><b>02</b><span><strong>Review and run a rule</strong><small>Check the assumptions before the test</small></span><Link href="/research" aria-label="Review and run a strategy">Open research <ArrowRight size={13} /></Link></li>
+              <li><b>03</b><span><strong>Read the saved result</strong><small>Inspect return, drawdown, and risk</small></span><Link href="/backtests" aria-label="Read saved test results">Open saved tests <ArrowRight size={13} /></Link></li>
             </ol>
-            <Link href="/data" className="bt-dashboard-loop-link">Start with your data <ArrowRight size={14} /></Link>
+            <Link href="/comparison" className="bt-dashboard-loop-link">Then compare tests <ArrowRight size={14} /></Link>
           </aside>
         </section>
 
         <section id="workbench" aria-labelledby="workbench-title">
           <div className="bt-dashboard-section-head">
-            <div><span className="bt-dashboard-overline">YOUR WORKBENCH</span><h2 id="workbench-title">Choose a direction</h2></div>
-            <p>Each tool uses the same locally saved market history.</p>
+            <div><span className="bt-dashboard-overline">AFTER YOUR FIRST TEST</span><h2 id="workbench-title">Explore more tools</h2></div>
+            <p>Optional views using the same locally saved market history.</p>
           </div>
           <div className="bt-dashboard-tools">
             {tools.map(({ href, label, title, detail, icon: Icon }, index) => (

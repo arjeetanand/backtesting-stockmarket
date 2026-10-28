@@ -140,7 +140,7 @@ Use 7px controls, 10px panels, and a 16px page sheet. Borders are thin and cool 
 
 ### Illustration
 
-Use the locally stored, original 1536×1024 transparent PNG scenes in `frontend/public/illustrations/` for the overview and route-family headers. Render the full 3:2 composition with `object-fit: contain` and preserve the source PNG; do not crop the scene into an avatar or pass it through lossy optimization. Use the small inline SVG notebook mark in compact UI. Keep character movement subtle and disabled for reduced motion. Keep charts, warnings, and trading decisions free of decorative art, and do not imply forecasts or recommendations.
+Use the locally stored, original 1536×1024 transparent PNG scenes in `frontend/public/illustrations/` beside the workflow or first-use state they explain, not as route-header decoration. Render the full 3:2 composition with `object-fit: contain` and preserve the source PNG; do not crop the scene into an avatar or pass it through lossy optimization. These scenes are static illustrations; do not add thought-dot motion that suggests an animated workflow. Keep charts, warnings, and trading decisions free of decorative art, and do not imply forecasts or recommendations.
 
 ## Components
 

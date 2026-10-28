@@ -28,7 +28,7 @@ Optional `frontend/.env.local`:
 NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8001/api/v1
 ```
 
-The home page is only a workflow chooser. Stock and date controls belong on Research, Strategy Lab, Pattern Finder, or Replay; do not reintroduce stock/date state into the home page unless the product flow changes deliberately.
+The home page guides the local-data → research → saved-results → comparison workflow. Stock and date controls belong on Research, Strategy Lab, Pattern Finder, or Replay; do not reintroduce stock/date state into the home page unless the product flow changes deliberately.
 
 ## Routes
 

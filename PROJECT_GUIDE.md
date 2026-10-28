@@ -5,23 +5,21 @@ Backtrack is a local, research-only Indian-market backtesting application. It us
 ## Simple first-use flow
 
 1. Start the backend and frontend using [README.md](README.md).
-2. Open **New research**, describe the idea, and choose a listed symbol and date range.
-3. Review the proposed rule, its assumptions, and risks, then confirm the review.
-4. Backtrack checks local coverage and prepares any missing official NSE history for the selected range.
-5. Run the historical simulation and inspect its candles, trades, and metrics.
-6. Use reliability, validity, replay, and comparison tools to challenge the result.
-
-You can still pre-load data from **Manage stock data** when you want to import a larger date window or inspect local symbol coverage first.
+2. From **Home**, open **NSE data** and import a date range if the local cache does not already cover your stocks.
+3. When the import finishes, choose **Continue to research** (or open **New research** from the workflow navigation).
+4. Describe the idea, choose a listed symbol and date range, then review the proposed rule, assumptions, and risks.
+5. Confirm the review and run the historical simulation on local NSE data.
+6. Open **Saved tests** to inspect the result, then use **Compare tests**, reliability, validity, or replay to challenge it.
 
 ## Pages
 
 | Page | User task | Current behavior |
 | --- | --- | --- |
-| Home | Start the unified research flow | Open New research or browse the grouped market and analysis tools; recent tests come from the local API |
+| Home | Start the unified research flow | Follow the linked NSE data → research → saved result steps, then open optional tools; recent tests come from the local API |
 | New research | Turn an idea into historical evidence | Review a draft rule, confirm the assumptions, ensure local NSE history, then explicitly run the simulation |
 | Build rules | Create a rule strategy | Configure indicators, entries, exits, risk, fees, and slippage |
 | Use a YouTube strategy | Bring in an online idea | Extract a reviewable draft from a URL, captions, or pasted transcript; human review is required |
-| Manage stock data | Download and search history | Bulk NSE archive import with quick/custom date windows and local catalogue search |
+| NSE data | Download and search history | Bulk NSE archive import with quick/custom date windows and local catalogue search; a completed import links to research |
 | Market Insights | Review the selected index | Switch NIFTY 50, Sensex, Bank Nifty, or NIFTY 500; inspect 1D/1W/1M/3M breadth, stock/sector heatmaps, and top movers from local daily candles |
 | Market Scanner | Find current technical matches | Choose a formula and universe, then explicitly run a scan; formula definitions and memberships come from appendable JSON configuration |
 | My tests | Reopen prior tests | Read persisted backtest results and details from SQLite |
