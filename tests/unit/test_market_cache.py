@@ -18,6 +18,20 @@ def test_sqlite_cache_round_trips_daily_bars(tmp_path: Path) -> None:
     assert cache.summary().bars == 1
 
 
+def test_sqlite_cache_reads_only_the_latest_requested_bars_in_time_order(tmp_path: Path) -> None:
+    cache = SqliteMarketCache(tmp_path / "market.sqlite3")
+    bars = [
+        OHLCVBar(timestamp=datetime(2025, 1, day, tzinfo=UTC), symbol="RELIANCE", open=100, high=105, low=99, close=102, volume=1_000)
+        for day in range(1, 5)
+    ]
+    cache.put(bars, "1day", "nse_common_bhavcopy")
+
+    recent = cache.get_recent_bars(["RELIANCE.NS", "MISSING"], "1day", 2)
+
+    assert [bar.timestamp.day for bar in recent["RELIANCE"]] == [3, 4]
+    assert "MISSING" not in recent
+
+
 def test_sqlite_cache_reports_coverage_and_records_processed_nse_days(tmp_path: Path) -> None:
     cache = SqliteMarketCache(tmp_path / "market.sqlite3")
     cache.put(

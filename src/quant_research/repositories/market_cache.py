@@ -265,6 +265,38 @@ class SqliteMarketCache:
             self._lru_cache.popitem(last=False)
         return result
 
+    def get_recent_bars(self, symbols: list[str], timeframe: str = "1day", limit: int = 20) -> dict[str, list[OHLCVBar]]:
+        """Read a bounded recent window per symbol without loading its full history."""
+        if limit < 1:
+            raise ValueError("limit must be positive")
+        clean_symbols = sorted({symbol.strip().upper().removesuffix(".NS") for symbol in symbols if symbol.strip()})
+        bars_by_symbol: dict[str, list[OHLCVBar]] = {}
+        with self._connect() as connection:
+            for symbol in clean_symbols:
+                rows = connection.execute(
+                    """
+                    SELECT timestamp, open, high, low, close, volume
+                    FROM ohlcv_bars
+                    WHERE symbol = ? AND timeframe = ?
+                    ORDER BY timestamp DESC LIMIT ?
+                    """,
+                    (symbol, timeframe, limit),
+                ).fetchall()
+                if rows:
+                    bars_by_symbol[symbol] = [
+                        OHLCVBar(
+                            timestamp=datetime.fromisoformat(row[0]),
+                            symbol=symbol,
+                            open=row[1],
+                            high=row[2],
+                            low=row[3],
+                            close=row[4],
+                            volume=row[5],
+                        )
+                        for row in reversed(rows)
+                    ]
+        return bars_by_symbol
+
     def clear_lru_cache(self) -> None:
         if hasattr(self, "_lru_cache"):
             self._lru_cache.clear()

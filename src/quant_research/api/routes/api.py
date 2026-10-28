@@ -35,6 +35,10 @@ from quant_research.api.schemas import (
     InstrumentResponse,
     MarketAvailabilityResponse,
     MarketDataResponse,
+    MarketFlowScanRequest,
+    MarketFlowScanResponse,
+    MarketFlowSymbolRequest,
+    MarketFlowSymbolResponse,
     MarketScannerRequest,
     MlExperimentRequest,
     NseImportCoverageItem,
@@ -58,6 +62,8 @@ from quant_research.api.schemas import (
     ScreenerRunResponse,
     ScreenerUniverseResponse,
     SmaBacktestRequest,
+    StructureZoneScanRequest,
+    StructureZoneScanResponse,
     WatchlistAddRequest,
     YouTubeStrategyRequest,
 )
@@ -1209,6 +1215,59 @@ def create_api_router(
             )
         except Exception as exc:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+
+    @router.post("/structure-zones/scan", response_model=StructureZoneScanResponse, tags=["market-scanner"])
+    def scan_structure_zones(payload: StructureZoneScanRequest) -> StructureZoneScanResponse:
+        """Find recent, still-valid daily structure zones in one configured local universe."""
+        if market_cache is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Market cache repository not available.")
+        universe = next((item for item in load_universe_catalog().universes if item.universe_id == payload.universe), None)
+        if universe is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown market universe: {payload.universe}.")
+        symbols, membership_status = resolve_universe_symbols(universe, market_cache)
+        if membership_status == "unavailable":
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="The selected universe membership is not available locally.")
+
+        from quant_research.services.structure_zone_scanner import StructureZoneScannerService
+
+        result = StructureZoneScannerService(market_cache).scan(symbols)
+        return StructureZoneScanResponse.model_validate({"universe": payload.universe, **result})
+
+    @router.post("/market-flow/scan", response_model=MarketFlowScanResponse, tags=["market-scanner"])
+    def scan_market_flow(payload: MarketFlowScanRequest) -> MarketFlowScanResponse:
+        """Rank daily close-location pressure estimates and inspect one symbol's price zones."""
+        if market_cache is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Market cache repository not available.")
+        if payload.universe == "all":
+            symbols = market_cache.universe_symbols("nse_equities")
+            if not symbols:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="The local NSE equity catalogue is unavailable. Refresh it in Data & Providers before scanning all stocks.",
+                )
+        else:
+            universe = next((item for item in load_universe_catalog().universes if item.universe_id == payload.universe), None)
+            if universe is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown market universe: {payload.universe}.")
+            symbols, membership_status = resolve_universe_symbols(universe, market_cache)
+            if membership_status == "unavailable":
+                raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="The selected universe membership is not available locally.")
+
+        from quant_research.services.market_flow_scanner import MarketFlowScannerService
+
+        result = MarketFlowScannerService(market_cache).scan(symbols, payload.selected_symbol)
+        return MarketFlowScanResponse.model_validate({"universe": payload.universe, **result})
+
+    @router.post("/market-flow/symbol", response_model=MarketFlowSymbolResponse, tags=["market-scanner"])
+    def inspect_market_flow_symbol(payload: MarketFlowSymbolRequest) -> MarketFlowSymbolResponse:
+        """Inspect one locally cached symbol for current daily price-action zones."""
+        if market_cache is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Market cache repository not available.")
+
+        from quant_research.services.market_flow_scanner import MarketFlowScannerService
+
+        result = MarketFlowScannerService(market_cache).inspect_symbol(payload.symbol)
+        return MarketFlowSymbolResponse.model_validate(result)
 
     @router.post("/data/sync-today", tags=["data"])
     def sync_today_market_data() -> dict[str, Any]:

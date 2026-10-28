@@ -85,6 +85,76 @@ export type HistoricalScanResponse = {
   coverage_status?: string;
 };
 
+export type StructureZone = {
+  symbol: string;
+  company_name: string;
+  sector: string;
+  direction: "bullish" | "bearish";
+  zone_low: number;
+  zone_high: number;
+  source_candle_date: string;
+  confirmed_date: string;
+  data_as_of: string;
+  break_level: number;
+  impulse_atr: number;
+  close: number;
+  distance_pct: number;
+  touch_sessions: number;
+  bars_since_confirmation: number;
+  state: "untested" | "retested" | "testing";
+};
+
+export type StructureZoneScanResponse = {
+  universe: string;
+  data_as_of: string | null;
+  requested_symbols: number;
+  available_symbols: number;
+  scanned_symbols: number;
+  missing_symbols: string[];
+  insufficient_history_symbols: string[];
+  coverage_status: "complete" | "partial" | "unavailable";
+  total_zones: number;
+  zones: StructureZone[];
+};
+
+export type MarketFlowCandidate = {
+  symbol: string;
+  company_name: string;
+  sector: string;
+  close: number;
+  data_as_of: string;
+  average_daily_turnover_inr: number;
+  directional_pressure_inr: number;
+  pressure_score_pct: number;
+  bars_used: number;
+};
+
+export type MarketFlowSymbol = {
+  symbol: string;
+  company_name: string;
+  sector: string;
+  status: "ready" | "missing" | "insufficient_history";
+  close: number | null;
+  data_as_of: string | null;
+  zones: StructureZone[];
+};
+
+export type MarketFlowScanResponse = {
+  universe: "all" | "nifty50" | "nifty500";
+  data_source: "official_nse_daily_ohlcv_local_cache";
+  data_as_of: string | null;
+  lookback_sessions: number;
+  requested_symbols: number;
+  available_symbols: number;
+  ranked_symbols: number;
+  missing_symbols: number;
+  insufficient_history_symbols: number;
+  coverage_status: "complete" | "partial" | "unavailable";
+  buyers: MarketFlowCandidate[];
+  sellers: MarketFlowCandidate[];
+  selected: MarketFlowSymbol | null;
+};
+
 export type ScannerCatalogResponse = {
   formulas: ScannerFormula[];
   universes: ScannerUniverse[];
@@ -289,6 +359,33 @@ export async function runBreakoutScan(config: { minConviction: number }): Promis
     body: JSON.stringify({ min_conviction: config.minConviction, limit: 60 }),
   }, 60_000);
   return await assertOk(response, "Could not scan breakout setups.") as BreakoutScannerResponse;
+}
+
+export async function runStructureZoneScan(universe: string): Promise<StructureZoneScanResponse> {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/structure-zones/scan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ universe }),
+  }, 60_000);
+  return await assertOk(response, "Could not scan daily structure zones.") as StructureZoneScanResponse;
+}
+
+export async function runMarketFlowScan(config: { universe: MarketFlowScanResponse["universe"]; selectedSymbol?: string }): Promise<MarketFlowScanResponse> {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/market-flow/scan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ universe: config.universe, selected_symbol: config.selectedSymbol || undefined }),
+  }, 120_000);
+  return await assertOk(response, "Could not scan daily pressure estimates.") as MarketFlowScanResponse;
+}
+
+export async function inspectMarketFlowSymbol(symbol: string): Promise<MarketFlowSymbol> {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/market-flow/symbol`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ symbol }),
+  });
+  return await assertOk(response, "Could not inspect daily price-action zones.") as MarketFlowSymbol;
 }
 
 export function scannerApiErrorMessage(error: unknown, timeoutMessage: string, fallback: string): string {

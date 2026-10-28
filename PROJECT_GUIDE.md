@@ -21,7 +21,7 @@ Backtrack is a local, research-only Indian-market backtesting application. It us
 | Use a YouTube strategy | Bring in an online idea | Extract a reviewable draft from a URL, captions, or pasted transcript; human review is required |
 | NSE data | Download and search history | Bulk NSE archive import with quick/custom date windows and local catalogue search; a completed import links to research |
 | Market Insights | Review the selected index | Switch NIFTY 50, Sensex, Bank Nifty, or NIFTY 500; inspect 1D/1W/1M/3M breadth, stock/sector heatmaps, and top movers from local daily candles |
-| Market Scanner | Review ranked morning candidates | Manually build a plan from the latest completed local NSE candles; levels are conditional references, not live entries |
+| Market Scanner | Review local market scans | Run formula and historical scans, review morning-plan levels, and inspect daily structure-zone and pressure-proxy views |
 | My tests | Reopen prior tests | Read persisted backtest results and details from SQLite |
 | Compare tests | Compare alternatives | Compare saved configurations and performance metrics |
 | Check reliability | Challenge stability | Run parameter sensitivity, Monte Carlo, walk-forward, and stress checks |
@@ -34,6 +34,14 @@ Backtrack is a local, research-only Indian-market backtesting application. It us
 | Analytics | Inspect performance | Review trade quality and available run analytics |
 | FII / DII Insights | Inspect institutional activity | Import official NSE FII/FPI-DII report snapshots, compare daily/weekly/monthly net cash flows, and review the local ledger |
 | Settings | Inspect local configuration | View API, local cache, Ollama, and provider status |
+
+### Daily structure zones
+
+In **Market Scanner → Daily structure zones**, choose a configured universe and run the scan explicitly. It reads locally saved daily NSE bars and shows the latest recent bullish or bearish zone per direction when the rule finds one. Each result includes the source candle range, confirmation date, prior 20-session boundary, impulse relative to the preceding 14-session true range, later touch sessions, invalidation edge, and the symbol’s latest-bar date. Coverage lists missing symbols and symbols without enough history.
+
+In **Market Scanner → Liquidity flow**, scan all locally catalogued NSE stocks, NIFTY 500, or NIFTY 50. Backtrack ranks up to 20 positive and 20 negative pressure estimates from the latest 20 saved daily bars, then highlights the top three on each branch. Choose a ranked symbol or search any NSE symbol to inspect its candidate daily demand/supply zones. The estimate weights each candle’s close location in its high-low range by traded value; daily OHLCV cannot identify actual buyers/sellers or show bid/ask depth. All dates come from the local cache, and unavailable history stays excluded.
+
+This is an independent Backtrack heuristic: a qualifying daily close must break a prior 20-session range by at least 1.25 times the preceding 14-session average true range, and the zone is the full range of the latest opposite candle in the prior three sessions. A daily close through the far edge invalidates it. Confirmations older than 60 bars are excluded. The scan uses no intraday or live data, makes no claim about institutional activity, and does not produce a trade recommendation.
 
 ## Manage stock data
 

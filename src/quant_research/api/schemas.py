@@ -1,8 +1,9 @@
 """Request and response schemas exposed by the HTTP API."""
 
 from datetime import date, datetime
+from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from quant_research.domain.data.models import DataQualityReport, OHLCVBar
 
@@ -485,6 +486,107 @@ class BreakoutScannerRequest(BaseModel):
     limit: int = Field(default=50, ge=1, le=200)
     start: datetime | None = None
     end: datetime | None = None
+
+
+class StructureZoneScanRequest(BaseModel):
+    universe: str = Field(default="nifty50", min_length=1, max_length=80)
+
+
+class StructureZoneResponse(BaseModel):
+    symbol: str
+    company_name: str
+    sector: str
+    direction: Literal["bullish", "bearish"]
+    zone_low: float
+    zone_high: float
+    source_candle_date: date
+    confirmed_date: date
+    data_as_of: date
+    break_level: float
+    impulse_atr: float
+    close: float
+    distance_pct: float
+    touch_sessions: int
+    bars_since_confirmation: int
+    state: Literal["untested", "retested", "testing"]
+
+
+class StructureZoneScanResponse(BaseModel):
+    universe: str
+    data_as_of: date | None
+    requested_symbols: int
+    available_symbols: int
+    scanned_symbols: int
+    missing_symbols: list[str]
+    insufficient_history_symbols: list[str]
+    coverage_status: Literal["complete", "partial", "unavailable"]
+    total_zones: int
+    zones: list[StructureZoneResponse]
+
+
+class MarketFlowScanRequest(BaseModel):
+    universe: Literal["all", "nifty50", "nifty500"] = "all"
+    selected_symbol: str | None = Field(default=None, min_length=1, max_length=50)
+
+    @field_validator("selected_symbol")
+    @classmethod
+    def normalize_selected_symbol(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().upper().removesuffix(".NS")
+        if not normalized:
+            raise ValueError("selected_symbol must not be blank")
+        return normalized
+
+
+class MarketFlowSymbolRequest(BaseModel):
+    symbol: str = Field(..., min_length=1, max_length=50)
+
+    @field_validator("symbol")
+    @classmethod
+    def normalize_symbol(cls, value: str) -> str:
+        normalized = value.strip().upper().removesuffix(".NS")
+        if not normalized:
+            raise ValueError("symbol must not be blank")
+        return normalized
+
+
+class MarketFlowCandidateResponse(BaseModel):
+    symbol: str
+    company_name: str
+    sector: str
+    close: float
+    data_as_of: date
+    average_daily_turnover_inr: float
+    directional_pressure_inr: float
+    pressure_score_pct: float
+    bars_used: int
+
+
+class MarketFlowSymbolResponse(BaseModel):
+    symbol: str
+    company_name: str
+    sector: str
+    status: Literal["ready", "missing", "insufficient_history"]
+    close: float | None
+    data_as_of: date | None
+    zones: list[StructureZoneResponse]
+
+
+class MarketFlowScanResponse(BaseModel):
+    universe: Literal["all", "nifty50", "nifty500"]
+    data_source: Literal["official_nse_daily_ohlcv_local_cache"]
+    data_as_of: date | None
+    lookback_sessions: int
+    requested_symbols: int
+    available_symbols: int
+    ranked_symbols: int
+    missing_symbols: int
+    insufficient_history_symbols: int
+    coverage_status: Literal["complete", "partial", "unavailable"]
+    buyers: list[MarketFlowCandidateResponse]
+    sellers: list[MarketFlowCandidateResponse]
+    selected: MarketFlowSymbolResponse | None
 
 
 class WatchlistAddRequest(BaseModel):
