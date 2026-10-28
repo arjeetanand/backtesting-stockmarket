@@ -12,9 +12,35 @@ import ta.momentum
 import ta.trend
 import ta.volatility
 
+from quant_research.domain.data.models import OHLCVBar
 from quant_research.repositories.market_cache import SqliteMarketCache
 from quant_research.services.market_scanner import NIFTY50_SYMBOLS, SECTOR_MAP
 from quant_research.services.nse_import import SENSEX_NSE_STARTER
+
+
+@dataclass(frozen=True, slots=True)
+class MorningPlan:
+    data_as_of: str
+    entry_trigger: float
+    stop_level: float
+    target_2r: float
+    risk_per_share: float
+
+
+def _morning_plan(bar: OHLCVBar) -> MorningPlan | None:
+    # shortcut: levels use daily highs/lows and cannot confirm auction gaps; upgrade when an authorized intraday feed is added.
+    entry_trigger = round(bar.high, 2)
+    stop_level = round(bar.low, 2)
+    risk_per_share = round(entry_trigger - stop_level, 2)
+    if risk_per_share <= 0.0:
+        return None
+    return MorningPlan(
+        data_as_of=bar.timestamp.date().isoformat(),
+        entry_trigger=entry_trigger,
+        stop_level=stop_level,
+        target_2r=round(entry_trigger + (2.0 * risk_per_share), 2),
+        risk_per_share=risk_per_share,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +56,7 @@ class BreakoutSetupItem:
     range_20d: float
     conviction_score: float
     description: str
+    morning_plan: MorningPlan | None
 
 
 class BreakoutScannerService:
@@ -48,6 +75,7 @@ class BreakoutScannerService:
         setups: list[BreakoutSetupItem] = []
 
         summary = self._cache.summary()
+        latest_data_timestamp: datetime | None = None
         if end is None:
             end = summary.latest or datetime.now(tz=UTC)
         if start is None:
@@ -65,13 +93,21 @@ class BreakoutScannerService:
             scan_symbols = priority_in_cache + other_in_cache[: max(0, max_scan_symbols - len(priority_in_cache))]
         else:
             scan_symbols = sorted(priority_symbols)[:max_scan_symbols]
+        symbols_scanned = len(scan_symbols)
 
         for sym in scan_symbols:
             bars = self._cache.get(sym, "1day", start, end)
-            if not bars or len(bars) < 60:
+            if not bars:
+                continue
+
+            last_bar = max(bars, key=lambda bar: bar.timestamp)
+            if latest_data_timestamp is None or last_bar.timestamp > latest_data_timestamp:
+                latest_data_timestamp = last_bar.timestamp
+            if len(bars) < 60:
                 continue
 
             frame = pd.DataFrame([bar.model_dump() for bar in bars]).sort_values("timestamp").reset_index(drop=True)
+            morning_plan = _morning_plan(last_bar)
             close = frame["close"]
             high = frame["high"]
             low = frame["low"]
@@ -117,6 +153,7 @@ class BreakoutScannerService:
                         range_20d=round(range_20 * 100, 2),
                         conviction_score=round(score, 1),
                         description=f"Close within {round(dist_52w*100, 1)}% of 52W high with heavy volume surge ({round(rvol, 1)}x RVOL).",
+                        morning_plan=morning_plan,
                     )
                 )
 
@@ -136,6 +173,7 @@ class BreakoutScannerService:
                         range_20d=round(range_20 * 100, 2),
                         conviction_score=round(score, 1),
                         description=f"Tight 20-day price consolidation ({round(range_20*100, 1)}% range) above 20-day SMA.",
+                        morning_plan=morning_plan,
                     )
                 )
 
@@ -155,6 +193,7 @@ class BreakoutScannerService:
                         range_20d=round(range_20 * 100, 2),
                         conviction_score=round(score, 1),
                         description=f"Price crossed above 20D SMA (₹{round(sma_20, 1)}) / 50D SMA (₹{round(sma_50, 1)}) with volume confirmation.",
+                        morning_plan=morning_plan,
                     )
                 )
 
@@ -175,6 +214,7 @@ class BreakoutScannerService:
                         range_20d=round(range_20 * 100, 2),
                         conviction_score=round(score, 1),
                         description=f"Fast RSI momentum expansion to {round(rsi_val, 1)} with expanding volume.",
+                        morning_plan=morning_plan,
                     )
                 )
 
@@ -183,6 +223,8 @@ class BreakoutScannerService:
 
         return {
             "total_candidates": len(filtered),
+            "data_as_of": latest_data_timestamp.date().isoformat() if latest_data_timestamp else None,
+            "symbols_scanned": symbols_scanned,
             "setups": [
                 {
                     "symbol": item.symbol,
@@ -196,6 +238,17 @@ class BreakoutScannerService:
                     "range_20d": item.range_20d,
                     "conviction_score": item.conviction_score,
                     "description": item.description,
+                    "morning_plan": (
+                        {
+                            "data_as_of": item.morning_plan.data_as_of,
+                            "entry_trigger": item.morning_plan.entry_trigger,
+                            "stop_level": item.morning_plan.stop_level,
+                            "target_2r": item.morning_plan.target_2r,
+                            "risk_per_share": item.morning_plan.risk_per_share,
+                        }
+                        if item.morning_plan
+                        else None
+                    ),
                 }
                 for item in filtered[:limit]
             ],

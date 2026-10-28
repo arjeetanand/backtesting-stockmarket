@@ -29,9 +29,12 @@ import { getUnifiedComparisonList } from "@/lib/strategy-library";
 import {
   getScannerCatalog,
   normalizeScannerCatalog,
+  runBreakoutScan as fetchBreakoutScan,
   runHistoricalScan,
   runScreenerScan,
   scannerApiErrorMessage,
+  type BreakoutScannerResponse,
+  type BreakoutSetup,
   type ScannerFormula,
   type ScannerUniverse,
   type ScreenerRunResponse,
@@ -97,20 +100,6 @@ type StockLeaderboardItem = {
   trade_count: number;
 };
 
-type BreakoutSetup = {
-  symbol: string;
-  company_name: string;
-  sector: string;
-  setup_type: string;
-  close: number;
-  rvol: number;
-  dist_52w_high: number;
-  rsi_14: number;
-  range_20d: number;
-  conviction_score: number;
-  description: string;
-};
-
 function pct(val: number | undefined, digits = 1): string {
   return Number.isFinite(val) ? `${(Number(val) * 100).toFixed(digits)}%` : "—";
 }
@@ -121,6 +110,10 @@ function lossPct(val: number | undefined, digits = 1): string {
 
 function fmt(val: number | undefined, digits = 2): string {
   return Number.isFinite(val) ? Number(val).toFixed(digits) : "—";
+}
+
+function rupees(val: number): string {
+  return `₹${val.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -163,26 +156,8 @@ function heatmapTone(value: number, min: number, max: number): string {
   return value >= midpoint ? `rgba(16, 185, 129, ${alpha})` : `rgba(244, 63, 94, ${alpha})`;
 }
 
-function apiErrorMessage(error: unknown, timeoutMessage: string, fallback: string): string {
-  if (error instanceof DOMException && error.name === "AbortError") return timeoutMessage;
-  if (error instanceof TypeError && error.message === "Failed to fetch") {
-    return "Local Backtrack API is unavailable. Start the backend on port 8000, then retry.";
-  }
-  return error instanceof Error ? error.message : fallback;
-}
-
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 60_000): Promise<Response> {
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } finally {
-    window.clearTimeout(timeout);
-  }
-}
-
 export default function MarketScannerPage() {
-  const [activeTab, setActiveTab] = useState<"heatmap" | "breakout">("heatmap");
+  const [activeTab, setActiveTab] = useState<"heatmap" | "breakout">("breakout");
   const today = new Date().toISOString().slice(0, 10);
   const defaultScanStart = new Date(new Date(`${today}T00:00:00`).setFullYear(new Date(`${today}T00:00:00`).getFullYear() - 2)).toISOString().slice(0, 10);
 
@@ -220,10 +195,7 @@ export default function MarketScannerPage() {
   const [minConviction, setMinConviction] = useState(50);
   const [selectedSetupFilter, setSelectedSetupFilter] = useState<string>("all");
   const [showGlossary, setShowGlossary] = useState(false);
-  const [breakoutResult, setBreakoutResult] = useState<{
-    total_candidates: number;
-    setups: BreakoutSetup[];
-  } | null>(null);
+  const [breakoutResult, setBreakoutResult] = useState<BreakoutScannerResponse | null>(null);
   const [loadingBreakout, setLoadingBreakout] = useState(false);
   const [breakoutError, setBreakoutError] = useState<string | null>(null);
 
@@ -343,16 +315,10 @@ export default function MarketScannerPage() {
     setLoadingBreakout(true);
     setBreakoutError(null);
     try {
-      const res = await fetchWithTimeout(`${API_BASE_URL}/breakout-scanner/scan`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ min_conviction: Number(convictionScore), limit: 60 }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail ?? "Failed to scan breakout setups.");
+      const data = await fetchBreakoutScan({ minConviction: Number(convictionScore) });
       setBreakoutResult(data);
     } catch (err) {
-      setBreakoutError(apiErrorMessage(err, "The breakout scan took too long. The scan is limited to the priority NSE universe; retry once the local cache is ready.", "Error scanning setups."));
+      setBreakoutError(scannerApiErrorMessage(err, "The morning scan took too long. Retry once the local NSE cache is ready.", "Error building the morning plan."));
     } finally {
       setLoadingBreakout(false);
     }
@@ -363,6 +329,10 @@ export default function MarketScannerPage() {
   const [bookmarkError, setBookmarkError] = useState<string | null>(null);
 
   const addToWatchlist = async (setup: BreakoutSetup) => {
+    if (!setup.morning_plan) {
+      setBookmarkError(`${setup.symbol} has no usable prior-session range for a conditional plan.`);
+      return;
+    }
     setBookmarkingSym(setup.symbol);
     setBookmarkMessage(null);
     setBookmarkError(null);
@@ -374,12 +344,14 @@ export default function MarketScannerPage() {
           symbol: setup.symbol,
           company_name: setup.company_name,
           setup_type: setup.setup_type,
-          entry_price: setup.close,
+          entry_price: setup.morning_plan.entry_trigger,
+          target_price: setup.morning_plan.target_2r,
+          stop_loss_price: setup.morning_plan.stop_level,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail ?? "Failed to add setup.");
-      setBookmarkMessage(`${setup.symbol} was added to your Daily Watchlist. Refresh it after the next daily import to review its latest local bar.`);
+      setBookmarkMessage(`${setup.symbol} plan saved with its prior-high trigger, prior-low stop, and 2R target. The watchlist uses local daily bars and cannot confirm an intraday fill.`);
     } catch (err) {
       setBookmarkError(err instanceof Error ? err.message : "Error adding to watchlist.");
     } finally {
@@ -477,11 +449,11 @@ export default function MarketScannerPage() {
         <section className="bt-heading-row bt-scanner-heading">
           <div>
             <div className="bt-kicker">
-              <span className="live-dot" /> MULTI-STOCK QUANT SCANNER
+              <span className="live-dot" /> LOCAL NSE · MORNING RESEARCH
             </div>
-            <h1>Market Scanner &amp; Automated Setup Recognition</h1>
+            <h1>Market Scanner &amp; Morning Plan</h1>
             <p>
-              Evaluate strategies across the entire NIFTY universe concurrently and detect high-conviction breakout setups on official NSE history.
+              Review ranked technical candidates and conditional price levels from the latest available local NSE daily candles.
             </p>
           </div>
           <div className="bt-heading-actions">
@@ -505,7 +477,7 @@ export default function MarketScannerPage() {
             className={`scanner-tab-btn ${activeTab === "breakout" ? "is-active" : ""}`}
             onClick={() => setActiveTab("breakout")}
           >
-            <Zap size={16} /> Breakout setups
+            <Zap size={16} /> Morning Plan
             {breakoutResult && (
               <span className="scanner-tab-badge">{breakoutResult.total_candidates}</span>
             )}
@@ -955,8 +927,9 @@ export default function MarketScannerPage() {
             <section className="bt-panel scanner-control-panel bt-scanner-filter-panel">
               <div className="bt-panel-head">
                 <div>
-                  <span className="bt-eyebrow">AUTOMATED BREAKOUT RECOGNITION</span>
-                  <h2>Scan Recent History for High-Conviction Technical Setups</h2>
+                  <span className="bt-eyebrow">MANUAL MORNING PLAN · REGULAR NSE SESSION</span>
+                  <h2>Rank Technical Setups for the Morning</h2>
+                  <p>Run manually at 9:00 IST for the regular NSE pre-open. This uses completed local daily candles only; it has no auction quotes, headlines, or live entry confirmation.</p>
                 </div>
                 <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                   <button
@@ -972,7 +945,7 @@ export default function MarketScannerPage() {
                     onClick={() => void runBreakoutScan()}
                     disabled={loadingBreakout}
                   >
-                    <RefreshCw size={14} className={loadingBreakout ? "spin" : ""} /> Rescan Setups
+                    <RefreshCw size={14} className={loadingBreakout ? "spin" : ""} /> Build Morning Plan
                   </button>
                 </div>
               </div>
@@ -1017,7 +990,7 @@ export default function MarketScannerPage() {
                 </div>
 
                 <div className="breakout-slider-wrap">
-                  <span>Min Conviction: <strong>{minConviction}</strong></span>
+                  <span>Minimum setup score: <strong>{minConviction}</strong></span>
                   <input
                     type="range"
                     min="30"
@@ -1046,7 +1019,7 @@ export default function MarketScannerPage() {
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "12px", fontSize: "12px", lineHeight: "1.5" }}>
                   <div style={{ background: "#fff", padding: "10px 12px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
                     <strong style={{ color: "#4338ca", display: "block" }}>RVOL (Relative Volume)</strong>
-                    <span>Current volume divided by the 20-day average volume. An RVOL of <strong>2.0x</strong> means double the normal volume, signaling heavy institutional buying.</span>
+                    <span>Latest completed daily-bar volume divided by its 20-session average. <strong>2.0x</strong> means twice the average; before open, it is not today’s live volume or evidence of institutional buying.</span>
                   </div>
                   <div style={{ background: "#fff", padding: "10px 12px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
                     <strong style={{ color: "#4338ca", display: "block" }}>52W Dist (Distance to 52-Week High)</strong>
@@ -1054,19 +1027,19 @@ export default function MarketScannerPage() {
                   </div>
                   <div style={{ background: "#fff", padding: "10px 12px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
                     <strong style={{ color: "#4338ca", display: "block" }}>RSI 14 (Relative Strength Index)</strong>
-                    <span>Momentum score from 0 to 100 over 14 bars. Values above <strong>60</strong> signal strong bullish momentum expansion.</span>
+                    <span>Momentum indicator calculated from the latest 14 daily closes. Higher readings describe recent price strength; they do not predict future direction.</span>
                   </div>
                   <div style={{ background: "#fff", padding: "10px 12px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
                     <strong style={{ color: "#4338ca", display: "block" }}>20D Range &amp; VCP</strong>
-                    <span>Width between 20-day high and low. Tight consolidation ($\le 11\%$) above 20-day SMA indicates supply absorption prior to an explosive breakout move.</span>
+                    <span>Width between the highest high and lowest low over 20 sessions. The scanner treats a range below 11% as a pattern filter, not a breakout forecast.</span>
                   </div>
                   <div style={{ background: "#fff", padding: "10px 12px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
-                    <strong style={{ color: "#4338ca", display: "block" }}>Conviction Score</strong>
-                    <span>Algorithmic rating (0–100) combining volume surge, price tightness, and momentum. Scores above <strong>70</strong> represent high-quality setups.</span>
+                    <strong style={{ color: "#4338ca", display: "block" }}>Setup Score</strong>
+                    <span>Heuristic rating (0–100) from the scanner’s technical rules. It ranks matches; it is not a probability or validated prediction.</span>
                   </div>
                   <div style={{ background: "#fff", padding: "10px 12px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
                     <strong style={{ color: "#4338ca", display: "block" }}>SMA Rebound (20D / 50D)</strong>
-                    <span>Price reclaiming its 20-day or 50-day Simple Moving Average from below with strong volume confirmation, signaling a trend resumption.</span>
+                    <span>Price moving back above a 20-day or 50-day Simple Moving Average. This is a historical pattern match, not proof that the trend will continue.</span>
                   </div>
                 </div>
               </section>
@@ -1075,7 +1048,7 @@ export default function MarketScannerPage() {
             {loadingBreakout && (
               <div className="bt-panel bt-loading-state">
                 <RefreshCw size={18} className="spin" />
-                <span>Scanning the priority NSE universe for VCP, 52W High, and RSI breakouts…</span>
+                <span>Building a ranked morning plan from the latest local NSE daily candles…</span>
               </div>
             )}
 
@@ -1083,14 +1056,14 @@ export default function MarketScannerPage() {
               <>
                 {bookmarkError && <div className="bt-alert-error" role="alert"><AlertCircle size={15} /> {bookmarkError}</div>}
                 {bookmarkMessage && <div className="bt-alert-success" role="status">{bookmarkMessage} <Link href="/watchlist" className="bt-link">Open Daily Watchlist →</Link></div>}
-                <section className="bt-panel scanner-breakout-explainer" aria-label="How to use breakout setups">
-                  <div><strong>{breakoutSummary.candidates} matching setups</strong><p>This is a signal count, not a win prediction. One stock can appear more than once when it meets multiple technical rules. Start with high-conviction setups, then open Research to test the idea across history.</p></div>
-                  <span className="bt-field-help">Daily NSE history · paper research only</span>
+                <section className="bt-panel scanner-breakout-explainer" aria-label="How to use the morning plan">
+                  <div><strong>{breakoutSummary.uniqueStocks} ranked stocks from {breakoutResult.symbols_scanned} cached NSE symbols · data through {breakoutResult.data_as_of ?? "no dated local candle"}</strong><p>The score ranks technical matches; it is not a win probability or a guaranteed “best stock.” Levels use each stock’s latest session high/low: trigger at the prior high, invalidation at the prior low, target at 2R. Confirm the opening price and volume after 9:15 IST; skip a gap beyond the target or below the stop.</p></div>
+                  <span className="bt-field-help">Manual scan · local NSE daily data · no live quotes</span>
                 </section>
                 <section className="bt-scanner-kpis" aria-label="Breakout scan summary">
-                  <div className="bt-scanner-kpi"><span>Setup signals</span><strong>{breakoutSummary.candidates}</strong><small>after conviction filter</small></div>
+                  <div className="bt-scanner-kpi"><span>Setup signals</span><strong>{breakoutSummary.candidates}</strong><small>after minimum-score filter</small></div>
                   <div className="bt-scanner-kpi"><span>Unique stocks</span><strong>{breakoutSummary.uniqueStocks}</strong><small>deduplicated symbols</small></div>
-                  <div className="bt-scanner-kpi is-positive"><span>High conviction</span><strong>{breakoutSummary.highConviction}</strong><small>score ≥ 70</small></div>
+                  <div className="bt-scanner-kpi is-positive"><span>Score ≥ 70</span><strong>{breakoutSummary.highConviction}</strong><small>heuristic matches</small></div>
                   <div className="bt-scanner-kpi"><span>Average RVOL</span><strong>{breakoutSummary.averageRvol.toFixed(1)}x</strong><small>volume vs 20D average</small></div>
                 </section>
               </>
@@ -1100,15 +1073,15 @@ export default function MarketScannerPage() {
               <div className="breakout-grid">
                 {filteredSetups.length === 0 ? (
                   <div className="bt-panel" style={{ gridColumn: "1 / -1", textAlign: "center", padding: "30px" }}>
-                    <p style={{ color: "#64748b" }}>No setup candidates found matching the min conviction score of {minConviction}. Lower the score slider to view additional candidates.</p>
+                    <p style={{ color: "#64748b" }}>No setup candidates matched the minimum score of {minConviction}. Lower the slider to view additional technical matches.</p>
                   </div>
                 ) : (
-                  filteredSetups.map((setup) => (
+                  filteredSetups.map((setup, index) => (
                     <div key={`${setup.symbol}-${setup.setup_type}`} className="breakout-card">
                       <div className="breakout-card-head">
                         <div>
                           <strong>{setup.symbol}</strong>
-                          <small>{setup.company_name}</small>
+                          <small>{index === 0 ? "Top score in this view · " : ""}{setup.company_name}</small>
                         </div>
                         <span className={`breakout-badge ${setup.setup_type.includes("52W") ? "high-52w" : setup.setup_type.replaceAll(" ", "-").toLowerCase()}`}>
                           {setup.setup_type}
@@ -1117,7 +1090,7 @@ export default function MarketScannerPage() {
 
                       <div className="breakout-conviction-wrap">
                         <div className="breakout-conviction-head">
-                          <span title="Algorithmic setup quality score (0-100) based on volume, price tightness, and technical breakout structure">Conviction Score</span>
+                          <span title="Heuristic technical setup ranking (0-100); it is not a probability">Setup score</span>
                           <strong>{setup.conviction_score} / 100</strong>
                         </div>
                         <div className="breakout-score-bar">
@@ -1134,18 +1107,32 @@ export default function MarketScannerPage() {
                           <strong>₹{setup.close.toLocaleString("en-IN")}</strong>
                         </div>
                         <div>
-                          <span title="Relative Volume: Current day volume divided by 20-day average volume (e.g. 1.8x = 180% of normal volume)">RVOL</span>
-                          <strong className={setup.rvol >= 1.8 ? "text-pos" : ""}>{setup.rvol}x</strong>
+                          <span title="Latest completed daily-bar volume divided by the average of 20 sessions; it is not today's live volume">RVOL</span>
+                          <strong className={setup.rvol >= 1.8 ? "text-pos" : ""} title="Latest completed session volume divided by its 20-day average; not today's live volume">{setup.rvol}x</strong>
                         </div>
                         <div>
                           <span title="Percentage gap to the stock's highest high over the last 52 weeks (380 days)">52W Dist</span>
                           <strong>{setup.dist_52w_high}%</strong>
                         </div>
                         <div>
-                          <span title="14-day Relative Strength Index: Momentum oscillator rating (0-100). Above 60 indicates bullish momentum">RSI (14)</span>
+                          <span title="Momentum indicator from the latest 14 daily closes; it describes recent prices and does not predict direction">RSI (14)</span>
                           <strong>{setup.rsi_14}</strong>
                         </div>
                       </div>
+
+                      {setup.morning_plan ? (
+                        <>
+                          <div className="breakout-stats-grid" aria-label={`Conditional plan levels for ${setup.symbol}`} style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+                            <div><span title={`Prior session high from ${setup.morning_plan.data_as_of}; confirm a break after the market opens`}>Entry trigger · prior high</span><strong>{rupees(setup.morning_plan.entry_trigger)}</strong></div>
+                            <div><span title={`Prior session low from ${setup.morning_plan.data_as_of}; plan invalidation level`}>Stop · prior low</span><strong>{rupees(setup.morning_plan.stop_level)}</strong></div>
+                            <div><span title="Target is 2 times the prior-session high-to-low risk range">Target · 2R</span><strong>{rupees(setup.morning_plan.target_2r)}</strong></div>
+                            <div><span title="Reference risk per share; position size is not calculated without your risk budget">Risk / share</span><strong>{rupees(setup.morning_plan.risk_per_share)}</strong></div>
+                          </div>
+                          <small className="bt-field-help">Levels use {setup.morning_plan.data_as_of} daily data. They are conditional references, not a confirmed entry.</small>
+                        </>
+                      ) : (
+                        <p className="bt-field-help" role="status">No conditional levels: the latest session has no usable high-to-low range.</p>
+                      )}
 
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", borderTop: "1px solid #f1f5f9", paddingTop: "8px", marginTop: "4px" }}>
                         <p className="breakout-desc" style={{ borderTop: 0, paddingTop: 0, marginTop: 0, flex: 1 }}>{setup.description}</p>
@@ -1154,10 +1141,10 @@ export default function MarketScannerPage() {
                           className="bt-secondary-btn"
                           style={{ padding: "4px 8px", fontSize: "10px", gap: "4px", flexShrink: 0 }}
                           onClick={() => void addToWatchlist(setup)}
-                          disabled={bookmarkingSym === setup.symbol}
+                          disabled={bookmarkingSym === setup.symbol || !setup.morning_plan}
                           >
                             <BookmarkCheck size={12} />
-                            {bookmarkingSym === setup.symbol ? "Bookmarking…" : "Bookmark Setup"}
+                            {bookmarkingSym === setup.symbol ? "Saving…" : "Save Plan"}
                           </button>
                           <Link href={`/research?symbol=${encodeURIComponent(setup.symbol)}&strategy=donchian_breakout&source=breakout-scanner`} className="bt-secondary-btn" style={{ padding: "4px 8px", fontSize: "10px", gap: "4px", flexShrink: 0, textDecoration: "none" }}>
                             Test history ↗

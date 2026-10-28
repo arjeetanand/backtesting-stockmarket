@@ -252,13 +252,43 @@ export async function runHistoricalScan(config: { universe: string; strategyType
   return await assertOk(response, "Could not run the historical research scan.") as HistoricalScanResponse;
 }
 
-export async function runBreakoutScan(config: { minConviction: number }): Promise<{ total_candidates: number; setups: Array<Record<string, unknown>> }> {
+export type MorningPlan = {
+  data_as_of: string;
+  entry_trigger: number;
+  stop_level: number;
+  target_2r: number;
+  risk_per_share: number;
+};
+
+export type BreakoutSetup = {
+  symbol: string;
+  company_name: string;
+  sector: string;
+  setup_type: string;
+  close: number;
+  rvol: number;
+  dist_52w_high: number;
+  rsi_14: number;
+  range_20d: number;
+  conviction_score: number;
+  description: string;
+  morning_plan: MorningPlan | null;
+};
+
+export type BreakoutScannerResponse = {
+  total_candidates: number;
+  data_as_of: string | null;
+  symbols_scanned: number;
+  setups: BreakoutSetup[];
+};
+
+export async function runBreakoutScan(config: { minConviction: number }): Promise<BreakoutScannerResponse> {
   const response = await fetchWithTimeout(`${API_BASE_URL}/breakout-scanner/scan`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ min_conviction: config.minConviction, limit: 60 }),
   }, 60_000);
-  return await assertOk(response, "Could not scan breakout setups.") as { total_candidates: number; setups: Array<Record<string, unknown>> };
+  return await assertOk(response, "Could not scan breakout setups.") as BreakoutScannerResponse;
 }
 
 export function scannerApiErrorMessage(error: unknown, timeoutMessage: string, fallback: string): string {

@@ -1194,7 +1194,7 @@ def create_api_router(
 
     @router.post("/breakout-scanner/scan", tags=["breakout-scanner"])
     def scan_breakout_setups(payload: BreakoutScannerRequest) -> dict[str, Any]:
-        """Scan recent historical bars for high-conviction breakout setups (VCP, 52W High + RVOL, SMA Rebound, RSI Surge)."""
+        """Rank local daily breakout setups and attach conditional prior-session levels."""
         from quant_research.services.breakout_scanner import BreakoutScannerService
 
         if market_cache is None:

@@ -3430,7 +3430,7 @@ body {
 .topbar-sync-btn:disabled { opacity: 0.7; cursor: not-allowed; }
 
 .watchlist-page { max-width: 1380px; }
-.watchlist-stats-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.watchlist-stats-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
 .watchlist-stat-card { padding: 14px; background: var(--bt-white); border: 1px solid var(--bt-border); border-radius: 9px; display: grid; gap: 4px; }
 .watchlist-stat-card span { color: var(--bt-muted-soft); font: 700 9px var(--font-jetbrains); text-transform: uppercase; }
 .watchlist-stat-card strong { color: var(--bt-ink); font: 800 20px var(--font-jetbrains); }
@@ -3438,6 +3438,7 @@ body {
 
 .watchlist-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; font: 800 10px var(--font-jetbrains); text-transform: uppercase; white-space: nowrap; }
 .watchlist-badge.active { color: var(--bt-primary-strong); background: var(--bt-selected); }
+.watchlist-badge.waiting { color: #854d0e; background: #fef3c7; }
 .watchlist-badge.target-hit { color: var(--gain); background: #ecfdf5; }
 .watchlist-badge.stop-hit { color: var(--loss); background: #ffe4e6; }
 
