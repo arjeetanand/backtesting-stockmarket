@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import {
   Activity,
@@ -100,6 +101,16 @@ export default function DashboardPage() {
               <span>Simulated orders</span>
             </div>
           </div>
+          <figure className="bt-dashboard-illustration">
+            <Image
+              src="/illustrations/research-notebook-mascot.webp"
+              alt="A notebook mascot reviews printed historical price records with a magnifying glass."
+              width={960}
+              height={640}
+              sizes="(min-width: 1440px) 22vw, (min-width: 1000px) 33vw, 100vw"
+              priority
+            />
+          </figure>
           <aside className="bt-dashboard-loop" aria-label="Research workflow">
             <div className="bt-dashboard-loop-head"><span>THE RESEARCH LOOP</span><span>01 — 03</span></div>
             <ol>

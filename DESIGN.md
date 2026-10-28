@@ -138,6 +138,10 @@ The interface is flat by default. The frame tint, white sheet, quiet supporting 
 
 Use 7px controls, 10px panels, and a 16px page sheet. Borders are thin and cool blue-gray. Avoid pill-shaped controls except for compact status tags already used by the application.
 
+### Illustration
+
+Use the original notebook researcher mascot as a product signature on the research overview. Keep its cream, lavender, and indigo print style local and restrained; leave charts, warnings, and trading decisions free of decorative art. Do not imply forecasts or recommendations.
+
 ## Components
 
 ### Buttons

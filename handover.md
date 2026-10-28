@@ -2,6 +2,19 @@
 
 Last reviewed: 2026-10-28
 
+## 2026-10-28 research notebook mascot
+
+- Added an original notebook researcher illustration to the overview hero. The local WebP is
+  36 KB; it uses responsive two-column and three-column layouts, then stacks on smaller screens.
+  No research logic, backend, or market data changed.
+- Verification: frontend lint and production build pass. Browser inspection at 390px, 767px,
+  and 1440px confirmed the image loads and the document stays within the viewport.
+- Branch: `codex/backtrack-mascot-illustrations-20261028`, based on `origin/main` at `cd7ff7b`.
+  Implementation commit: `b93be62`. [PR #7](https://github.com/arjeetanand/backtesting-stockmarket/pull/7)
+  tracks delivery to `main`; see it for live check and merge status.
+- Run locally from the repository root with `./run.sh`: UI `http://localhost:4003`, API
+  `http://localhost:8001`; UI test ports are `5003` and `6003`.
+
 ## 2026-10-28 editorial light-indigo theme
 
 - Restyled shared application surfaces around a light-indigo frame, white work canvas,
