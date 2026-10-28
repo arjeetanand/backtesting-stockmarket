@@ -118,7 +118,8 @@ The website uses a light-indigo frame, white research canvas, navy editorial hea
 pale periwinkle primary actions across its routes. Shared UI tokens and responsive rules
 are documented in [DESIGN.md](DESIGN.md); the theme keeps the existing local,
 historical-only research boundary. The overview now features an original, locally served
-notebook-researcher illustration in the same palette.
+notebook-researcher illustration in the same palette. A small version of the same character marks
+each section header, with a restrained thinking animation that respects reduced-motion settings.
 
 ## Research workflow
 

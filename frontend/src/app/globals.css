@@ -3843,7 +3843,6 @@ body {
 .bt-dashboard-error strong, .bt-dashboard-empty strong { color: #253541; font-size: 12px; }
 .bt-dashboard-error p, .bt-dashboard-empty p { margin-top: 4px; color: var(--bt-muted); font-size: 10px; line-height: 1.5; }
 .bt-dashboard-empty { justify-content: flex-start; }
-.bt-dashboard-empty-icon { display: grid; width: 36px; height: 36px; flex: 0 0 auto; place-items: center; color: var(--bt-primary-strong); background: var(--bt-selected); border: 1px solid var(--bt-primary-line); border-radius: 8px; }
 .bt-dashboard-empty .bt-dashboard-text-link { margin-left: auto; }
 .bt-dashboard-footnote { display: flex; align-items: center; gap: 10px; padding: 13px 15px; color: var(--bt-muted); background: #f3f5f4; border: 1px solid #e0e6e5; border-radius: 9px; }
 .bt-dashboard-footnote-mark { display: grid; width: 19px; height: 19px; flex: 0 0 auto; place-items: center; color: #8f552f; background: var(--bt-selected); border-radius: 50%; font: 700 11px var(--font-space-grotesk); }
@@ -4076,7 +4075,6 @@ body.bt-app-body { background: var(--bt-frame); color: var(--bt-ink); }
 .bt-dashboard-table td strong { color: var(--bt-ink); }
 .bt-dashboard-loader { border-color: #dce0f5; border-top-color: var(--primary); }
 .bt-dashboard-error { color: #7f1d1d; background: #fff7f7; border-color: #f0dada; }
-.bt-dashboard-empty-icon { color: var(--bt-primary-strong); background: #eef0fb; border-color: #dfe3f6; }
 .bt-dashboard-footnote { color: var(--bt-muted); background: var(--bt-surface); border-color: var(--bt-border); }
 .bt-dashboard-footnote-mark { color: var(--bt-primary-strong); background: var(--bt-selected); }
 .bt-dashboard-footnote a { color: var(--bt-primary-strong); }
@@ -4145,4 +4143,46 @@ body.bt-app-body { background: var(--bt-frame); color: var(--bt-ink); }
 
 @media (max-width: 760px) {
   .bt-nav-link { font-size: 11px; }
+}
+
+/* A small, shared product signature for every research section. */
+.bt-thinking-mascot { position: relative; display: inline-flex; width: 32px; height: 32px; flex: 0 0 auto; vertical-align: middle; }
+.bt-thinking-mascot-medium { width: 40px; height: 40px; }
+.bt-thinking-mascot-art { position: relative; display: block; width: 100%; height: 100%; overflow: hidden; border: 1px solid var(--bt-primary-line); border-radius: 50%; background: var(--bt-selected); }
+.bt-thinking-mascot-image { object-fit: cover; object-position: center; }
+.bt-thinking-mascot-thought { position: absolute; inset: 0; pointer-events: none; }
+.bt-thinking-mascot-thought i { position: absolute; display: block; border: 1px solid var(--bt-white); border-radius: 50%; background: var(--bt-primary-strong); }
+.bt-thinking-mascot-thought i:nth-child(1) { top: 0; right: 0; width: 4px; height: 4px; }
+.bt-thinking-mascot-thought i:nth-child(2) { top: 5px; right: 5px; width: 3px; height: 3px; }
+.bt-thinking-mascot-thought i:nth-child(3) { top: 9px; right: 10px; width: 2px; height: 2px; }
+.bt-topbar-breadcrumb { gap: 8px; }
+.bt-nav-link > svg { flex: 0 0 16px; stroke-width: 1.8; transition: color 180ms ease, transform 180ms cubic-bezier(.22, 1, .36, 1); }
+.bt-nav-link:hover > svg, .bt-nav-link:focus-visible > svg { color: var(--bt-primary-strong); transform: translateY(-1px) rotate(-3deg); }
+.bt-nav-link.active > svg { color: currentColor; }
+.bt-nav-group > summary > svg { transition: transform 180ms cubic-bezier(.22, 1, .36, 1); }
+.insights-heading h1 { display: flex; align-items: center; gap: 10px; }
+.insights-heading h1 > span:last-child { min-width: 0; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .bt-thinking-mascot.is-thinking .bt-thinking-mascot-art { animation: bt-mascot-consider 6s cubic-bezier(.22, 1, .36, 1) infinite; transform-origin: 50% 75%; }
+  .bt-thinking-mascot.is-thinking .bt-thinking-mascot-thought i { animation: bt-mascot-thought 1.8s ease-in-out infinite; }
+  .bt-thinking-mascot.is-thinking .bt-thinking-mascot-thought i:nth-child(2) { animation-delay: 120ms; }
+  .bt-thinking-mascot.is-thinking .bt-thinking-mascot-thought i:nth-child(3) { animation-delay: 240ms; }
+}
+
+@keyframes bt-mascot-consider {
+  0%, 76%, 100% { transform: translateY(0) rotate(0); }
+  83% { transform: translateY(-1px) rotate(-3deg); }
+  90% { transform: translateY(0) rotate(-3deg); }
+  96% { transform: translateY(-.5px) rotate(0); }
+}
+
+@keyframes bt-mascot-thought {
+  0%, 100% { opacity: .38; transform: translateY(0) scale(.8); }
+  50% { opacity: .9; transform: translateY(-.75px) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bt-thinking-mascot *, .bt-nav-link > svg, .bt-nav-group > summary > svg { animation: none !important; transition: none !important; }
+  .bt-nav-link:hover > svg, .bt-nav-link:focus-visible > svg { transform: none; }
 }

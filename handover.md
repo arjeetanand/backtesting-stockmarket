@@ -447,3 +447,16 @@ Next owner/action:
 - Browser check: real cached RELIANCE scenario result rendered; no visible horizontal overflow at `695 × 730`. The browser tool could not emulate the exact `390 × 844` viewport.
 - Limits: daily candles only, fees/slippage excluded, sample counts are not probabilities, and no broker orders or live data. Same-day stop and target touches count as stop first.
 - Next action: open `http://127.0.0.1:4003/time-machine`; import more local history if the selected lookback and holding period require it.
+
+## 14. Shared mascot and icon motion
+
+- Date: 2026-10-28.
+- Branch: `codex/backtrack-site-mascot-motion-20261028`.
+- Implementation commit: `5f2dae7` (`Add shared thinking mascot and icon motion`).
+- PR: [#8](https://github.com/arjeetanand/backtesting-stockmarket/pull/8), targeting `main`.
+- Updated shared TopBar headers and the custom Insights heading with a small crop of the local notebook mascot; added reduced-motion-aware thought motion and a restrained sidebar icon response. Reused the mascot in the Home recent-tests empty state.
+- Updated `DESIGN.md`, `README.md`, and `docs/UI_THEME_CHECKLIST.md`; no API, database, or market-data behavior changed.
+- Verification: frontend lint passed; `NEXT_DIST_DIR=.next-port-validation npm run build -- --webpack` passed. Browser check found the mascot on all 21 routes at 390px; Home, Data, and Insights at 1440px; and Data at 767px, with no horizontal overflow or browser console errors.
+- The default Turbopack production build failed when sandbox permissions blocked a child-process startup for CSS processing; the isolated webpack production build passed. Reduced-motion handling was source-checked but not emulated in the browser. GitGuardian passed; GitHub Copilot review was unavailable because the account had no remaining review quota.
+- Run with `./run.sh`; UI port `4003`, API port `8001`. Current preview: `http://127.0.0.1:4003/`.
+- Next action: review the completed changes in the running app at `http://127.0.0.1:4003/`.

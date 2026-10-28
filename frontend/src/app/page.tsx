@@ -7,7 +7,6 @@ import {
   Activity,
   ArrowRight,
   ArrowUpRight,
-  BookOpenCheck,
   BrainCircuit,
   Database,
   FlaskConical,
@@ -16,6 +15,7 @@ import {
   Search,
 } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
+import ThinkingMascot from "@/components/illustrations/ThinkingMascot";
 import { fetchWithTimeout } from "@/lib/api";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
@@ -157,7 +157,7 @@ export default function DashboardPage() {
           )}
           {loadState === "ready" && runs.length === 0 && (
             <div className="bt-panel bt-dashboard-empty">
-              <span className="bt-dashboard-empty-icon"><BookOpenCheck size={19} /></span>
+              <ThinkingMascot size="medium" animate />
               <div><strong>Your research log starts here.</strong><p>Run a historical test and its real results will appear in this list.</p></div>
               <Link href="/research" className="bt-dashboard-text-link">Open Strategy Lab <ArrowRight size={14} /></Link>
             </div>

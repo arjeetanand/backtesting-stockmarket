@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { RefreshCw } from "lucide-react";
+import ThinkingMascot from "@/components/illustrations/ThinkingMascot";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
@@ -64,6 +65,7 @@ export default function TopBar({ title }: TopBarProps = {}) {
   return (
     <header className="bt-topbar">
       <div className="bt-topbar-breadcrumb">
+        <ThinkingMascot animate />
         <h2 className="bt-topbar-title">{displayTitle}</h2>
       </div>
       <div className="bt-topbar-actions">
