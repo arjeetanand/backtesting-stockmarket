@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from math import floor
 from typing import Any
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
@@ -29,6 +30,43 @@ SEBI_TURNOVER_RATE = 0.000001
 STOP_ATR_MULTIPLE = 2.0
 TARGET_R_MULTIPLE = 2.0
 MAX_HOLD_SESSIONS = 20
+NSE_MARKET_OPEN = time(9, 15)
+INDIA_TZ = ZoneInfo("Asia/Kolkata")
+# shortcut: bundled official 2026 equities calendar; refresh from NSE before supporting 2027 signals.
+NSE_EQUITY_HOLIDAYS_2026 = frozenset(
+    date.fromisoformat(day)
+    for day in (
+        "2026-01-15", "2026-01-26", "2026-03-03", "2026-03-26", "2026-03-31",
+        "2026-04-03", "2026-04-14", "2026-05-01", "2026-05-28", "2026-06-26",
+        "2026-09-14", "2026-10-02", "2026-10-20", "2026-11-10", "2026-11-24",
+        "2026-12-25",
+    )
+)
+NSE_SPECIAL_SESSIONS_2026 = frozenset({date(2026, 11, 8)})
+
+
+def _next_nse_session(signal_date: date) -> date | None:
+    if signal_date.year != 2026:
+        return None
+    session = signal_date + timedelta(days=1)
+    while session.year == 2026 and (
+        (session.weekday() >= 5 and session not in NSE_SPECIAL_SESSIONS_2026)
+        or session in NSE_EQUITY_HOLIDAYS_2026
+    ):
+        session += timedelta(days=1)
+    return session if session.year == 2026 else None
+
+
+def _entry_window_is_open(signal_date: date, now: datetime) -> bool:
+    session = _next_nse_session(signal_date)
+    if session is None or session in NSE_SPECIAL_SESSIONS_2026:
+        return False
+    local_now = now.astimezone(INDIA_TZ)
+    if signal_date > local_now.date():
+        return False
+    if local_now.date() < session:
+        return True
+    return local_now.date() == session and local_now.time().replace(tzinfo=None) < NSE_MARKET_OPEN
 
 
 @dataclass(slots=True)
@@ -226,7 +264,7 @@ def _simulate_period(frame: pd.DataFrame, start_index: int, end_index: int) -> t
     losses = sum(trade["outcome"] == "loss" for trade in trades)
     flats = sum(trade["outcome"] == "flat" for trade in trades)
     returns = [float(trade["net_return_pct"]) for trade in trades]
-    signal_occurrences = sum(bool(rows[index]["entry_signal"]) for index in range(max(start_index, 200), max(start_index, end_index - 1)))
+    signal_occurrences = sum(bool(rows[index]["entry_signal"]) for index in range(max(start_index, 200), end_index))
     gross_wins = sum(float(trade["net_pnl"]) for trade in trades if trade["net_pnl"] > 0)
     gross_losses = abs(sum(float(trade["net_pnl"]) for trade in trades if trade["net_pnl"] < 0))
     metrics = {
@@ -352,7 +390,7 @@ class StockResearchService:
             "data_as_of": max(latest_dates, default=None),
             **counts,
             "qualifying_setups": len(candidates),
-            "candidates": candidates[:10],
+            "candidates": candidates,
         }
 
     def run(self, symbol: str, company_name: str | None = None, *, include_chart: bool = True) -> dict[str, Any]:
@@ -385,7 +423,9 @@ class StockResearchService:
             frame = _add_indicators(frame)
             first_date = pd.Timestamp(frame.iloc[0]["timestamp"]).date()
             last_date = pd.Timestamp(frame.iloc[-1]["timestamp"]).date()
-            age_days = max((datetime.now(UTC).date() - last_date).days, 0)
+            now = datetime.now(UTC)
+            local_now = now.astimezone(INDIA_TZ)
+            age_days = max((local_now.date() - last_date).days, 0)
             history_years = (last_date - first_date).days / 365.25
             data_hash = self._hash_bars(frame)
 
@@ -406,7 +446,7 @@ class StockResearchService:
             training, _ = _simulate_period(frame, 200, split_index)
             out_of_sample, trades = _simulate_period(frame, split_index, len(frame))
             technical, chart, evidence = self._technical_summary(frame, include_chart)
-            setup = self._trade_plan(frame, technical, evidence, age_days)
+            setup = self._trade_plan(frame, technical, evidence, age_days, now)
             gate = self._validation_gate(history_years, out_of_sample)
             finished_at = datetime.now(UTC).isoformat()
             result = {
@@ -592,15 +632,23 @@ class StockResearchService:
         return points
 
     @staticmethod
-    def _trade_plan(frame: pd.DataFrame, technical: dict[str, Any], evidence: list[str], age_days: int) -> dict[str, Any]:
+    def _trade_plan(
+        frame: pd.DataFrame,
+        technical: dict[str, Any],
+        evidence: list[str],
+        age_days: int,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
         current = frame.iloc[-1]
+        signal_date = pd.Timestamp(current["timestamp"]).date()
         close = float(current["close"])
         prior_high = technical["prior20_high"]
         atr = technical["atr14"]
         sma50 = technical["sma50"]
         triggered = bool(current["entry_signal"])
+        entry_window_open = _entry_window_is_open(signal_date, now or datetime.now(UTC))
         trend_aligned = sma50 is not None and technical["sma200"] is not None and close > sma50 > technical["sma200"]
-        is_stale = age_days > 5
+        is_stale = age_days > 5 or (triggered and not entry_window_open)
         status = "stale_data" if is_stale else "triggered" if triggered else "watch" if trend_aligned else "no_long_setup"
         reference = float(prior_high) if prior_high is not None else None
         stop = reference - STOP_ATR_MULTIPLE * float(atr) if reference is not None and atr is not None else None
@@ -608,7 +656,10 @@ class StockResearchService:
         target_2r = reference + STOP_ATR_MULTIPLE * TARGET_R_MULTIPLE * float(atr) if reference is not None and atr is not None else None
         reasons = list(evidence)
         if is_stale:
-            reasons.insert(0, f"Latest saved candle is {age_days} calendar days old; refresh data before using any levels.")
+            if age_days > 5:
+                reasons.insert(0, f"Latest saved candle is {age_days} calendar days old; refresh data before using any levels.")
+            elif triggered and not entry_window_open:
+                reasons.insert(0, "The breakout's next NSE session entry window has passed or its holiday calendar is unavailable; this signal is not current.")
         elif triggered:
             reasons.insert(0, "The latest completed candle met the fixed breakout rule; a simulated entry occurs at the next session open, which is not known yet.")
         elif trend_aligned:

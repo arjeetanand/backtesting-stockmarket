@@ -13,7 +13,7 @@ It does not place real orders, connect to a broker, provide live quotes, or requ
 - Tests SMA, RSI/EMA, configurable rule, strategy-library, and imported YouTube ideas.
 - Scans local daily NSE history for transparent bullish and bearish structure zones, their break level, retests, invalidation, and data coverage; ranks positive and negative 20-session close-pressure estimates in a selectable flow view.
 - On `/research`, follows one stock → local data → chart → strategy → backtest → results workflow with OHLCV, volume, indicators, signals, trades, equity, drawdown, and metrics.
-- On `/stock-research`, scans the built-in NIFTY 50 basket and shows only fresh daily triggers whose fixed-rule held-out test passes the evidence gate; search one stock for its indicators, conditional levels, candles, trade history, and local run log.
+- On `/stock-research`, scans the built-in NIFTY 50 basket and shows only triggers whose next-session entry window is open and whose fixed-rule held-out test passes the evidence gate; search one stock for its indicators, conditional levels, candles, trade history, and local run log.
 - Replays historical candles with simulated orders only.
 - Runs a seeded daily-bar scenario sample and compares it with a fixed-rule historical sample.
 - Builds a manual morning watchlist from the latest completed NSE daily candles, with conditional trigger, stop, and 2R target levels.
