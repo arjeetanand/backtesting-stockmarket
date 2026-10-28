@@ -20,4 +20,4 @@
 - [x] Frontend lint and the webpack production build pass; the default Turbopack build was blocked by sandbox process permissions.
 - [x] Review all 21 rendered routes at phone (390px), tablet (767px), and desktop (1440px) widths.
 - [x] Check route navigation and horizontal overflow; no route errors or document overflow found.
-- The base theme shipped in [PR #6](https://github.com/arjeetanand/backtesting-stockmarket/pull/6); this mascot follow-up is [PR #7](https://github.com/arjeetanand/backtesting-stockmarket/pull/7).
+- The base theme shipped in [PR #6](https://github.com/arjeetanand/backtesting-stockmarket/pull/6), the overview mascot in [PR #7](https://github.com/arjeetanand/backtesting-stockmarket/pull/7), and shared mascot motion in [PR #8](https://github.com/arjeetanand/backtesting-stockmarket/pull/8).
