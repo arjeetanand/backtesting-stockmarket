@@ -23,7 +23,7 @@ Last reviewed: 2026-10-28
 - The local task branch is `codex/stock-workspace-unification-20261028`. No push or merge
   to `main` was performed. The local UI is available at `http://127.0.0.1:4003/`; API
   health is `http://127.0.0.1:8001/api/v1/health`. See `docs/CONSOLIDATION_CHECKLIST.md`
-  for verification details and the implementation commit.
+  for verification details. The implementation is committed locally as `bf44580`.
 - Verification: `ruff`, the full `pytest` suite, the frontend production build, browser
   review at desktop and mobile widths, repeat-launch, and API health passed. `mypy src`
   still reports 13 errors in four unchanged files; npm install reported 14 dependency
