@@ -23,7 +23,7 @@
 - [x] Calculate only a hypothetical whole-share size from user-entered maximum rupee loss and allocation caps; add a frontend regression check for the math.
 - [x] Sync through the latest completed NSE session in India time; retry dates previously marked unavailable and report the actual latest saved date.
 - [x] Run focused daily-sync/NSE-import tests and Ruff; run frontend ESLint and webpack build.
-- [ ] Browser/live refresh remains unchecked: browser discovery returned `transport closed`, the running 5003 UI belongs to an older checkout, and no live NSE sync was run.
+- [ ] Browser/live refresh remains unchecked: browser discovery returned `transport closed`; the previously running 5003 UI belonged to an older checkout, and all relevant ports are now stopped.
 - [x] Run the frontend suite (24 tests), ESLint, webpack production build, and `git diff --check` successfully.
 - [ ] Browser-rendered behavior remains unchecked: the branch preview server could not bind reserved port 6003 (`listen EPERM`); the existing 5003 and 4003 services were left untouched.
 

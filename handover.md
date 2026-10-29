@@ -647,11 +647,11 @@ Next owner/action:
 
 ## 29. YESBANK stale daily history
 
-- Date: 2026-10-29. Task branch: `codex/yesbank-current-data-20261029`, based on local `main` at `16d8ada`.
+- Date: 2026-10-29. Task branch: `codex/yesbank-current-data-20261029`, based on local `main` at `16d8ada`. Implementation commit: `db7c6a2` (local, not pushed).
 - Read-only cache inspection found 5,254 YESBANK daily bars from 2005-07-12 through 2026-10-27. The shared cache refreshed on 2026-10-29, but archive dates 2026-10-28 and 2026-10-29 were marked unavailable after attempts at 13:45 IST and 09:25 IST, respectively.
 - Root cause: `NseBhavcopyImporter` permanently skipped a date after one 404, and daily sync used the UTC date, which could request an unfinished NSE session. The cache refresh timestamp therefore looked current while the stock candle date was old.
 - Fix: daily sync now uses Asia/Kolkata, avoids requesting today's archive until 18:00 IST on trading days, retries unavailable dates in its bounded missing-day range, and reports the latest date actually saved. General historical imports retain their no-repeat behavior unless explicitly asked to retry.
-- Runtime finding: port 5003 is serving the older `codex/fii-dii-long-range-sync-20261029` checkout; its stock-research page defaults to RELIANCE. The integrated local `main` page defaults to YESBANK and includes the drawdown guide. Port 8001 is a Backtrack API from that older checkout using the shared `backtrack/data/market_cache.sqlite3`. No running process or market-data database was changed.
+- Runtime finding: at initial inspection, ports 5003 and 8001 were running from the older `codex/fii-dii-long-range-sync-20261029` checkout; its stock-research source defaulted to RELIANCE. The integrated local `main` page defaults to YESBANK and includes the drawdown guide. The API used the shared `backtrack/data/market_cache.sqlite3`. A final read-only port check found 4003, 5003, 6003, and 8001 stopped. No process or market-data database was changed by this task.
 - Verification: focused daily-sync and NSE-import tests passed (10 tests); Ruff passed; frontend ESLint passed; webpack production build passed with all 24 routes. Targeted mypy reports four errors in the unchanged `repositories/market_cache.py`. Browser verification was unavailable because browser discovery returned `transport closed`; no live NSE request was made.
 - Checklist: `docs/STOCK_RESEARCH_CHECKLIST.md`.
 - The task branch has not been pushed or merged. After approval, merge it into `main`, then run the latest integrated checkout when the user wants the local UI back; no server was restarted because the prior request was to stop ports 4003, 5003, and 6003.
