@@ -49,7 +49,7 @@ The home page guides the local-data → research → saved-results → compariso
 | `/market-scanner` | Multi-stock formula, historical strategy, breakout, and daily structure-zone scanning |
 | `/insights` | Local NSE index breadth, stock/sector heatmaps, and top movers |
 | `/insights/fii-dii` | Official NSE FII/FPI-DII institutional-flow chart and ledger |
-| `/watchlist` | Persisted simulated setup tracking |
+| `/watchlist` | Saved historical setups checked against the latest imported NSE daily bars |
 | `/ml-lab` | Chronological ML experiments |
 | `/pattern-finder` | Historical pattern detection and review |
 | `/options` | Educational options payoff calculator |
@@ -126,7 +126,9 @@ The Market Scanner uses the local scanner API and real leaderboard values only. 
 
 FII/DII Insights uses the official NSE institutional-activity report, archives raw snapshots locally, and derives daily/weekly/monthly net-flow summaries from normalized SQLite rows. NSE's current public endpoint is a latest-session snapshot rather than a historical date-range archive, so the page reports incomplete local coverage instead of presenting one snapshot as a month. The Nifty 50 line is rendered only from locally archived official index closes; unavailable index data is never approximated.
 
-Breakout candidates follow one explicit handoff: **Bookmark Setup** saves the historical setup to **Daily Watchlist**, shows an in-page confirmation with a Watchlist link, and **Test history** opens Research with the scanner symbol, strategy, timeframe, and dates. Research handoffs override a previously restored local Research session so a stale symbol or result cannot silently replace the selected scanner candidate. Watchlist values are evaluated against the latest imported daily bars; they are not live quotes.
+Breakout candidates follow one explicit handoff: **Add to Daily Watchlist** saves the historical setup, then confirms **Saved to Daily Watchlist** and links to the tracker. Already-saved setups display as saved instead of inviting another click. **Test history** opens Research with the scanner symbol, strategy, timeframe, and dates. Research handoffs override a previously restored local Research session so a stale symbol or result cannot silently replace the selected scanner candidate. Watchlist rows are historical setups evaluated against the latest imported daily bars, not live quotes or broker trades.
+
+Choice fields use the shared `SelectMenu` listbox so option panels match the website style and work with arrow keys, Home/End, Enter, Escape, and typeahead. Fixed single-choice settings are shown as read-only values. The Indicator School symbol picker uses the existing branded search combobox instead of the browser's native datalist popup.
 
 ## Local swarm modules
 

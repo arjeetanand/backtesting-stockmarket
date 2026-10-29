@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import { SymbolCombobox } from "@/components/data/SymbolCombobox";
+import SelectMenu from "@/components/ui/SelectMenu";
 import { fetchWithTimeout } from "@/lib/api";
 import { STRATEGY_SOURCE_DISCLAIMER, UNIFIED_STRATEGIES, type StrategyLibraryEntry } from "@/lib/strategy-library";
 
@@ -169,7 +170,7 @@ export default function StrategyImportPage() {
           </div>
           <div className="bt-popular-controls">
             <div><label className="bt-field-label">NSE stock</label><SymbolCombobox value={symbol} onChange={setSymbol} /></div>
-            <div><label className="bt-field-label"><Clock3 size={13} /> Timeframe</label><select className="bt-field-input" value={timeframe} onChange={(event) => setTimeframe(event.target.value)}><option value="1day">Daily · official NSE candles</option><option value="1week">Weekly · resampled daily data</option><option value="1month">Monthly · resampled daily data</option><option value="1hour" disabled>Hourly · intraday data required</option></select></div>
+            <div><label className="bt-field-label"><Clock3 size={13} /> Timeframe</label><SelectMenu aria-label="Timeframe" className="bt-field-input" value={timeframe} onChange={(event) => setTimeframe(event.target.value)}><option value="1day">Daily · official NSE candles</option><option value="1week">Weekly · resampled daily data</option><option value="1month">Monthly · resampled daily data</option><option value="1hour" disabled>Hourly · intraday data required</option></SelectMenu></div>
             <div><label className="bt-field-label"><WalletCards size={13} /> Starting capital (₹)</label><input className="bt-field-input" type="number" min={1000} step={1000} value={initialCapital} onChange={(event) => setInitialCapital(Math.max(1000, Number(event.target.value) || 1000))} /></div>
             <div><label className="bt-field-label">From</label><input className="bt-field-input" type="date" max={endDate} value={startDate} onChange={(event) => setStartDate(event.target.value)} /></div>
             <div><label className="bt-field-label">To</label><input className="bt-field-input" type="date" min={startDate} max={today} value={endDate} onChange={(event) => setEndDate(event.target.value)} /></div>

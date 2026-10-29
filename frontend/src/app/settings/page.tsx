@@ -112,12 +112,10 @@ export default function SettingsPage() {
               <div className="bt-setting-copy"><strong>Historical data source</strong><small>Official NSE daily archives saved in the local SQLite cache.</small></div>
               <span className="bt-secret-state">Free</span>
             </div>
-            <label className="bt-setting-row" htmlFor="execution-model">
+            <div className="bt-setting-row">
               <span className="bt-setting-copy"><strong>Execution model</strong><small>Signals are known at close and filled on the next available bar.</small></span>
-              <select id="execution-model" value={settings.execution} onChange={(event) => update("execution", event.target.value as ResearchSettings["execution"])}>
-                <option>Next bar open</option>
-              </select>
-            </label>
+              <span id="execution-model" className="bt-setting-fixed">{settings.execution}</span>
+            </div>
             <label className="bt-setting-row" htmlFor="commission-bps">
               <span className="bt-setting-copy"><strong>Commission reference</strong><small>Keep a realistic transaction-cost assumption visible when configuring a test.</small></span>
               <span className="bt-input-suffix"><input id="commission-bps" inputMode="decimal" type="number" min="0" max="1000" step="0.1" value={settings.commissionBps} onChange={(event) => update("commissionBps", event.target.value)} aria-describedby="commission-help" /><span>bps</span></span>

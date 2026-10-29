@@ -23,6 +23,7 @@ import {
   YAxis,
 } from "recharts";
 import TopBar from "@/components/layout/TopBar";
+import SelectMenu from "@/components/ui/SelectMenu";
 import {
   getFiiDiiData,
   getFiiDiiImportStatus,
@@ -260,14 +261,14 @@ export default function FiiDiiPage() {
 
         <section className="fii-controls-row">
           <label className="fii-select-label">Participant
-            <select value={participant} onChange={(event) => setParticipant(event.target.value as Participant)}>
+            <SelectMenu aria-label="Participant" value={participant} onChange={(event) => setParticipant(event.target.value as Participant)}>
               <option value="both">Both FII &amp; DII</option><option value="FII">FII / FPI only</option><option value="DII">DII only</option>
-            </select>
+            </SelectMenu>
           </label>
           <label className="fii-select-label">Scope
-            <select value={scope} onChange={(event) => setScope(event.target.value as FiiDiiScope)}>
+            <SelectMenu aria-label="Scope" value={scope} onChange={(event) => setScope(event.target.value as FiiDiiScope)}>
               <option value="combined">NSE + BSE + MSEI</option><option value="nse_only">NSE only</option>
-            </select>
+            </SelectMenu>
           </label>
           <div className="fii-control-group" aria-label="Chart granularity">{(["daily", "weekly", "monthly"] as Granularity[]).map((item) => <button type="button" key={item} className={granularity === item ? "is-active" : ""} onClick={() => setGranularity(item)}>{item[0].toUpperCase() + item.slice(1)}</button>)}</div>
           <div className="fii-range-control" aria-label="Date range">{RANGES.map((item) => <button type="button" key={item.value} className={rangeDays === item.value ? "is-active" : ""} onClick={() => setRangeDays(item.value)}>{item.value === 30 ? "30D" : item.value === 90 ? "3M" : item.value === 180 ? "6M" : "1Y"}</button>)}</div>

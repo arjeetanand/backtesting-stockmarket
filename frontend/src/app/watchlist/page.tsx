@@ -36,6 +36,7 @@ export default function WatchlistPage() {
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   const fetchWatchlist = async () => {
     setLoading(true);
@@ -53,12 +54,16 @@ export default function WatchlistPage() {
   };
 
   const deleteItem = async (id: string) => {
+    setRemovingId(id);
+    setError(null);
     try {
       const res = await fetch(`${API_BASE_URL}/watchlist/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete watchlist item.");
+      if (!res.ok) throw new Error("Could not remove this setup from your Daily Watchlist.");
       setItems((prev) => prev.filter((x) => x.id !== id));
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete item.");
+      setError(err instanceof Error ? err.message : "Could not remove this setup from your Daily Watchlist.");
+    } finally {
+      setRemovingId(null);
     }
   };
 
@@ -80,11 +85,11 @@ export default function WatchlistPage() {
         <section className="bt-heading-row">
           <div>
             <div className="bt-kicker">
-              <span className="live-dot" /> FORWARD SETUP TRACKER
+              <span className="live-dot" /> DAILY SETUP TRACKER
             </div>
             <h1>Daily Watchlist &amp; Setup Tracker</h1>
             <p>
-              Monitor bookmarked breakout candidates against the latest imported daily NSE bars. Track entry prices, target gains (+15%), and stop-loss levels (-5%) without implying live quotes.
+              Review saved breakout candidates against the latest imported daily NSE bars. These are simulated setup levels, not live quotes or broker trades.
             </p>
           </div>
           <div className="bt-heading-actions">
@@ -94,7 +99,7 @@ export default function WatchlistPage() {
               onClick={() => void fetchWatchlist()}
               disabled={loading}
             >
-              <RefreshCw size={14} className={loading ? "spin" : ""} /> Refresh Tracker
+              <RefreshCw size={14} className={loading ? "spin" : ""} /> Recheck local bars
             </button>
           </div>
         </section>
@@ -102,31 +107,31 @@ export default function WatchlistPage() {
         {/* Summary Stats Grid */}
         <div className="watchlist-stats-grid">
           <div className="watchlist-stat-card">
-            <span>Total Bookmarked</span>
+            <span>Saved setups</span>
             <strong>{totalCount}</strong>
             <small>Active candidate setups</small>
           </div>
           <div className="watchlist-stat-card">
-            <span>Active Trades</span>
+            <span>Active setups</span>
             <strong style={{ color: "#4f46e5" }}>{activeCount}</strong>
             <small>Currently monitoring</small>
           </div>
           <div className="watchlist-stat-card">
-            <span>Target Hit 🎯</span>
+            <span>Target reached</span>
             <strong style={{ color: "#047857" }}>{targetHitCount}</strong>
-            <small>Achieved +15% gain</small>
+            <small>Latest local bar reached +15%</small>
           </div>
           <div className="watchlist-stat-card">
-            <span>Stop Loss Hit 🛑</span>
+            <span>Stop level reached</span>
             <strong style={{ color: "#e11d48" }}>{stopHitCount}</strong>
-            <small>Hit -5% stop loss</small>
+            <small>Latest local bar reached -5%</small>
           </div>
           <div className="watchlist-stat-card">
-            <span>Average P&amp;L %</span>
+            <span>Average setup change</span>
             <strong className={avgPnl >= 0 ? "text-pos" : "text-neg"}>
               {avgPnl >= 0 ? `+${fmt(avgPnl)}%` : `${fmt(avgPnl)}%`}
             </strong>
-            <small>Unrealized / Realized</small>
+            <small>Since saved entry · latest local bars</small>
           </div>
         </div>
 
@@ -141,20 +146,20 @@ export default function WatchlistPage() {
           <div className="bt-panel-head">
             <div>
               <span className="bt-eyebrow">SAVED SETUPS</span>
-              <h2>Active &amp; Completed Watchlist Items ({items.length})</h2>
+              <h2>Saved setups ({items.length})</h2>
             </div>
           </div>
 
           {loading ? (
             <div className="bt-loading-state">
               <RefreshCw size={18} className="spin" />
-              <span>Evaluating watchlist items against latest daily market bars…</span>
+              <span>Checking saved setups against the latest imported daily bars…</span>
             </div>
           ) : items.length === 0 ? (
             <div style={{ padding: "30px", textAlign: "center", color: "#64748b" }}>
               <BookmarkCheck size={32} style={{ color: "#94a3b8", marginBottom: "8px" }} />
               <p>Your watchlist is currently empty.</p>
-              <small>Open <a href="/market-scanner" className="bt-link">Market Scanner</a>, run a historical breakout scan, then choose <strong>&quot;Bookmark Setup&quot;</strong> on a candidate card.</small>
+              <small>Open <a href="/market-scanner" className="bt-link">Market Scanner</a>, run a historical breakout scan, then choose <strong>&quot;Add to Daily Watchlist&quot;</strong> on a candidate card.</small>
             </div>
           ) : (
             <div className="bt-table-wrap">
@@ -165,11 +170,11 @@ export default function WatchlistPage() {
                     <th className="left">Setup Type</th>
                     <th className="right">Entry Date</th>
                     <th className="right">Entry Price</th>
-                    <th className="right">Current Price</th>
-                    <th className="right">Target (+15%)</th>
-                    <th className="right">Stop Loss (-5%)</th>
-                    <th className="right">P&amp;L %</th>
-                    <th className="center">Status</th>
+                    <th className="right">Latest close</th>
+                    <th className="right">Target level (+15%)</th>
+                    <th className="right">Stop level (-5%)</th>
+                    <th className="right">Setup change</th>
+                    <th className="center">Latest bar</th>
                     <th className="center">Action</th>
                   </tr>
                 </thead>
@@ -198,17 +203,17 @@ export default function WatchlistPage() {
                       <td className="center">
                         {item.status === "target_hit" && (
                           <span className="watchlist-badge target-hit">
-                            <CheckCircle2 size={12} /> Target Hit
+                            <CheckCircle2 size={12} /> Target reached
                           </span>
                         )}
                         {item.status === "stop_loss_hit" && (
                           <span className="watchlist-badge stop-hit">
-                            <XCircle size={12} /> Stop Loss Hit
+                            <XCircle size={12} /> Stop reached
                           </span>
                         )}
                         {item.status === "active" && (
                           <span className="watchlist-badge active">
-                            <BookmarkCheck size={12} /> Active
+                            <BookmarkCheck size={12} /> No level reached
                           </span>
                         )}
                       </td>
@@ -217,9 +222,10 @@ export default function WatchlistPage() {
                           type="button"
                           className="watchlist-del-btn"
                           onClick={() => void deleteItem(item.id)}
-                          title="Remove item"
+                          aria-label={removingId === item.id ? `Removing ${item.symbol} from Daily Watchlist` : `Remove ${item.symbol} from Daily Watchlist`}
+                          disabled={removingId === item.id}
                         >
-                          <Trash2 size={14} />
+                          <Trash2 size={13} /> {removingId === item.id ? "Removing…" : "Remove"}
                         </button>
                       </td>
                     </tr>

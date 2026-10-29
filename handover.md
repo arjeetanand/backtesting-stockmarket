@@ -511,3 +511,15 @@ Next owner/action:
 - Verification: frontend lint passed with 0 errors and one unrelated unused-function warning in `frontend/src/components/ui/SelectMenu.tsx`; an isolated webpack production build passed; `git diff --check` passed. Desktop browser rendering confirmed the updated wording and explicit API-unavailable state. The local API on port `8000` could not be reached, so scan results and post-scan search were not runtime-tested. Mobile viewport review remains pending because viewport emulation was unavailable.
 - The preview page was `http://127.0.0.1:5003/market-scanner`. Run the project with `./run.sh` for the documented UI port `4003` and API port `8001`.
 - Implementation commit: `d2c60d8` (`Clarify Market Scanner guidance and search scope`).
+
+## CTA and choice-control clarity
+
+- Date: 2026-10-29.
+- Branch: `codex/cta-select-clarity-20261029`.
+- The Daily Watchlist save action is connected to the existing API. Its button now names the destination, shows progress and saved states, and recognizes existing saved setups. The tracker now calls these historical setups, explains target/stop status against the latest local bar, and shows removal failures inline.
+- Replaced native select popups with the shared keyboard-accessible `SelectMenu` on Data, Strategy, Strategy Import, ML Lab, Research, Comparison, FII/DII Insights, and Market Scanner. Replaced Indicator School's native datalist with the branded symbol combobox. One-choice settings are read-only; the scanner starts with a supported rule and waits for its catalogue before enabling Run scan.
+- Checklist: `docs/CTA_SELECT_CHECKLIST.md`. Updated root and frontend README guidance.
+- Verification: frontend lint passed and the webpack production build generated all 23 pages. Desktop browser review confirmed the styled menu, pointer/keyboard selection, and Watchlist wording. The existing preview reproduced the scanner's empty selection; the fallback default is fixed in code. A branch-specific preview could not bind test port `6003` (`listen EPERM`), so post-fix scanner rendering and narrow mobile layout remain unverified. No add, remove, import, or scan action was submitted.
+- Run with `./run.sh`; UI port `4003`, API port `8001`; test UI ports `5003` and `6003`. The existing shared-checkout preview on `4003` was left running; it does not serve the isolated task worktree.
+- Local commit: pending final scoped review. No push or merge was authorized.
+- Next action: review the scanner's initial choice and 390px/767px layout from this branch when local preview and viewport control are available.

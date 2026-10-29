@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import { SymbolCombobox } from "@/components/data/SymbolCombobox";
+import SelectMenu from "@/components/ui/SelectMenu";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
@@ -128,7 +129,7 @@ export default function MlLabPage() {
   const [start, setStart] = useState(defaultStart);
   const [end, setEnd] = useState(today);
   const [horizon, setHorizon] = useState("5");
-  const [timeframe, setTimeframe] = useState("1day");
+  const [timeframe] = useState("1day");
   const [models, setModels] = useState<ModelId[]>(MODEL_OPTIONS.map((option) => option.id));
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -438,7 +439,8 @@ export default function MlLabPage() {
             </label>
             <label className="ml-control-field">
               <span className="bt-field-label">Forward horizon</span>
-              <select
+              <SelectMenu
+                aria-label="Forward horizon"
                 className="bt-field-input"
                 value={horizon}
                 onChange={(event) => setHorizon(event.target.value)}
@@ -446,7 +448,7 @@ export default function MlLabPage() {
                 <option value="1">1 trading day</option>
                 <option value="5">5 trading days</option>
                 <option value="20">20 trading days</option>
-              </select>
+              </SelectMenu>
             </label>
           </div>
 
@@ -496,16 +498,10 @@ export default function MlLabPage() {
           {showAdvanced && (
             <div className="ml-advanced-panel">
               <div className="ml-advanced-grid">
-                <label className="ml-control-field">
+                <div className="ml-control-field">
                   <span className="bt-field-label">Timeframe</span>
-                  <select
-                    className="bt-field-input"
-                    value={timeframe}
-                    onChange={(e) => setTimeframe(e.target.value)}
-                  >
-                    <option value="1day">1 Day Daily Bars</option>
-                  </select>
-                </label>
+                  <span className="bt-setting-fixed">Daily · official NSE bars</span>
+                </div>
                 <label className="ml-control-field">
                   <span className="bt-field-label">Train Ratio ({(trainRatio * 100).toFixed(0)}%)</span>
                   <input

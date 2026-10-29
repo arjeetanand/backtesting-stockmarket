@@ -76,6 +76,7 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 - [DESIGN.md](DESIGN.md) — shared palette, typography, layout, and component guidance.
 - [docs/UI_THEME_CHECKLIST.md](docs/UI_THEME_CHECKLIST.md) — theme implementation and delivery checklist.
 - [docs/MARKET_SCANNER_CLARITY_CHECKLIST.md](docs/MARKET_SCANNER_CLARITY_CHECKLIST.md) — scanner wording, search scope, and verification record.
+- [docs/CTA_SELECT_CHECKLIST.md](docs/CTA_SELECT_CHECKLIST.md) — CTA state, custom choice menus, and UI verification record.
 - [handover.md](handover.md) — engineering ownership, persistence contract, architecture, and handoff notes.
 - [TESTING.md](TESTING.md) — automated tests, UI smoke checks, data checks, and release checklist.
 - [docs/STRUCTURE_ZONE_SCAN_CHECKLIST.md](docs/STRUCTURE_ZONE_SCAN_CHECKLIST.md) — scope and delivery checklist for the local daily structure-zone scan.
@@ -92,6 +93,7 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 | `/strategy` | Build indicator and rule-based strategies |
 | `/strategy-import` | Extract reviewable rules from a YouTube URL or transcript |
 | `/backtests` | Reopen saved historical tests |
+| `/watchlist` | Track saved historical setups against the latest imported daily bars |
 | `/replay` | Step through historical candles with simulated orders |
 | `/time-machine` | Sample daily-bar scenarios from local NSE history |
 | `/comparison` | Compare saved tests |
@@ -126,6 +128,8 @@ are documented in [DESIGN.md](DESIGN.md); the theme keeps the existing local,
 historical-only research boundary. Six original transparent PNG illustrations sit beside
 the workflow or first-use state they explain. They keep their full aspect ratio and stay
 static; route headers remain compact so the page title and task are easy to find.
+Editable choices use a shared keyboard-accessible menu, while settings with only one
+available value appear as read-only information.
 
 ## Research workflow
 
