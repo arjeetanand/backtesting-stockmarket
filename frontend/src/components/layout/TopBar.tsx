@@ -70,10 +70,10 @@ export default function TopBar({ title }: TopBarProps = {}) {
           className="topbar-sync-btn"
           onClick={() => void syncToday()}
           disabled={syncing}
-          title="One-click sync missing trading day archives up to today"
+          title="Sync through the latest completed NSE session; today's archive is requested after 18:00 IST on trading days"
         >
           <RefreshCw size={13} className={syncing ? "spin" : ""} />
-          {syncing ? "Syncing NSE Data…" : "Sync Today's Data"}
+          {syncing ? "Syncing NSE Data…" : "Sync Latest NSE Data"}
         </button>
         <div className="bt-topbar-status" aria-label="Official NSE daily archive data">
           <span className="bt-topbar-status-dot" aria-hidden="true" />

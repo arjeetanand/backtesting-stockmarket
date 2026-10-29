@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from quant_research.repositories.market_cache import SqliteMarketCache
 from quant_research.services.nse_import import NseBhavcopyImporter
+
+INDIA_TZ = ZoneInfo("Asia/Kolkata")
+NSE_DAILY_ARCHIVE_READY_AT = time(18, 0)
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,29 +26,37 @@ class DailySyncService:
         self._cache = cache
         self._importer = importer or NseBhavcopyImporter(cache)
 
-    def sync_latest(self) -> dict[str, Any]:
+    def sync_latest(self, now: datetime | None = None) -> dict[str, Any]:
         summary = self._cache.summary()
-        today = datetime.now(tz=UTC).date()
+        current = now or datetime.now(UTC)
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=UTC)
+        local_now = current.astimezone(INDIA_TZ)
+        latest_sync_date = local_now.date()
+        # Today's daily archive is not complete during market hours; allow a publication buffer after close.
+        if local_now.time().replace(tzinfo=None) < NSE_DAILY_ARCHIVE_READY_AT:
+            latest_sync_date -= timedelta(days=1)
 
         if summary.latest:
             latest_dt = summary.latest.date()
         else:
-            latest_dt = today - timedelta(days=7)
+            latest_dt = latest_sync_date - timedelta(days=7)
 
         # Build list of candidate business trading days to sync
         missing_days: list[date] = []
         curr = latest_dt + timedelta(days=1)
-        while curr <= today:
+        while curr <= latest_sync_date:
             # Skip weekends (Saturday=5, Sunday=6)
             if curr.weekday() < 5:
                 missing_days.append(curr)
             curr += timedelta(days=1)
 
         if not missing_days:
+            latest_day = summary.latest.date().isoformat() if summary.latest else None
             return {
                 "synced_days": 0,
-                "latest_trading_day": summary.latest.isoformat() if summary.latest else today.isoformat(),
-                "message": "Market data is already fully up to date with official NSE archives.",
+                "latest_trading_day": summary.latest.isoformat() if summary.latest else None,
+                "message": f"Latest saved NSE daily data is {latest_day}." if latest_day else "No NSE daily data is saved yet.",
             }
 
         # Import missing date range
@@ -54,11 +66,23 @@ class DailySyncService:
         # The official archive is exchange-wide.  A stable representative symbol
         # lets the importer run its per-symbol coverage check while it persists
         # every supported row from each archive day.
-        res = self._importer.import_daily_universe(["RELIANCE"], start=start_date, end=end_date)
+        res = self._importer.import_daily_universe(
+            ["RELIANCE"],
+            start=start_date,
+            end=end_date,
+            retry_unavailable=True,
+        )
         new_summary = self._cache.summary()
+        latest_day = new_summary.latest.date().isoformat() if new_summary.latest else None
+        if res.skipped_days:
+            message = f"Latest saved NSE daily data is {latest_day}; {res.skipped_days} weekday archive(s) are not available yet. Try again after NSE publishes them."
+        elif latest_day:
+            message = f"Latest saved NSE daily data is {latest_day}."
+        else:
+            message = f"No NSE daily archive is saved yet; the last requested date was {end_date.isoformat()}."
 
         return {
             "synced_days": res.downloaded_days,
-            "latest_trading_day": new_summary.latest.isoformat() if new_summary.latest else end_date.isoformat(),
-            "message": f"Successfully synced {res.downloaded_days} missing trading day(s) up to {end_date.isoformat()}.",
+            "latest_trading_day": new_summary.latest.isoformat() if new_summary.latest else None,
+            "message": message,
         }

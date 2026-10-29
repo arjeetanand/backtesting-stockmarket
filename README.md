@@ -43,7 +43,7 @@ Open the application at `http://localhost:4003`. API documentation is at `http:/
 curl http://127.0.0.1:8001/api/v1/health
 ```
 
-The launcher uses web port `4003` and API port `8001`; the matching UI test slots are `5003` and `6003`. Press `Ctrl+C` to stop both services. Running `./run.sh` again gracefully restarts only the Backtrack processes it started and fails closed if either port belongs to another app. The frontend shows explicit unavailable/error states when the backend is stopped; it does not use mock or fabricated prices.
+The launcher uses web port `4003` and API port `8001`; the matching UI test slots are `5003` and `6003`. Press `Ctrl+C` to stop both services. Running `./run.sh` again gracefully restarts only the Backtrack processes it started and fails closed if either port belongs to another app. Use **Sync Latest NSE Data** to fetch the latest completed daily archive; the app reports the actual saved date and retries unavailable dates in the missing-day range. The frontend shows explicit unavailable/error states when the backend is stopped; it does not use mock or fabricated prices.
 
 For a temporary UI instance that shares the same API, run
 `./scripts/dev-frontend.sh 5003 8001` or `./scripts/dev-frontend.sh 6003 8001` while that

@@ -70,6 +70,8 @@ The date selector supports:
 
 The importer checks the SQLite database and `data/nse_archives/<year>/` before downloading. A single NSE trading-day archive contains the daily file for all supported stocks, so a successful day is loaded in bulk. There is no starter universe, custom-symbol import mode, or per-stock download button.
 
+Use **Sync Latest NSE Data** in the top bar to fetch the newest completed daily archive. Before 18:00 IST it stops at the previous calendar day; after that it can request today's archive on trading days. If NSE has not published an archive yet, a later sync retries dates in the missing-day range and reports the last date actually saved. Stock research shows its own `data_as_of` date; it never presents a live quote.
+
 ### Search local data
 
 Type a symbol or company name into **Find a stock**. Search begins after text is entered and returns a small result set from the official NSE catalogue and stored symbols. Each result shows:
