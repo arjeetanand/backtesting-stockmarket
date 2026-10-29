@@ -23,6 +23,6 @@
 ## Delivery
 
 - Branch: `codex/cta-select-clarity-20261029`.
-- Implementation commit: pending final scoped review.
+- Implementation commit: `084a2ee` (`Clarify CTAs and style choice menus`).
 - Preview: existing shared-checkout UI is available on port `4003`; the isolated branch build passed, but its preview could not bind port `6003` under the sandbox.
 - Next: review the scanner default and 390px/767px layout in a browser that can open this branch's local preview.
