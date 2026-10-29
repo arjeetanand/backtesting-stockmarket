@@ -21,6 +21,11 @@ import {
 import SectionArtwork from "@/components/illustrations/SectionArtwork";
 import {
   getInsights,
+  getInsightStockHistory,
+  buildInsightPaperPlan,
+  saveInsightPaperPlan,
+  summarizeInsightVolume,
+  syncTodayNseData,
   type InsightCoverageStatus,
   type InsightMember,
   type InsightPeriod,
@@ -29,6 +34,7 @@ import {
   type InsightsResponse,
   type InsightView,
 } from "@/lib/insights-api";
+import type { MarketDataBar, MarketDataResponse } from "@/lib/market-data";
 
 const UNIVERSES: Array<{ value: InsightUniverse; label: string; description: string }> = [
   { value: "nifty50", label: "NIFTY 50", description: "Large-cap benchmark" },
@@ -53,7 +59,17 @@ function formatDate(value: string | null): string {
   if (!value) return "Date unavailable";
   const parsed = new Date(`${value.slice(0, 10)}T00:00:00Z`);
   if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
+  return parsed.toLocaleDateString("en-IN", { weekday: "short", day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
+}
+
+function formatVolume(value: number | null): string {
+  return value === null || !Number.isFinite(value) ? "—" : Math.round(value).toLocaleString("en-IN");
+}
+
+function formatPrice(value: number | null): string {
+  return value === null || !Number.isFinite(value)
+    ? "—"
+    : `₹${value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function returnTone(value: number | null): "positive" | "negative" | "neutral" {
@@ -81,7 +97,7 @@ function coverageLabel(status: InsightCoverageStatus): string {
 
 function errorMessage(error: unknown): string {
   if (error instanceof DOMException && error.name === "AbortError") return "The local Insights request timed out. Check the backend and retry.";
-  if (error instanceof TypeError && error.message === "Failed to fetch") return "Local Backtrack API is unavailable. Start the backend on port 8000, then retry.";
+  if (error instanceof TypeError && error.message === "Failed to fetch") return "Local Backtrack API is unavailable. Start the backend with ./run.sh, then retry.";
   return error instanceof Error ? error.message : "Could not load local index insights.";
 }
 
@@ -175,6 +191,19 @@ function MemberTable({ members, selectedSymbol, onSelect }: { members: InsightMe
   );
 }
 
+function StockVolumeTable({ bars }: { bars: MarketDataBar[] }) {
+  const recentBars = bars.slice(-5).reverse();
+  return (
+    <div className="insights-volume-table-scroll">
+      <table className="insights-volume-table">
+        <caption className="sr-only">Recent daily closing prices and trading volume</caption>
+        <thead><tr><th scope="col">Session</th><th scope="col">Close</th><th scope="col">Volume</th></tr></thead>
+        <tbody>{recentBars.map((bar) => <tr key={bar.timestamp}><td>{formatDate(bar.timestamp)}</td><td>{formatPrice(bar.close)}</td><td>{formatVolume(bar.volume)}</td></tr>)}</tbody>
+      </table>
+    </div>
+  );
+}
+
 function SectorTable({ sectors }: { sectors: InsightSector[] }) {
   if (!sectors.length) return <div className="insights-inline-empty">Sector classifications are unavailable for this snapshot.</div>;
   return (
@@ -205,12 +234,28 @@ export default function InsightsDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [stockHistory, setStockHistory] = useState<MarketDataResponse | null>(null);
+  const [historyLoadingSymbol, setHistoryLoadingSymbol] = useState<string | null>(null);
+  const [historyError, setHistoryError] = useState<{ symbol: string; message: string } | null>(null);
+  const [historyRequest, setHistoryRequest] = useState(0);
+  const [savingPlan, setSavingPlan] = useState(false);
+  const [savedPlanSymbol, setSavedPlanSymbol] = useState<string | null>(null);
+  const [planError, setPlanError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const next = await getInsights(universe, period);
       setData(next);
+      setError(null);
       setSelectedKey(null);
+      setStockHistory(null);
+      setHistoryLoadingSymbol(null);
+      setHistoryError(null);
+      setSavedPlanSymbol(null);
+      setPlanError(null);
     } catch (requestError) {
       setError(errorMessage(requestError));
     } finally {
@@ -244,6 +289,11 @@ export default function InsightsDashboard() {
   const heatmapItems = view === "stock" ? data?.members ?? [] : data?.sectors ?? [];
   const heatmapValues = heatmapItems.map((item) => item.returnFraction);
   const selectedMember = view === "stock" ? data?.members.find((member) => member.symbol === selectedKey) : null;
+  const visibleStockHistory = stockHistory?.symbol === selectedMember?.symbol ? stockHistory : null;
+  const stockBars = visibleStockHistory?.bars ?? [];
+  const latestStockBar = stockBars.at(-1);
+  const volumeSummary = summarizeInsightVolume(stockBars);
+  const paperPlan = buildInsightPaperPlan(latestStockBar);
   const hasResult = Boolean(data && data.members.length);
   const unavailable = Boolean(error && !data);
   const resultStatus = data?.coverageStatus ?? "empty";
@@ -268,6 +318,62 @@ export default function InsightsDashboard() {
     void load();
   };
 
+  const selectStock = (symbol: string) => {
+    const member = data?.members.find((item) => item.symbol === symbol);
+    setSelectedKey(symbol);
+    setStockHistory(null);
+    setHistoryRequest((current) => current + 1);
+    setHistoryLoadingSymbol(member?.dataAsOf ? symbol : null);
+    setHistoryError(member?.dataAsOf ? null : { symbol, message: "No saved NSE session date is available for this stock." });
+    setSavedPlanSymbol(null);
+    setPlanError(null);
+  };
+
+  const savePaperPlan = async () => {
+    if (!selectedMember || !paperPlan) return;
+    setSavingPlan(true);
+    setPlanError(null);
+    setSavedPlanSymbol(null);
+    try {
+      await saveInsightPaperPlan({ symbol: selectedMember.symbol, companyName: selectedMember.companyName, plan: paperPlan });
+      setSavedPlanSymbol(selectedMember.symbol);
+    } catch (requestError) {
+      setPlanError(errorMessage(requestError));
+    } finally {
+      setSavingPlan(false);
+    }
+  };
+
+  const syncAndReload = async () => {
+    setSyncing(true);
+    setSyncMessage(null);
+    setSyncError(null);
+    try {
+      const result = await syncTodayNseData();
+      setSyncMessage(`${result.message ?? "Official NSE sync finished."}${result.latest_trading_day ? ` Latest saved session: ${formatDate(result.latest_trading_day)}.` : ""}`);
+      setLoading(true);
+      await load();
+    } catch (requestError) {
+      setSyncError(errorMessage(requestError));
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedMember?.dataAsOf) return;
+    let cancelled = false;
+    getInsightStockHistory(selectedMember.symbol, selectedMember.dataAsOf)
+      .then((next) => { if (!cancelled) setStockHistory(next); })
+      .catch((requestError: unknown) => {
+        if (!cancelled) setHistoryError({ symbol: selectedMember.symbol, message: errorMessage(requestError) });
+      })
+      .finally(() => {
+        if (!cancelled) setHistoryLoadingSymbol((current) => current === selectedMember.symbol ? null : current);
+      });
+    return () => { cancelled = true; };
+  }, [selectedMember?.symbol, selectedMember?.dataAsOf, historyRequest]);
+
   return (
     <div className="backtrack-page insights-page">
       <div className="backtrack-content insights-content">
@@ -277,7 +383,12 @@ export default function InsightsDashboard() {
             <h1>Market breadth at a glance</h1>
             <p>See how the selected index moved using locally imported official NSE daily bars.</p>
           </div>
-          <div className="insights-source-badge"><Database size={14} /> Local NSE daily data</div>
+          <div className="insights-heading-actions">
+            <button type="button" className="bt-secondary-btn insights-sync-button" onClick={() => void syncAndReload()} disabled={syncing} title="Import missing official NSE daily archives through today's date">
+              <RefreshCw size={14} className={syncing ? "spin" : ""} /> {syncing ? "Syncing NSE data…" : "Sync today's NSE data"}
+            </button>
+            <div className="insights-source-badge"><Database size={14} /> Official NSE daily bars</div>
+          </div>
         </section>
 
         <section className="insights-universe-panel bt-panel" aria-label="Index selector">
@@ -294,6 +405,8 @@ export default function InsightsDashboard() {
         </section>
 
         {error && data ? <div className="insights-alert" role="alert"><AlertCircle size={16} /><span>{error} Showing the last successful snapshot.</span><button type="button" onClick={retry}>Retry</button></div> : null}
+        {syncError ? <div className="insights-alert" role="alert"><AlertCircle size={16} /><span>{syncError}</span><button type="button" onClick={() => void syncAndReload()}>Retry sync</button></div> : null}
+        {syncMessage ? <div className="insights-sync-message" role="status">{syncMessage}</div> : null}
         {loading && !data ? <InsightState kind="loading" /> : null}
         {unavailable ? <InsightState kind="unavailable" message={error ?? undefined} onRetry={retry} /> : null}
         {!loading && !unavailable && data && !hasResult ? <InsightState kind="empty" message={data.message ?? undefined} /> : null}
@@ -304,7 +417,7 @@ export default function InsightsDashboard() {
             <strong>{coverageLabel(resultStatus)}</strong>
             <span>{data.availableSymbols} of {data.totalSymbols || data.availableSymbols} members available</span>
             {data.missingSymbols > 0 ? <span className="insights-missing-note">{data.missingSymbols} missing</span> : null}
-            <span className="insights-status-date">Data as of <b>{formatDate(data.dataAsOf)}</b></span>
+            <span className="insights-status-date">Latest cached session <b>{formatDate(data.dataAsOf)}</b></span>
           </section>
 
           <section className="insights-breadth-grid" aria-label="Market breadth summary">
@@ -324,7 +437,7 @@ export default function InsightsDashboard() {
                 {heatmapItems.length ? heatmapItems.map((item) => {
                   const label = "symbol" in item ? item.symbol : item.sector;
                   const detail = "symbol" in item ? item.sector : `${item.stockCount} stocks`;
-                  return <HeatmapTile key={label} label={label} detail={detail} value={item.returnFraction} values={heatmapValues} active={selectedKey === label} onClick={() => setSelectedKey(label)} />;
+                  return <HeatmapTile key={label} label={label} detail={detail} value={item.returnFraction} values={heatmapValues} active={selectedKey === label} onClick={() => view === "stock" ? selectStock(label) : setSelectedKey(label)} />;
                 }) : <div className="insights-inline-empty">No heatmap rows are available for this selection.</div>}
               </div>
               <div className="insights-heatmap-legend"><span><i className="is-loss" /> Lower return</span><span><i className="is-neutral" /> Unchanged</span><span><i className="is-gain" /> Higher return</span><small>Click a tile to filter the table below.</small></div>
@@ -332,13 +445,50 @@ export default function InsightsDashboard() {
 
             <aside className="bt-panel insights-detail-panel">
               <div className="bt-kicker"><Table2 size={13} /> SELECTED DETAIL</div>
-              {selectedMember ? <><h2>{selectedMember.symbol}</h2><p>{selectedMember.companyName}</p><div className={`insights-detail-return is-${returnTone(selectedMember.returnFraction)}`}>{formatPercent(selectedMember.returnFraction)}</div><dl className="insights-detail-list"><div><dt>Sector</dt><dd>{selectedMember.sector}</dd></div><div><dt>Data date</dt><dd>{formatDate(selectedMember.dataAsOf)}</dd></div><div><dt>Universe</dt><dd>{selectedUniverse.label}</dd></div></dl></> : selectedKey && view === "sector" ? <><h2>{selectedKey}</h2><p>Sector aggregation for selected index.</p><div className={`insights-detail-return is-${returnTone(data.sectors.find((sector) => sector.sector === selectedKey)?.returnFraction ?? null)}`}>{formatPercent(data.sectors.find((sector) => sector.sector === selectedKey)?.returnFraction ?? null)}</div><dl className="insights-detail-list"><div><dt>Members</dt><dd>{data.sectors.find((sector) => sector.sector === selectedKey)?.stockCount ?? "—"}</dd></div><div><dt>Breadth</dt><dd>{data.sectors.find((sector) => sector.sector === selectedKey)?.gainers ?? 0} / {data.sectors.find((sector) => sector.sector === selectedKey)?.losers ?? 0}</dd></div></dl></> : <div className="insights-detail-empty"><Info size={18} /><strong>Select a tile</strong><p>Choose a stock or sector to inspect it and filter the movers table.</p></div>}
+              {selectedMember ? <>
+                <h2>{selectedMember.symbol}</h2>
+                <p>{selectedMember.companyName}</p>
+                <div className={`insights-detail-return is-${returnTone(selectedMember.returnFraction)}`}>{formatPercent(selectedMember.returnFraction)}</div>
+                {historyLoadingSymbol === selectedMember.symbol ? <div className="insights-detail-loading" role="status"><RefreshCw size={15} className="spin" /> Loading local daily volume…</div> : null}
+                {historyError?.symbol === selectedMember.symbol ? <div className="insights-detail-unavailable" role="alert"><p>{historyError.message}</p><button type="button" className="insights-detail-retry" onClick={() => selectStock(selectedMember.symbol)}>Retry volume data</button><Link href="/data" className="bt-dashboard-text-link">Manage NSE history <ArrowRight size={13} /></Link></div> : null}
+                {latestStockBar ? <>
+                  <dl className="insights-detail-list">
+                    <div><dt>Sector</dt><dd>{selectedMember.sector}</dd></div>
+                    <div><dt>Latest session</dt><dd>{formatDate(latestStockBar.timestamp)}</dd></div>
+                    <div><dt>Latest close</dt><dd>{formatPrice(latestStockBar.close)}</dd></div>
+                  </dl>
+                  <div className="insights-volume-grid" aria-label="Daily volume summary">
+                    <article><span>Latest volume</span><strong>{formatVolume(volumeSummary.latestVolume)}</strong><small>shares traded</small></article>
+                    <article><span>Last 5 sessions</span><strong>{formatVolume(volumeSummary.lastFiveVolume)}</strong><small>{volumeSummary.lastFiveSessions} sessions combined</small></article>
+                    <article><span>Prior 20-session avg</span><strong>{formatVolume(volumeSummary.priorTwentyAverage)}</strong><small>{volumeSummary.priorTwentyAverage === null ? "needs 20 earlier sessions" : "excludes latest session"}</small></article>
+                    <article><span>Relative volume</span><strong>{volumeSummary.relativeVolume === null ? "—" : `${volumeSummary.relativeVolume.toFixed(2)}×`}</strong><small>latest vs prior 20-session avg</small></article>
+                  </div>
+                  <div className="insights-volume-history"><h3>Recent daily volume</h3><StockVolumeTable bars={stockBars} /></div>
+                  <section className="insights-paper-plan" aria-label="Conditional paper plan">
+                    <div className="bt-kicker">CONDITIONAL PAPER PLAN</div>
+                    {paperPlan ? <>
+                      <dl className="insights-plan-levels">
+                        <div><dt>Entry trigger · prior high</dt><dd>{formatPrice(paperPlan.entryTrigger)}</dd></div>
+                        <div><dt>Stop · prior low</dt><dd>{formatPrice(paperPlan.stopLevel)}</dd></div>
+                        <div><dt>Target · 2R</dt><dd>{formatPrice(paperPlan.target2R)}</dd></div>
+                        <div><dt>Risk per share</dt><dd>{formatPrice(paperPlan.riskPerShare)}</dd></div>
+                      </dl>
+                      <p>Levels use the {formatDate(paperPlan.dataAsOf)} cached bar. Review the paper exit after a later bar reaches target or stop; if one bar touches both, the tracker counts the stop first.</p>
+                      <button type="button" className="bt-primary-btn insights-save-plan" onClick={() => void savePaperPlan()} disabled={savingPlan || savedPlanSymbol === selectedMember.symbol}>
+                        {savingPlan ? "Saving paper plan…" : savedPlanSymbol === selectedMember.symbol ? "Saved to Daily Watchlist" : "Create paper plan"}
+                      </button>
+                      {savedPlanSymbol === selectedMember.symbol ? <Link href="/watchlist" className="bt-dashboard-text-link">Open Daily Watchlist <ArrowRight size={13} /></Link> : null}
+                      {planError ? <p className="insights-plan-error" role="alert">{planError}</p> : null}
+                    </> : <p className="insights-plan-unavailable">This session has no usable high-to-low range for a conditional plan.</p>}
+                  </section>
+                </> : !historyLoadingSymbol && !historyError ? <div className="insights-detail-unavailable"><p>No local daily bars were returned for this stock.</p><Link href="/data" className="bt-dashboard-text-link">Import NSE history <ArrowRight size={13} /></Link></div> : null}
+              </> : selectedKey && view === "sector" ? <><h2>{selectedKey}</h2><p>Sector aggregation for selected index.</p><div className={`insights-detail-return is-${returnTone(data.sectors.find((sector) => sector.sector === selectedKey)?.returnFraction ?? null)}`}>{formatPercent(data.sectors.find((sector) => sector.sector === selectedKey)?.returnFraction ?? null)}</div><dl className="insights-detail-list"><div><dt>Members</dt><dd>{data.sectors.find((sector) => sector.sector === selectedKey)?.stockCount ?? "—"}</dd></div><div><dt>Breadth</dt><dd>{data.sectors.find((sector) => sector.sector === selectedKey)?.gainers ?? 0} / {data.sectors.find((sector) => sector.sector === selectedKey)?.losers ?? 0}</dd></div></dl></> : <div className="insights-detail-empty"><Info size={18} /><strong>Select a tile</strong><p>Choose a stock or sector to inspect it and filter the movers table.</p></div>}
             </aside>
           </section>
 
           <section className="bt-panel insights-movers-panel">
             <div className="insights-panel-heading"><div><div className="bt-kicker"><ArrowDownRight size={13} /> TOP MOVERS</div><h2>{selectedKey && view === "sector" ? `${selectedKey} movers` : "Strongest moves"}</h2><p>{period} price returns ranked by absolute move from the available local bars.</p></div><span className="insights-row-count">{visibleMembers.length} rows</span></div>
-            {view === "stock" ? <MemberTable members={(selectedKey ? (selectedMember ? [selectedMember] : visibleMembers) : data.topMovers)} selectedSymbol={selectedKey} onSelect={setSelectedKey} /> : <SectorTable sectors={data.sectors.filter((sector) => !selectedKey || sector.sector === selectedKey)} />}
+            {view === "stock" ? <MemberTable members={(selectedKey ? (selectedMember ? [selectedMember] : visibleMembers) : data.topMovers)} selectedSymbol={selectedKey} onSelect={selectStock} /> : <SectorTable sectors={data.sectors.filter((sector) => !selectedKey || sector.sector === selectedKey)} />}
           </section>
 
           <div className="insights-footnote"><Info size={14} /><span>Research-only view. Returns are calculated from locally imported daily candles; no live quotes or synthetic prices are used.</span></div>

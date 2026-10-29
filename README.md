@@ -15,6 +15,7 @@ It does not place real orders, connect to a broker, provide live quotes, or requ
 - On `/research`, follows one stock → local data → chart → strategy → backtest → results workflow with OHLCV, volume, indicators, signals, trades, equity, drawdown, and metrics; its volume study groups next-session outcomes by prior-20-session relative volume and same-day move.
 - On `/comparison`, compares historical results and expands each strategy into its dated trade fills and recorded profit/loss.
 - On `/stock-research`, scans the built-in NIFTY 50 basket and shows only triggers whose next-session entry window is open and whose fixed-rule held-out test passes the evidence gate; search one stock for its indicators, conditional levels, candles, trade history, and local run log.
+- On `/insights`, shows the latest cached NSE session date and sync action; selecting a stock reveals recent daily volume, five-session volume, prior-20-session average, relative volume, and a saveable conditional paper plan.
 - Replays historical candles with simulated orders only.
 - Runs a seeded daily-bar scenario sample and compares it with a fixed-rule historical sample.
 - Builds a manual morning watchlist from the latest completed NSE daily candles, with conditional trigger, stop, and 2R target levels.
@@ -81,6 +82,7 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 - [handover.md](handover.md) — engineering ownership, persistence contract, architecture, and handoff notes.
 - [TESTING.md](TESTING.md) — automated tests, UI smoke checks, data checks, and release checklist.
 - [docs/STRUCTURE_ZONE_SCAN_CHECKLIST.md](docs/STRUCTURE_ZONE_SCAN_CHECKLIST.md) — scope and delivery checklist for the local daily structure-zone scan.
+- [docs/MARKET_INSIGHTS_DETAILS_CHECKLIST.md](docs/MARKET_INSIGHTS_DETAILS_CHECKLIST.md) — scope and verification checklist for selected-stock details in Market Insights.
 - [AGENTS.md](AGENTS.md) — instructions for coding agents working in the repository.
 - [docs/](docs/) — planning, design, UX, QA, and knowledge-transfer reference documents.
 
@@ -105,7 +107,7 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 | `/pattern-finder` | Detect repeatable historical price patterns and test them locally |
 | `/options` | Educational options payoff and breakeven calculator |
 | `/analytics` | Performance and trade-quality views |
-| `/insights` | Local NSE index breadth, stock/sector heatmaps, and top movers |
+| `/insights` | Local NSE index breadth, stock/sector heatmaps, recent stock volumes, conditional paper plans, and top movers |
 | `/insights/fii-dii` | Official NSE FII/FPI and DII institutional-flow chart and ledger |
 | `/settings` | Local data, Ollama, and application status |
 

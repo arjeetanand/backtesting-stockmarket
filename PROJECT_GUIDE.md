@@ -21,7 +21,7 @@ Backtrack is a local, research-only Indian-market backtesting application. It us
 | Build rules | Create a rule strategy | Configure indicators, entries, exits, risk, fees, and slippage |
 | Use a YouTube strategy | Bring in an online idea | Extract a reviewable draft from a URL, captions, or pasted transcript; human review is required |
 | NSE data | Download and search history | Bulk NSE archive import with quick/custom date windows and local catalogue search; a completed import links to research |
-| Market Insights | Review the selected index | Switch NIFTY 50, Sensex, Bank Nifty, or NIFTY 500; inspect 1D/1W/1M/3M breadth, stock/sector heatmaps, and top movers from local daily candles |
+| Market Insights | Review the selected index or stock | See the latest cached session day, sync official NSE archives through today, inspect 1D/1W/1M/3M breadth and heatmaps, then click a stock for recent volume and a saveable prior-high/low 2R paper plan |
 | Market Scanner | Review local market scans | Run formula and historical scans, review morning-plan levels, and inspect daily structure-zone and pressure-proxy views |
 | My tests | Reopen prior tests | Read persisted backtest results and details from SQLite |
 | Compare tests | Compare alternatives | Compare account change, return vs variation, largest fall, and trades with a profit; expand each result to inspect dated trade fills and P&L |
