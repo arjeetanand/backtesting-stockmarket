@@ -666,5 +666,5 @@ Next owner/action:
 - Verification: full backend pytest suite passed; Ruff passed; frontend ESLint, 24 Vitest tests, webpack production build (TypeScript passed; 24 routes generated), and `git diff --check` passed. Full mypy still reports the same 13 errors in `_lru_cache` inference (`market_cache.py`), `pattern_finder.py`, and missing `ta` stubs in `breakout_scanner.py`/`ml_research.py`; no new errors remain in changed route/importer modules.
 - Browser-rendered interaction, live NSE, and live Tapetide checks were not run. The previously requested local ports remain stopped; no live provider requests were made.
 - Checklist: `docs/FII_DII_HISTORY_CHECKLIST.md`.
-- Run with `./run.sh` (UI `4003`, API `8001`) after the branch is approved and integrated. Implementation commit will be recorded in the follow-up handoff commit.
+- Implementation commit: `c667d64` (`Add one-click all-source market sync`). Run with `./run.sh` (UI `4003`, API `8001`) after the branch is approved and integrated.
 - Next: review this branch and approve merge to `main`; no push, merge, or server restart has occurred.
