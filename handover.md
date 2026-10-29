@@ -561,11 +561,12 @@ Next owner/action:
 
 - Date: 2026-10-29.
 - Branch: `codex/volume-momentum-results-ui-20261029`, rebased onto `origin/main` after PR #18.
+- Implementation commit: `df4303d` (`Add volume momentum study and comparison trade details`).
+- PR: [#19](https://github.com/arjeetanand/backtesting-stockmarket/pull/19), squash-merged into `main` as `fce2cccd96ca420c3476ece3e2cdfd92ab81c58b`; GitGuardian passed.
 - Added `POST /research/volume-momentum`, which uses only the selected symbol's local NSE daily candles. Relative volume is today's volume divided by the preceding 20 sessions' average; momentum is same-day close-to-close change; outcome is the next available session's close-to-close return. Signal and outcome dates must both be inside the selected range.
 - The Research UI shows sample counts, next-session up/down shares, average and median change, and descriptive volume bands. It labels small samples exploratory, presents readable cards when the results table will not fit, and states the corporate-action, forecasting, and order-flow limitations.
 - Comparison explains the aggregate metrics in plain language and expands each result into trade dates, fill prices, rupee P&L, return, and holding time. Trade return is measured against the committed position amount; account change is measured against starting capital. New vector-engine trade P&L and return deduct entry and exit commission; fill prices include simulated slippage.
 - Checklist: `docs/VOLUME_MOMENTUM_CHECKLIST.md`.
 - Verification: full Ruff and pytest passed; focused mypy passed on all changed backend modules. Full mypy still reports 13 existing errors in `market_cache.py`, `pattern_finder.py`, `breakout_scanner.py`, and `ml_research.py`. Frontend ESLint, webpack production build, and `git diff --check` passed. Browser rendered RELIANCE's 246-pair one-year study and comparison/trade cards. At a 1600 CSS-pixel desktop viewport, labeled cards fit the strategy results and trade details. The 20-year local range is available in the selected-symbol daily cache. No-sample rendering remains pending.
 - The comparison was run for 3 RELIANCE strategies over the cached 2000-01-03 to 2026-10-27 range. The UI showed 83 SMA, 8 RSI/EMA, and 259 MACD closed trades, with dates, prices, P&L, return, and holding days. These are local saved simulation results, not recommendations or orders.
-- Implementation commit and PR/merge status will be recorded after the rebase and GitHub workflow.
 - Run with `./run.sh`; main UI port `4003`, API port `8001`; existing test UI ports `5003` and `6003`. Do not restart an active NSE import without checking process ownership.
