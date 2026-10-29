@@ -3581,6 +3581,7 @@ body {
 .scanner-leaderboard-tools { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(180px, 1.5fr) minmax(160px, 1fr) auto; gap: 9px; align-items: end; padding: 10px; background: var(--stitch-surface-low); border: 1px solid var(--stitch-border-soft); border-radius: 8px; }
 .scanner-leaderboard-tools label { display: grid; gap: 4px; color: var(--stitch-label); font: 8px var(--font-jetbrains); text-transform: uppercase; }
 .scanner-leaderboard-tools .bt-field-input { margin-top: 0; }
+.scanner-leaderboard-tools .scanner-result-search small { color: var(--bt-muted); font: 400 10px/1.4 var(--font-sans); text-transform: none; }
 .scanner-inline-action { padding: 0; color: var(--stitch-primary); background: transparent; border: 0; font-weight: 800; cursor: pointer; }
 .scanner-breakout-explainer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 15px; border-left: 3px solid var(--stitch-primary); }
 .scanner-breakout-explainer strong { color: var(--stitch-ink); font-size: 13px; }

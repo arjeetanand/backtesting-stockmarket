@@ -21,7 +21,7 @@ Backtrack is a local, research-only Indian-market backtesting application. It us
 | Use a YouTube strategy | Bring in an online idea | Extract a reviewable draft from a URL, captions, or pasted transcript; human review is required |
 | NSE data | Download and search history | Bulk NSE archive import with quick/custom date windows and local catalogue search; a completed import links to research |
 | Market Insights | Review the selected index | Switch NIFTY 50, Sensex, Bank Nifty, or NIFTY 500; inspect 1D/1W/1M/3M breadth, stock/sector heatmaps, and top movers from local daily candles |
-| Market Scanner | Find technical matches and daily structure zones | Run configured formula scans, historical strategy scans, breakouts, or a separate local daily-bar structure-zone scan |
+| Market Scanner | Find technical matches and daily structure zones | Screen a configured stock group, compare historical strategy results, or review daily breakout and price-zone patterns |
 | My tests | Reopen prior tests | Read persisted backtest results and details from SQLite |
 | Compare tests | Compare alternatives | Compare saved configurations and performance metrics |
 | Check reliability | Challenge stability | Run parameter sensitivity, Monte Carlo, walk-forward, and stress checks |
@@ -34,6 +34,12 @@ Backtrack is a local, research-only Indian-market backtesting application. It us
 | Analytics | Inspect performance | Review trade quality and available run analytics |
 | FII / DII Insights | Inspect institutional activity | Import official NSE FII/FPI-DII report snapshots, compare daily/weekly/monthly net cash flows, and review the local ledger |
 | Settings | Inspect local configuration | View API, local cache, Ollama, and provider status |
+
+### Market Scanner: what can I search?
+
+The scanner offers separate checks: a rule screen finds symbols matching a technical rule in the saved daily data; a historical research scan compares a strategy across the selected dates; breakout setups use explicit rules such as a 52-week high with unusual volume, a tight price range, a moving-average rebound, or an RSI surge; daily structure zones mark recent price areas that meet the documented range-break rule. The breakout score is a rule-based ranking, not a win probability.
+
+After a historical scan, **Search completed results** filters that result list by ticker, company name, or sector. It does not search the whole exchange by itself. Choose **All imported stocks** before scanning to include the widest set of symbols in the local cache. For a catalogue lookup and local-history coverage, open **NSE data** and search by symbol or company name. Missing local history stays unavailable; these tools do not show live prices.
 
 ### Daily structure zones
 

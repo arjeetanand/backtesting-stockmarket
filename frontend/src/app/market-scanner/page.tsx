@@ -505,16 +505,16 @@ export default function MarketScannerPage() {
         <section className="bt-heading-row bt-scanner-heading">
           <div>
             <div className="bt-kicker">
-              <span className="live-dot" /> MULTI-STOCK QUANT SCANNER
+              LOCAL NSE STOCK SCANNER
             </div>
-            <h1>Market Scanner &amp; Automated Setup Recognition</h1>
+            <h1>Find stocks and test strategies</h1>
             <p>
-              Evaluate strategies across the entire NIFTY universe concurrently and detect high-conviction breakout setups on official NSE history.
+              Choose a stock group and a rule to find matches in your saved NSE daily history. You can also compare a strategy over past dates or scan for breakout setups and daily price zones. These are historical research tools, not live prices or predictions.
             </p>
           </div>
           <div className="bt-heading-actions">
             <span className="data-source">
-              <ShieldCheck size={14} /> Local Official Cache · Fast Vectorized
+              <ShieldCheck size={14} /> Official NSE daily data · Saved locally
             </span>
           </div>
         </section>
@@ -526,7 +526,7 @@ export default function MarketScannerPage() {
             className={`scanner-tab-btn ${activeTab === "heatmap" ? "is-active" : ""}`}
             onClick={() => setActiveTab("heatmap")}
           >
-            <Globe size={16} /> Universe Screener &amp; Sector Heatmap
+            <Globe size={16} /> Rule scan &amp; sectors
           </button>
           <button
             type="button"
@@ -555,18 +555,18 @@ export default function MarketScannerPage() {
               <aside className="bt-panel scanner-filter-rail">
                 <div className="scanner-rail-heading">
                   <span className="bt-eyebrow">SCREEN NOW</span>
-                  <h2>Choose a formula</h2>
-                  <p>Build a local NSE screener configuration, then run it explicitly when you are ready.</p>
+                  <h2>Choose a rule</h2>
+                  <p>Select a technical rule and stock group. Press Run scan to find matches in the local daily data.</p>
                 </div>
 
                 <label className="scanner-rail-field">
-                  <span>Formula library</span>
+                  <span>Rule library</span>
                   <select className="bt-field-input" value={formulaId} onChange={(event) => { setFormulaId(event.target.value); setFormulaParameters({}); }}>
                     {scannerCatalog.formulas.map((formula) => <option key={formula.id} value={formula.id}>{formula.name}</option>)}
                   </select>
                 </label>
                 <label className="scanner-rail-field">
-                  <span>Target universe</span>
+                  <span>Stock group</span>
                   <select className="bt-field-input" value={universe} onChange={(event) => setUniverse(event.target.value)}>
                     {availableUniverses.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
                   </select>
@@ -610,7 +610,7 @@ export default function MarketScannerPage() {
                 <div className="scanner-rail-source"><ShieldCheck size={13} /><span>Formula catalog from the API<br />official NSE daily cache only</span></div>
 
                 <div className="scanner-saved-scans">
-                  <div className="scanner-saved-heading"><ListChecks size={13} /><span>FORMULA LIBRARY</span></div>
+                  <div className="scanner-saved-heading"><ListChecks size={13} /><span>AVAILABLE RULES</span></div>
                   <small className="scanner-storage-note">{catalogLoading ? "Loading catalog…" : catalogError ? "Compatibility catalog · API unavailable" : `${scannerCatalog.formulas.length} formulas available`}</small>
                   <small className="scanner-storage-note">{activeFormula?.requiredFields.length ? `Needs: ${activeFormula.requiredFields.join(", ")}` : "Technical fields are validated by the backend."}</small>
                 </div>
@@ -658,7 +658,7 @@ export default function MarketScannerPage() {
                 )}
 
                 {!loadingScreener && !screenerResult && !screenerError && (
-                  <div className="bt-panel scanner-reference-empty"><ListChecks size={21} /><strong>Ready for an explicit scan</strong><span>Choose a formula and universe, review the dates, then press Run scan. Changing filters never starts a request.</span></div>
+                  <div className="bt-panel scanner-reference-empty"><ListChecks size={21} /><strong>Ready when you are</strong><span>Choose a rule and stock group, review the dates, then press Run scan. Changing filters never starts a request.</span></div>
                 )}
 
                 {!loadingScreener && screenerResult && (
@@ -766,7 +766,7 @@ export default function MarketScannerPage() {
 
                     <div className="scanner-stock-grid">
                       <div className="scanner-leaderboard-tools" aria-label="Leaderboard controls">
-                        <label><span>Find a stock or sector</span><input className="bt-field-input" value={leaderboardQuery} onChange={(event) => setLeaderboardQuery(event.target.value)} placeholder="RELIANCE, banking…" /></label>
+                        <label className="scanner-result-search"><span>Search completed results</span><input className="bt-field-input" type="search" value={leaderboardQuery} onChange={(event) => setLeaderboardQuery(event.target.value)} placeholder="Ticker, company, or sector" /><small>Filters this scan only. Choose “All imported stocks” for wider coverage, or search the NSE catalogue in <Link className="bt-link" href="/data">NSE data</Link>.</small></label>
                         <label><span>Rank by</span><select className="bt-field-input" value={leaderboardSort} onChange={(event) => setLeaderboardSort(event.target.value as LeaderboardSort)}><option value="strategy_return">Strategy return</option><option value="alpha">Alpha vs buy &amp; hold</option><option value="win_rate">Win rate</option><option value="drawdown">Lowest drawdown</option><option value="sharpe">Sharpe ratio</option></select></label>
                         <button type="button" className="bt-secondary-btn" onClick={exportLeaderboard} disabled={!filteredLeaderboard.length}><Database size={13} /> Export CSV</button>
                       </div>

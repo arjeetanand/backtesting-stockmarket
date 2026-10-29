@@ -75,6 +75,7 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 - [frontend/README.md](frontend/README.md) — Next.js UI, routes, local agents, styling, and frontend development.
 - [DESIGN.md](DESIGN.md) — shared palette, typography, layout, and component guidance.
 - [docs/UI_THEME_CHECKLIST.md](docs/UI_THEME_CHECKLIST.md) — theme implementation and delivery checklist.
+- [docs/MARKET_SCANNER_CLARITY_CHECKLIST.md](docs/MARKET_SCANNER_CLARITY_CHECKLIST.md) — scanner wording, search scope, and verification record.
 - [handover.md](handover.md) — engineering ownership, persistence contract, architecture, and handoff notes.
 - [TESTING.md](TESTING.md) — automated tests, UI smoke checks, data checks, and release checklist.
 - [docs/STRUCTURE_ZONE_SCAN_CHECKLIST.md](docs/STRUCTURE_ZONE_SCAN_CHECKLIST.md) — scope and delivery checklist for the local daily structure-zone scan.
@@ -96,7 +97,7 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 | `/comparison` | Compare saved tests |
 | `/robustness` | Sensitivity, Monte Carlo, walk-forward, and stress checks |
 | `/bias-validity` | Look-ahead, data-quality, and overfitting checks |
-| `/market-scanner` | Formula screening, sector analysis, historical scans, breakouts, and daily structure zones |
+| `/market-scanner` | Search rule matches, compare historical results, and review breakout or daily-zone setups |
 | `/ml-lab` | Chronological, cost-aware ML research experiments |
 | `/pattern-finder` | Detect repeatable historical price patterns and test them locally |
 | `/options` | Educational options payoff and breakeven calculator |
@@ -104,6 +105,8 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 | `/insights` | Local NSE index breadth, stock/sector heatmaps, and top movers |
 | `/insights/fii-dii` | Official NSE FII/FPI and DII institutional-flow chart and ledger |
 | `/settings` | Local data, Ollama, and application status |
+
+On **Market Scanner**, choose a stock group and rule before scanning. The search box filters a completed historical result list by ticker, company, or sector; choose **All imported stocks** before scanning for the widest locally available group. To search the local NSE catalogue and check whether a symbol has saved history, use **NSE data**. Neither search provides live exchange prices.
 
 See [PROJECT_GUIDE.md](PROJECT_GUIDE.md) for the complete user guide.
 

@@ -71,7 +71,7 @@ The search starts only after text is entered and asks the backend for a small re
 
 Market Insights is an index-aware daily view. It uses only locally cached official NSE candles, supports NIFTY 50, Sensex, Bank Nifty, and NIFTY 500, and offers 1D, 1W, 1M, and 3M periods. The Stock/Sector heatmap colors equal-sized tiles by local price return, while the breadth cards show advancing, declining, unchanged, and unavailable coverage. Missing candles stay unavailable and are never replaced with synthetic prices.
 
-Market Scanner keeps three concepts separate: a Formula is a reusable rule from the JSON catalogue, a Saved scan is a named local configuration, and a Recent run is a previous result. Opening the page or changing a formula never starts a request; use **Run scan** explicitly. Presets and recent-run metadata are stored in versioned browser-local storage keys.
+Market Scanner keeps three concepts separate: a rule is a reusable technical condition from the JSON catalogue, a Saved scan is a named local configuration, and a Recent run is a previous result. Opening the page or changing a rule never starts a request; use **Run scan** explicitly. Presets and recent-run metadata are stored in versioned browser-local storage keys.
 
 The **Daily structure zones** tab is a separate explicit scan over the selected configured universe. It uses local 1-day NSE candles, reports per-symbol latest-bar dates and coverage, and returns only recent zones that have not closed through their invalidation edge. Its deterministic rule is documented in `PROJECT_GUIDE.md`; it is not a live or intraday feed.
 
@@ -79,7 +79,7 @@ The historical scanner remains available as an explicit research action. It is d
 
 ## Historical Market Scanner workflow
 
-Market Scanner supports date-scoped NIFTY 50/NIFTY 500/imported-universe scans through the shared strategy engine. Use the sector heatmap to compare strategy return, alpha versus buy-and-hold, or win rate; select a sector to rank its stocks by return, alpha, win rate, and drawdown. The leaderboard can be searched, ranked by a chosen metric, expanded beyond the top results, and exported as CSV. Every selected stock links into Research with the scanned strategy and dates; breakout candidates link to a historical test as well.
+The historical Market Scanner supports date-scoped scans of a configured stock group through the shared strategy engine. Use the sector heatmap to compare strategy return, alpha versus buy-and-hold, or win rate; select a sector to rank its stocks by return, alpha, win rate, and drawdown. After the scan, **Search completed results** filters by ticker, company name, or sector; it does not search outside the current results. Choose **All imported stocks** before running for the widest locally available group. The leaderboard can also be ranked by a chosen metric, expanded beyond the top results, and exported as CSV. Every selected stock links into Research with the scanned strategy and dates; breakout candidates link to a historical test as well.
 
 Pattern Finder's outcome visualization is a trigger-by-trigger bar chart, not a decorative line. Green bars reached the target during the holding window; red bars did not. The summary shows the filtered hit rate, best peak move, median exit return, and weakest peak move, while hovering a bar reveals its trigger date and peak/final outcomes.
 
