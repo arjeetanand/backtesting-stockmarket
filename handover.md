@@ -598,3 +598,15 @@ Next owner/action:
 - Verification: frontend ESLint, all 22 Vitest tests, isolated webpack production build, and `git diff --check` passed. No backend files or API contracts changed, so the Python suite was not run.
 - Browser/runtime verification is pending: the sandbox denied the isolated Next.js listener on port 6003 (`listen EPERM`), and its shell could not reach API port 8001. Existing servers were left untouched. No on-screen result or stock-data sync/save action was verified.
 - Run with `./run.sh` (UI port 4003, API port 8001) and open **Market Insights**. Checklist: `docs/MARKET_INSIGHTS_DETAILS_CHECKLIST.md`.
+
+## 25. Beginner stock drawdown and re-entry guide
+
+- Date: 2026-10-29.
+- Branch: `codex/drawdown-response-guide-20261029`, based on the Market Insights detail worktree at `f30b3fd`.
+- `/stock-research` now starts with YESBANK, offers IRFC as a quick example, and keeps local NSE symbol search. It reports the latest move, worst single-day move and pullback over 20 sessions, latest relative volume, and five-session total volume.
+- Optional average cost and whole-share count show paper unrealized P/L; a user-entered stop is checked against the latest daily low. Personal inputs remain in page state and are not persisted. Re-entry levels and exits reuse the existing fixed breakout rule. The fresh-entry calculator needs user-entered rupee loss and allocation caps and floors to whole shares.
+- Limits: local OHLCV cannot identify a news cause; daily bars do not confirm fills; gaps, fees, and slippage can exceed the paper size calculation. This feature is not a personal buy/hold/sell recommendation and does not connect to broker orders.
+- Checklist: `docs/STOCK_RESEARCH_CHECKLIST.md`.
+- Verification: all 24 frontend tests, ESLint, webpack production build, and `git diff --check` passed. No backend code or API contract changed.
+- Browser check: blocked by `listen EPERM` when the branch preview attempted to bind its mapped test port 6003. The existing 5003 and 4003 services were left untouched; actual cached-symbol response and rendered result states were not verified in-browser.
+- Implementation commit: pending; record its hash in the follow-up handoff commit.

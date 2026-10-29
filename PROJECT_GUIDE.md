@@ -17,7 +17,7 @@ Backtrack is a local, research-only Indian-market backtesting application. It us
 | --- | --- | --- |
 | Home | Start the unified research flow | Follow the linked NSE data → research → saved result steps, then open optional tools; recent tests come from the local API |
 | New research | Turn an idea into historical evidence | Compare daily relative volume and next-session outcomes, review a draft rule, confirm the assumptions, ensure local NSE history, then explicitly run the simulation |
-| Stock research | Prepare a simple NIFTY 50 check or explain one stock | Scan the built-in NSE constituent snapshot, show only a fresh trigger with a passed held-out screen, or search a local symbol for ranges, indicators, levels, candles, trade counts, and the run log |
+| Stock research | Scan NIFTY 50 setups or understand one stock's recent fall | Run the morning scan, or start with YESBANK, choose IRFC/search the local NSE catalogue, inspect 20-session price and volume facts, enter optional holding details and a stop you chose, then review conditional re-entry levels and size a hypothetical entry from your own loss and allocation limits |
 | Build rules | Create a rule strategy | Configure indicators, entries, exits, risk, fees, and slippage |
 | Use a YouTube strategy | Bring in an online idea | Extract a reviewable draft from a URL, captions, or pasted transcript; human review is required |
 | NSE data | Download and search history | Bulk NSE archive import with quick/custom date windows and local catalogue search; a completed import links to research |
@@ -35,6 +35,12 @@ Backtrack is a local, research-only Indian-market backtesting application. It us
 | Analytics | Inspect performance | Review trade quality and available run analytics |
 | FII / DII Insights | Inspect institutional activity | Import official NSE FII/FPI-DII report snapshots, compare daily/weekly/monthly net cash flows, and review the local ledger |
 | Settings | Inspect local configuration | View API, local cache, Ollama, and provider status |
+
+### Stock drawdown and re-entry guide
+
+On **Stock research**, choose **Analyze stock** to read the saved daily history through its displayed date. The guide shows the latest-session move, worst session in the last 20 sessions, pullback from that window's highest close, latest-day volume versus the prior 20-session average, and total volume across the last five sessions. It cannot identify a news cause; check official company filings separately.
+
+For an existing position, average cost and whole shares produce a paper unrealized P/L at the latest saved close. An optional stop price checks whether the latest daily low reached it; this does not confirm an order fill. These inputs are not saved. For a fresh hypothetical setup, enter a maximum rupee loss and an allocation cap. The calculator floors whole shares to fit both. The re-entry trigger, 2×ATR stop, 1R/2R targets, and exits follow the existing fixed long-only breakout rule. A non-triggered or stale status means the rule has not provided a fresh entry condition. None of these calculations is a personal buy, hold, or sell instruction.
 
 ### Daily structure zones
 
