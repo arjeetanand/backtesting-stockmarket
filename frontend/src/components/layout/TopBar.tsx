@@ -4,8 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { RefreshCw } from "lucide-react";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
+import { syncTodayMarketData } from "@/lib/insights-api";
 
 const pageTitles: Record<string, string> = {
   "/": "Research overview",
@@ -48,12 +47,10 @@ export default function TopBar({ title }: TopBarProps = {}) {
   const syncToday = async () => {
     setSyncing(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/data/sync-today`, { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail ?? "Sync failed.");
-      alert(data.message);
+      const result = await syncTodayMarketData();
+      alert(result.message ?? "Market data sync finished.");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to sync today's market data.");
+      alert(err instanceof Error ? err.message : "Failed to sync market data.");
     } finally {
       setSyncing(false);
     }
@@ -70,10 +67,10 @@ export default function TopBar({ title }: TopBarProps = {}) {
           className="topbar-sync-btn"
           onClick={() => void syncToday()}
           disabled={syncing}
-          title="Sync through the latest completed NSE session; today's archive is requested after 18:00 IST on trading days"
+          title="Sync NSE daily bars, the latest official NSE FII/DII report, and missing Tapetide history"
         >
           <RefreshCw size={13} className={syncing ? "spin" : ""} />
-          {syncing ? "Syncing NSE Data…" : "Sync Latest NSE Data"}
+          {syncing ? "Syncing Market Data…" : "Sync All Market Data"}
         </button>
         <div className="bt-topbar-status" aria-label="Official NSE daily archive data">
           <span className="bt-topbar-status-dot" aria-hidden="true" />

@@ -227,6 +227,15 @@ class SqliteMarketCache:
             )
             connection.execute(
                 """
+                CREATE TABLE IF NOT EXISTS fii_dii_history_sync_days (
+                    trading_day TEXT PRIMARY KEY,
+                    result TEXT NOT NULL CHECK (result IN ('saved', 'empty')),
+                    checked_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS nifty50_closes (
                     trading_day TEXT PRIMARY KEY,
                     close REAL NOT NULL,
@@ -751,6 +760,55 @@ class SqliteMarketCache:
                 ],
             )
         return len(rows)
+
+    def missing_fii_dii_history_days(self, start: date, end: date) -> list[date]:
+        """Find official NSE sessions without complete Tapetide FII/DII history."""
+        if start > end:
+            return []
+        with self._connect() as connection:
+            records = connection.execute(
+                """
+                SELECT archive.trading_day
+                FROM nse_archive_days AS archive
+                WHERE archive.status = 'available'
+                  AND archive.trading_day >= ? AND archive.trading_day <= ?
+                  AND NOT EXISTS (
+                    SELECT 1 FROM fii_dii_history_sync_days AS checked
+                    WHERE checked.trading_day = archive.trading_day AND checked.result = 'empty'
+                      AND NOT EXISTS (
+                        SELECT 1 FROM fii_dii_history_rows AS history
+                        WHERE history.trading_day = archive.trading_day
+                          AND history.scope = 'tapetide' AND history.segment = 'equity'
+                      )
+                  )
+                  AND (
+                    SELECT COUNT(DISTINCT history.participant)
+                    FROM fii_dii_history_rows AS history
+                    WHERE history.trading_day = archive.trading_day
+                      AND history.scope = 'tapetide' AND history.segment = 'equity'
+                      AND history.participant IN ('FII', 'DII')
+                  ) < 2
+                ORDER BY archive.trading_day ASC
+                """,
+                (start.isoformat(), end.isoformat()),
+            ).fetchall()
+        return [date.fromisoformat(str(row[0])) for row in records]
+
+    def mark_fii_dii_history_day_checked(self, trading_day: date, result: str) -> None:
+        """Remember a successful Tapetide check, including dates with no provider row."""
+        if result not in {"saved", "empty"}:
+            raise ValueError("result must be 'saved' or 'empty'.")
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO fii_dii_history_sync_days (trading_day, result, checked_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(trading_day) DO UPDATE SET
+                    result = excluded.result,
+                    checked_at = excluded.checked_at
+                """,
+                (trading_day.isoformat(), result, datetime.now(UTC).isoformat()),
+            )
 
     def fii_dii_history_coverage(self) -> tuple[date | None, date | None, int]:
         with self._connect() as connection:

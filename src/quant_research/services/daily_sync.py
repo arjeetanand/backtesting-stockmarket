@@ -54,7 +54,10 @@ class DailySyncService:
         if not missing_days:
             latest_day = summary.latest.date().isoformat() if summary.latest else None
             return {
+                "status": "complete" if latest_day else "partial",
                 "synced_days": 0,
+                "skipped_days": 0,
+                "target_trading_day": latest_sync_date.isoformat(),
                 "latest_trading_day": summary.latest.isoformat() if summary.latest else None,
                 "message": f"Latest saved NSE daily data is {latest_day}." if latest_day else "No NSE daily data is saved yet.",
             }
@@ -82,7 +85,10 @@ class DailySyncService:
             message = f"No NSE daily archive is saved yet; the last requested date was {end_date.isoformat()}."
 
         return {
+            "status": "partial" if res.skipped_days or not latest_day else "complete",
             "synced_days": res.downloaded_days,
+            "skipped_days": res.skipped_days,
+            "target_trading_day": end_date.isoformat(),
             "latest_trading_day": new_summary.latest.isoformat() if new_summary.latest else None,
             "message": message,
         }

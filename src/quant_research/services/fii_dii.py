@@ -8,6 +8,7 @@ import os
 from collections.abc import Callable
 from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import cast
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -60,6 +61,7 @@ class NseFiiDiiImporter:
         payloads: list[tuple[str, object]] = [(self.report_url, payload)] if filtered else []
 
         fetched_at = datetime.now(UTC)
+        snapshot_stamp = fetched_at.strftime("%Y%m%dT%H%M%S%f")
         stored = 0
         all_days: set[date] = set()
         for archive_index, (source_url, payload) in enumerate(payloads):
@@ -68,17 +70,44 @@ class NseFiiDiiImporter:
             filtered = [row for row in rows if start <= row.trading_day <= end]
             if not filtered:
                 continue
+            changed_days: set[date] = set()
+            changed_rows: list[FiiDiiRow] = []
+            for trading_day in {row.trading_day for row in filtered}:
+                day_rows = [row for row in filtered if row.trading_day == trading_day]
+                first = day_rows[0]
+                existing_rows = self._cache.get_fii_dii_rows(
+                    trading_day,
+                    trading_day,
+                    scope=first.scope,
+                    segment=first.segment,
+                )
+                existing = {
+                    row.participant: (row.buy_value, row.sell_value, row.net_value)
+                    for row in existing_rows
+                }
+                incoming = {
+                    row.participant: (row.buy_value, row.sell_value, row.net_value)
+                    for row in day_rows
+                }
+                if incoming != existing:
+                    changed_days.add(trading_day)
+                    changed_rows.extend(
+                        row
+                        for row in day_rows
+                        if existing.get(row.participant) != (row.buy_value, row.sell_value, row.net_value)
+                    )
             archive_suffix = f"_{archive_index}" if len(payloads) > 1 else ""
-            snapshot_id = f"fii_dii_{fetched_at.strftime('%Y%m%dT%H%M%S')}_{os.getpid()}{archive_suffix}"
-            archive_file = self._archive_path / f"fii_dii_snapshot_{fetched_at.strftime('%Y%m%dT%H%M%S')}{archive_suffix}.json"
-            archive_file.write_text(payload_text, encoding="utf-8")
-            stored += self._cache.store_fii_dii_snapshot(
-                snapshot_id=snapshot_id,
-                fetched_at=fetched_at,
-                source_url=source_url,
-                payload=payload_text,
-                rows=filtered,
-            )
+            if changed_days:
+                snapshot_id = f"fii_dii_{snapshot_stamp}_{os.getpid()}{archive_suffix}"
+                archive_file = self._archive_path / f"fii_dii_snapshot_{snapshot_stamp}{archive_suffix}.json"
+                archive_file.write_text(payload_text, encoding="utf-8")
+                stored += self._cache.store_fii_dii_snapshot(
+                    snapshot_id=snapshot_id,
+                    fetched_at=fetched_at,
+                    source_url=source_url,
+                    payload=payload_text,
+                    rows=changed_rows,
+                )
             all_days.update(row.trading_day for row in filtered)
 
         if all_days:
@@ -301,6 +330,68 @@ class TapetideFiiDiiHistoryImporter:
             "stored_rows": stored_rows,
             "pages_fetched": pages_fetched,
             "skipped_records": skipped_records,
+            "available_start": min(available_days) if available_days else None,
+            "available_end": max(available_days) if available_days else None,
+        }
+
+    def sync_missing_nse_sessions(
+        self,
+        start: date,
+        end: date,
+        progress: Callable[[str], None] | None = None,
+    ) -> dict[str, object]:
+        """Fill only known NSE archive dates missing a complete Tapetide pair."""
+        requested_start = max(start, TAPETIDE_HISTORY_START)
+        missing_days = self._cache.missing_fii_dii_history_days(requested_start, end)
+        stored_rows = 0
+        pages_fetched = 0
+        skipped_records = 0
+        empty_days = 0
+        incomplete_days = 0
+        available_days: set[date] = set()
+
+        for trading_day in missing_days:
+            if progress:
+                progress(f"Checking Tapetide history for {trading_day}.")
+            sync_progress: Callable[[str], None] | None = None
+            if progress:
+                def report_progress(stage: str, day: date = trading_day) -> None:
+                    progress(f"{day}: {stage}")
+
+                sync_progress = report_progress
+            result = self.sync(
+                trading_day,
+                trading_day,
+                progress=sync_progress,
+            )
+            stored_rows += cast(int, result["stored_rows"])
+            pages_fetched += cast(int, result["pages_fetched"])
+            skipped_records += cast(int, result["skipped_records"])
+            if isinstance(result["available_start"], date):
+                available_days.add(result["available_start"])
+            if isinstance(result["available_end"], date):
+                available_days.add(result["available_end"])
+
+            saved_participants = {
+                row.participant
+                for row in self._cache.get_fii_dii_history_rows(trading_day, trading_day)
+                if row.scope == "tapetide" and row.segment == "equity"
+            }
+            if {"FII", "DII"}.issubset(saved_participants):
+                self._cache.mark_fii_dii_history_day_checked(trading_day, "saved")
+            elif not saved_participants:
+                self._cache.mark_fii_dii_history_day_checked(trading_day, "empty")
+                empty_days += 1
+            else:
+                incomplete_days += 1
+
+        return {
+            "checked_days": len(missing_days),
+            "stored_rows": stored_rows,
+            "pages_fetched": pages_fetched,
+            "skipped_records": skipped_records,
+            "empty_days": empty_days,
+            "incomplete_days": incomplete_days,
             "available_start": min(available_days) if available_days else None,
             "available_end": max(available_days) if available_days else None,
         }

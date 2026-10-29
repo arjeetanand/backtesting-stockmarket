@@ -655,3 +655,16 @@ Next owner/action:
 - Verification: focused daily-sync and NSE-import tests passed (10 tests); Ruff passed; frontend ESLint passed; webpack production build passed with all 24 routes. Targeted mypy reports four errors in the unchanged `repositories/market_cache.py`. Browser verification was unavailable because browser discovery returned `transport closed`; no live NSE request was made.
 - Checklist: `docs/STOCK_RESEARCH_CHECKLIST.md`.
 - The task branch has not been pushed or merged. After approval, merge it into `main`, then run the latest integrated checkout when the user wants the local UI back; no server was restarted because the prior request was to stop ports 4003, 5003, and 6003.
+
+## 30. One-click all-source market sync
+
+- Date: 2026-10-29. Task branch: `codex/global-market-sync-20261029`, based on `codex/yesbank-current-data-20261029` at `624c671`.
+- Rename the shared top-bar/Market Insights action to **Sync All Market Data**. It reports separate NSE daily, official NSE FII/DII, and Tapetide history outcomes; each source continues when another source fails.
+- NSE daily archives retain the Asia/Kolkata publication window, skipped-archive retry, and cached-date skip behavior. The official NSE FII/DII endpoint is checked once per click, but unchanged rows no longer create repeated SQLite snapshots or archive files; changed report values are still saved.
+- Tapetide global sync uses official available NSE archive dates as the session list and requests only dates without both saved FII and DII rows. A successfully checked empty date is remembered locally, while incomplete participant pairs remain retryable. Tapetide history remains separate from official NSE rows.
+- Read-only cache inspection found 3,154 Tapetide dates through 2026-10-28 and 17 known available NSE archive sessions without a complete Tapetide pair. The shared runtime database was not modified. The existing local Tapetide configuration contains a token value; its validity was not checked.
+- Verification: full backend pytest suite passed; Ruff passed; frontend ESLint, 24 Vitest tests, webpack production build (TypeScript passed; 24 routes generated), and `git diff --check` passed. Full mypy still reports the same 13 errors in `_lru_cache` inference (`market_cache.py`), `pattern_finder.py`, and missing `ta` stubs in `breakout_scanner.py`/`ml_research.py`; no new errors remain in changed route/importer modules.
+- Browser-rendered interaction, live NSE, and live Tapetide checks were not run. The previously requested local ports remain stopped; no live provider requests were made.
+- Checklist: `docs/FII_DII_HISTORY_CHECKLIST.md`.
+- Run with `./run.sh` (UI `4003`, API `8001`) after the branch is approved and integrated. Implementation commit will be recorded in the follow-up handoff commit.
+- Next: review this branch and approve merge to `main`; no push, merge, or server restart has occurred.

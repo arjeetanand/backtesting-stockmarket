@@ -7,6 +7,7 @@ from fastapi import BackgroundTasks, HTTPException
 
 from quant_research.api.routes.api import _fii_dii_response, create_api_router
 from quant_research.api.schemas import FiiDiiImportRequest
+from quant_research.domain.data.models import OHLCVBar
 from quant_research.repositories.backtests import InMemoryBacktestRepository
 from quant_research.repositories.market_cache import FiiDiiRow, IndexClose, SqliteMarketCache
 from quant_research.services.fii_dii import NseFiiDiiImporter, TapetideFiiDiiHistoryImporter
@@ -72,7 +73,7 @@ def test_fii_dii_import_endpoint_rejects_invalid_range(tmp_path: Path) -> None:
         raise AssertionError("Expected invalid FII/DII range to be rejected")
 
 
-def test_fii_dii_importer_uses_latest_snapshot_without_fabricating_history(tmp_path: Path) -> None:
+def test_fii_dii_importer_uses_latest_snapshot_without_refetching_saved_rows(tmp_path: Path) -> None:
     cache = SqliteMarketCache(tmp_path / "market.sqlite3")
 
     class StubIndexImporter:
@@ -86,24 +87,148 @@ def test_fii_dii_importer_uses_latest_snapshot_without_fabricating_history(tmp_p
     importer = NseFiiDiiImporter(cache, archive_path=tmp_path / "archives", index_importer=index_importer)  # type: ignore[arg-type]
     calls: list[str] = []
 
+    payloads: list[object] = [
+        [
+            {"category": "FII/FPI", "date": "24-Jul-2026", "buyValue": "120", "sellValue": "150"},
+            {"category": "DII", "date": "24-Jul-2026", "buyValue": "190", "sellValue": "130"},
+        ],
+        [
+            {"category": "FII/FPI", "date": "24-Jul-2026", "buyValue": "120", "sellValue": "150"},
+            {"category": "DII", "date": "24-Jul-2026", "buyValue": "190", "sellValue": "130"},
+        ],
+        [
+            {"category": "FII/FPI", "date": "24-Jul-2026", "buyValue": "121", "sellValue": "150"},
+            {"category": "DII", "date": "24-Jul-2026", "buyValue": "190", "sellValue": "130"},
+        ],
+    ]
+
     def download(url: str | None = None) -> object:
         assert url is not None
         calls.append(url)
-        return [
-            {"category": "FII/FPI", "date": "24-Jul-2026", "buyValue": "120", "sellValue": "150"},
-            {"category": "DII", "date": "24-Jul-2026", "buyValue": "190", "sellValue": "130"},
-        ]
+        return payloads[len(calls) - 1]
 
     importer._download_report = download  # type: ignore[method-assign]
     stored, available_start, available_end = importer.import_reports(date(2026, 7, 23), date(2026, 7, 24))
+    unchanged_rows, _, _ = importer.import_reports(date(2014, 1, 1), date(2026, 7, 24))
+    corrected_rows, _, _ = importer.import_reports(date(2014, 1, 1), date(2026, 7, 24))
 
     assert stored == 2
+    assert unchanged_rows == 0
+    assert corrected_rows == 1
     assert available_start == date(2026, 7, 24)
     assert available_end == date(2026, 7, 24)
-    assert len(calls) == 1
+    assert len(calls) == 3
     assert calls[0] == importer.report_url
-    assert index_importer.days == [date(2026, 7, 24)]
+    assert index_importer.days == [date(2026, 7, 24)] * 3
     assert len(cache.get_fii_dii_rows(date(2026, 7, 23), date(2026, 7, 24))) == 2
+    fii_row = next(row for row in cache.get_fii_dii_rows(date(2026, 7, 24), date(2026, 7, 24)) if row.participant == "FII")
+    assert fii_row.buy_value == 121
+    with sqlite3.connect(cache.path) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM fii_dii_snapshots").fetchone()[0] == 2
+
+
+def test_tapetide_global_sync_fetches_only_missing_official_sessions_once(tmp_path: Path) -> None:
+    cache = SqliteMarketCache(tmp_path / "market.sqlite3")
+    saved_day = date(2025, 1, 2)
+    gap_day = date(2025, 1, 3)
+    empty_day = date(2025, 1, 6)
+    for trading_day in (saved_day, gap_day, empty_day):
+        cache.record_nse_archive(trading_day, None, "nse", 1)
+    cache.store_fii_dii_history_rows([
+        FiiDiiRow(saved_day, participant, "tapetide", "equity", 10, 8, 2, "tapetide")
+        for participant in ("FII", "DII")
+    ])
+    importer = TapetideFiiDiiHistoryImporter(cache, "test-token")
+    calls: list[tuple[date, date]] = []
+
+    def download(start: date, end: date, cursor: str | None) -> dict[str, object]:
+        assert cursor is None
+        calls.append((start, end))
+        records = [] if start == empty_day else [{
+            "date": gap_day.isoformat(), "fii_buy_cr": 100, "fii_sell_cr": 80, "fii_net_cr": 20,
+            "dii_buy_cr": 90, "dii_sell_cr": 70, "dii_net_cr": 20,
+        }]
+        return {"data": records, "meta": {"has_more": False, "next_cursor": None}}
+
+    importer._download_page = download  # type: ignore[method-assign]
+    result = importer.sync_missing_nse_sessions(saved_day, empty_day)
+    again = importer.sync_missing_nse_sessions(saved_day, empty_day)
+
+    assert calls == [(gap_day, gap_day), (empty_day, empty_day)]
+    assert result == {
+        "checked_days": 2,
+        "stored_rows": 2,
+        "pages_fetched": 2,
+        "skipped_records": 0,
+        "empty_days": 1,
+        "incomplete_days": 0,
+        "available_start": gap_day,
+        "available_end": gap_day,
+    }
+    assert again["checked_days"] == 0
+    assert cache.missing_fii_dii_history_days(saved_day, empty_day) == []
+    cache.store_fii_dii_history_rows([
+        FiiDiiRow(empty_day, "FII", "tapetide", "equity", 10, 8, 2, "tapetide")
+    ])
+    assert cache.missing_fii_dii_history_days(saved_day, empty_day) == [empty_day]
+
+
+def test_global_market_sync_reports_source_failures_without_skipping_other_sources(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    cache = SqliteMarketCache(tmp_path / "market.sqlite3")
+    latest = datetime(2026, 10, 28, tzinfo=UTC)
+    cache.put(
+        [OHLCVBar(timestamp=latest, symbol="RELIANCE", open=100, high=101, low=99, close=100, volume=1000)],
+        "1day",
+        "official-nse-test",
+    )
+
+    class FailedDailySync:
+        def __init__(self, _cache: SqliteMarketCache) -> None:
+            pass
+
+        def sync_latest(self) -> dict[str, object]:
+            raise RuntimeError("NSE archive unavailable")
+
+    class FailedNseFiiDii:
+        def import_reports(self, start: date, end: date, scope: str) -> tuple[int, date | None, date | None]:
+            assert start == date(2014, 1, 1)
+            assert end >= latest.date()
+            assert scope == "combined"
+            raise RuntimeError("NSE FII/DII unavailable")
+
+    class AvailableTapetide:
+        configured = True
+
+        def sync_missing_nse_sessions(self, start: date, end: date) -> dict[str, object]:
+            assert start == date(2014, 1, 1)
+            assert end == latest.date()
+            return {
+                "checked_days": 0,
+                "stored_rows": 0,
+                "pages_fetched": 0,
+                "skipped_records": 0,
+                "empty_days": 0,
+                "incomplete_days": 0,
+                "available_start": None,
+                "available_end": None,
+            }
+
+    monkeypatch.setattr("quant_research.services.daily_sync.DailySyncService", FailedDailySync)
+    router = create_api_router(
+        ResearchService(None, InMemoryBacktestRepository()),
+        HypothesisService(StubLlm()),
+        market_cache=cache,
+        fii_dii_importer=FailedNseFiiDii(),  # type: ignore[arg-type]
+        tapetide_history_importer=AvailableTapetide(),  # type: ignore[arg-type]
+    )
+    endpoint = next(route.endpoint for route in router.routes if route.path.endswith("/data/sync-today"))
+
+    result = endpoint()
+
+    assert result["status"] == "partial"
+    assert result["sources"]["nse_daily"]["status"] == "failed"
+    assert result["sources"]["nse_fii_dii"]["status"] == "failed"
+    assert result["sources"]["tapetide_history"]["status"] == "complete"
 
 
 def test_nifty50_archive_parser_uses_official_index_row() -> None:

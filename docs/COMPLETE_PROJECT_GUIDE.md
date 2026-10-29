@@ -138,7 +138,7 @@ All routes are prefixed with `/api/v1`.
 | System | `GET /health`, `GET /providers` | Service and provider status |
 | Data | `GET /data/cache`, `/data/availability`, `/data/instruments`, `/data/inventory` | Local cache and catalogue state |
 | Import | `POST /data/nse-import/preview`, `POST /data/nse-import`, `GET /data/nse-import/{job_id}` | Preview, queue, and poll bulk NSE imports |
-| Sync | `POST /data/sync-today` | Import missing current archive data when available |
+| Sync | `POST /data/sync-today` | Independently sync latest NSE bars, latest NSE FII/DII, and only missing Tapetide history sessions; returns per-source status |
 | Research | `POST /research/ensure-data`, `/research/hypothesis`, `POST /strategy/youtube` | Prepare data and produce reviewable research drafts |
 | Backtests | `POST /backtests/sma-crossover`, `/backtests/custom`, `GET/DELETE /backtests`, `GET/DELETE /backtests/{run_id}` | Run, persist, list, and remove historical tests |
 | Chart | `GET /market-data` | Return validated local bars, indicators, volume, and signal metadata |

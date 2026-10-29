@@ -54,6 +54,8 @@ This is an independent Backtrack heuristic: a qualifying daily close must break 
 
 On **FII / DII Insights**, the **Tapetide history · saved locally** view reads `fii_dii_history_rows` from SQLite when the page opens. Choose **30D, 3M, 6M, 1Y, 5Y, 10Y, 20Y, or All**, then select **Sync** to fetch that period and keep it locally for the next visit. Viewing a range alone does not call the provider. Sync needs `TAPETIDE_API_TOKEN` in the backend `.env` and a backend restart. The provider documents daily cash-market history from **January 2014**; therefore a 20Y selection can only show available sessions since 2014. Progress reports pages and rows saved; incomplete participant rows are skipped rather than changed to zero. Official NSE latest-session rows remain separate in `fii_dii_rows`.
 
+The global **Sync All Market Data** action also checks the latest official NSE FII/DII report and uses Tapetide only for official NSE archive sessions without a complete saved FII/DII pair. It does not download the full Tapetide history on every click. Dates with no Tapetide rows are recorded as checked, so they are not repeatedly requested; sessions with incomplete participant pairs remain eligible for retry. Each source reports its own success, partial, skipped, or failed status.
+
 ## Manage stock data
 
 The page has two jobs only: import bulk history and search local stocks.
@@ -70,7 +72,7 @@ The date selector supports:
 
 The importer checks the SQLite database and `data/nse_archives/<year>/` before downloading. A single NSE trading-day archive contains the daily file for all supported stocks, so a successful day is loaded in bulk. There is no starter universe, custom-symbol import mode, or per-stock download button.
 
-Use **Sync Latest NSE Data** in the top bar to fetch the newest completed daily archive. Before 18:00 IST it stops at the previous calendar day; after that it can request today's archive on trading days. If NSE has not published an archive yet, a later sync retries dates in the missing-day range and reports the last date actually saved. Stock research shows its own `data_as_of` date; it never presents a live quote.
+Use **Sync All Market Data** in the top bar to fetch the newest completed daily archive, check NSE's latest official FII/DII report, and fill missing Tapetide history sessions. Before 18:00 IST the daily-bar sync stops at the previous calendar day; after that it can request today's archive on trading days. If NSE has not published an archive yet, a later sync retries dates in the missing-day range and reports the last date actually saved. Stock research shows its own `data_as_of` date; it never presents a live quote.
 
 ### Search local data
 
