@@ -1,4 +1,5 @@
-from datetime import UTC, date, datetime
+import sqlite3
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from quant_research.api.routes.api import _fii_dii_response, create_api_router
@@ -105,3 +106,43 @@ def test_fii_dii_importer_uses_latest_snapshot_without_fabricating_history(tmp_p
 def test_nifty50_archive_parser_uses_official_index_row() -> None:
     payload = b"Index Name,Closing Index Value\nNIFTY 50,24353.55\n"
     assert NseIndexArchiveImporter._parse_nifty50_close(payload) == 24353.55
+
+
+def test_one_year_tapetide_view_reads_saved_rows_and_explains_partial_coverage(tmp_path: Path) -> None:
+    today = date.today()
+    first_saved_day = today - timedelta(days=60)
+    latest_saved_day = today - timedelta(days=1)
+    cache = SqliteMarketCache(tmp_path / "market.sqlite3")
+    cache.store_fii_dii_snapshot(
+        "nse", datetime.now(UTC), "nse", "{}",
+        [FiiDiiRow(latest_saved_day, "FII", "combined", "equity", 10, 5, 5, "nse")],
+    )
+    with sqlite3.connect(cache.path) as connection:
+        connection.executemany(
+            """INSERT INTO fii_dii_history_rows
+               (trading_day, participant, scope, segment, buy_value, sell_value, net_value, source)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            [
+                (day.isoformat(), participant, "tapetide", "equity", 100, 80, 20, "https://tapetide.com/fii-dii-data")
+                for day in (first_saved_day, latest_saved_day)
+                for participant in ("FII", "DII")
+            ],
+        )
+
+    response = _fii_dii_response(
+        cache,
+        today - timedelta(days=364),
+        today,
+        "combined",
+        "equity",
+        source="tapetide",
+    )
+
+    assert len(response.rows) == 4
+    assert {row.scope for row in response.rows} == {"tapetide"}
+    assert response.coverage_days == 2
+    assert response.coverage_start == first_saved_day
+    assert response.coverage_end == latest_saved_day
+    assert response.coverage_note is not None
+    assert "missing earlier dates are not available locally" in response.coverage_note
+    assert len(cache.get_fii_dii_rows(latest_saved_day, latest_saved_day)) == 1

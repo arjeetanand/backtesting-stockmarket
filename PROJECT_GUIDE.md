@@ -33,7 +33,7 @@ Backtrack is a local, research-only Indian-market backtesting application. It us
 | Time Machine | Compare a plan with sampled scenarios | Sample 10,000 seeded daily-bar paths from local NSE history and compare with fixed-rule historical outcomes |
 | Learn | Understand options basics | Calculate educational call/put payoff, max loss, and breakeven |
 | Analytics | Inspect performance | Review trade quality and available run analytics |
-| FII / DII Insights | Inspect institutional activity | Import official NSE FII/FPI-DII report snapshots, compare daily/weekly/monthly net cash flows, and review the local ledger |
+| FII / DII Insights | Inspect institutional activity | View saved Tapetide history from SQLite or the separate official NSE latest-session report, with daily/weekly/monthly flows and actual date coverage |
 | Settings | Inspect local configuration | View API, local cache, Ollama, and provider status |
 
 ### Daily structure zones
@@ -43,6 +43,10 @@ In **Market Scanner → Daily structure zones**, choose a configured universe an
 In **Market Scanner → Liquidity flow**, scan all locally catalogued NSE stocks, NIFTY 500, or NIFTY 50. Backtrack ranks up to 20 positive and 20 negative pressure estimates from the latest 20 saved daily bars, then highlights the top three on each branch. Choose a ranked symbol or search any NSE symbol to inspect its candidate daily demand/supply zones. The estimate weights each candle’s close location in its high-low range by traded value; daily OHLCV cannot identify actual buyers/sellers or show bid/ask depth. All dates come from the local cache, and unavailable history stays excluded.
 
 This is an independent Backtrack heuristic: a qualifying daily close must break a prior 20-session range by at least 1.25 times the preceding 14-session average true range, and the zone is the full range of the latest opposite candle in the prior three sessions. A daily close through the far edge invalidates it. Confirmations older than 60 bars are excluded. The scan uses no intraday or live data, makes no claim about institutional activity, and does not produce a trade recommendation.
+
+## FII/DII history
+
+On **FII / DII Insights**, the **Tapetide history · saved locally** view reads `fii_dii_history_rows` from the local SQLite cache when the page opens. It does not download the same rows again. The 30D/3M/6M/1Y controls filter the dates already stored and show their actual coverage; they do not imply that a full year is available. Official NSE latest-session rows remain in the separate `fii_dii_rows` table.
 
 ## Manage stock data
 

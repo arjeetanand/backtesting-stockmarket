@@ -245,9 +245,24 @@ def _insights_for_universe(cache: SqliteMarketCache, universe: UniverseDefinitio
     )
 
 
-def _fii_dii_response(cache: SqliteMarketCache, start: date, end: date, scope: str, segment: str) -> FiiDiiResponse:
-    rows = cache.get_fii_dii_rows(start, end, scope, segment)
-    coverage_start, coverage_end, coverage_days = cache.fii_dii_coverage(scope, segment)
+def _fii_dii_response(
+    cache: SqliteMarketCache,
+    start: date,
+    end: date,
+    scope: str,
+    segment: str,
+    source: str = "nse",
+) -> FiiDiiResponse:
+    if source == "tapetide":
+        rows = cache.get_fii_dii_history_rows(start, end)
+        coverage_start, coverage_end, coverage_days = cache.fii_dii_history_coverage()
+        response_scope, response_segment = "tapetide", "equity"
+        source_url = "https://tapetide.com/fii-dii-data"
+    else:
+        rows = cache.get_fii_dii_rows(start, end, scope, segment)
+        coverage_start, coverage_end, coverage_days = cache.fii_dii_coverage(scope, segment)
+        response_scope, response_segment = scope, segment
+        source_url = NseFiiDiiImporter.report_page_url
     by_day: dict[date, dict[str, float]] = {}
     for row in rows:
         by_day.setdefault(row.trading_day, {})[row.participant] = row.net_value
@@ -265,7 +280,16 @@ def _fii_dii_response(cache: SqliteMarketCache, start: date, end: date, scope: s
 
     latest_day = max(by_day) if by_day else None
     coverage_note = None
-    if rows and coverage_start and coverage_start > start:
+    if source == "tapetide" and not rows and coverage_start is None:
+        coverage_note = "No Tapetide history is stored in the local SQLite cache yet."
+    elif source == "tapetide" and not rows:
+        coverage_note = "No locally saved Tapetide sessions fall in this selected date range."
+    elif source == "tapetide" and rows and coverage_start and coverage_start > start:
+        coverage_note = (
+            f"Showing {coverage_days} Tapetide sessions saved locally from {coverage_start} through {coverage_end}. "
+            "The selected view is limited to dates already in SQLite; missing earlier dates are not available locally."
+        )
+    elif source == "nse" and rows and coverage_start and coverage_start > start:
         coverage_note = (
             "Only the locally archived NSE sessions are shown. NSE's public FII/DII report currently exposes the latest session; "
             "historical sessions must already be captured in the local archive."
@@ -291,8 +315,8 @@ def _fii_dii_response(cache: SqliteMarketCache, start: date, end: date, scope: s
             ))
 
     return FiiDiiResponse(
-        scope=scope,
-        segment=segment,
+        scope=response_scope,
+        segment=response_segment,
         start=start,
         end=end,
         rows=[
@@ -315,7 +339,7 @@ def _fii_dii_response(cache: SqliteMarketCache, start: date, end: date, scope: s
         coverage_end=coverage_end,
         coverage_days=coverage_days,
         coverage_note=coverage_note,
-        source_url=NseFiiDiiImporter.report_page_url,
+        source_url=source_url,
     )
 
 
@@ -743,12 +767,13 @@ def create_api_router(
         end: date,
         scope: Annotated[str, Query(pattern="^(combined|nse_only)$")] = "combined",
         segment: Annotated[str, Query(pattern="^(equity|index_future|index_option|stock_future|stock_option)$")] = "equity",
+        source: Annotated[str, Query(pattern="^(nse|tapetide)$")] = "nse",
     ) -> FiiDiiResponse:
         if start > end:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="start must be on or before end.")
         if market_cache is None:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="The local market cache is not configured.")
-        return _fii_dii_response(market_cache, start, end, scope, segment)
+        return _fii_dii_response(market_cache, start, end, scope, segment, source)
 
     @router.post("/insights/fii-dii/import", response_model=FiiDiiImportJobResponse, status_code=status.HTTP_202_ACCEPTED, tags=["insights"])
     def start_fii_dii_import(payload: FiiDiiImportRequest, background_tasks: BackgroundTasks) -> FiiDiiImportJobResponse:

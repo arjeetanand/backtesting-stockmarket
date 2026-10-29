@@ -1,12 +1,13 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
+export type FiiDiiSource = "nse" | "tapetide";
 export type FiiDiiScope = "combined" | "nse_only";
 export type FiiDiiSegment = "equity" | "index_future" | "index_option" | "stock_future" | "stock_option";
 
 export type FiiDiiRow = {
   date: string;
   participant: "FII" | "DII";
-  scope: FiiDiiScope;
+  scope: FiiDiiScope | "tapetide";
   segment: FiiDiiSegment;
   buy_value: number;
   sell_value: number;
@@ -36,7 +37,7 @@ export type FiiDiiIndexPoint = {
 };
 
 export type FiiDiiResponse = {
-  scope: FiiDiiScope;
+  scope: FiiDiiScope | "tapetide";
   segment: FiiDiiSegment;
   start: string;
   end: string;
@@ -74,8 +75,8 @@ async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
   return payload as T;
 }
 
-export async function getFiiDiiData(start: string, end: string, scope: FiiDiiScope, segment: FiiDiiSegment): Promise<FiiDiiResponse> {
-  const params = new URLSearchParams({ start, end, scope, segment });
+export async function getFiiDiiData(start: string, end: string, scope: FiiDiiScope, segment: FiiDiiSegment, source: FiiDiiSource): Promise<FiiDiiResponse> {
+  const params = new URLSearchParams({ start, end, scope, segment, source });
   return jsonRequest<FiiDiiResponse>(`${API_BASE_URL}/insights/fii-dii?${params.toString()}`);
 }
 

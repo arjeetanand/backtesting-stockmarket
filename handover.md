@@ -234,7 +234,7 @@ Persistence is local single-user SQLite. There is no authentication, multi-user 
 | Analytics | `frontend/src/app/analytics/page.tsx` | Performance and trade-quality analysis |
 | Market Insights | `frontend/src/app/insights/page.tsx` and `frontend/src/components/insights/InsightsDashboard.tsx` | Index-aware daily breadth, stock/sector heatmaps, period selectors, coverage metadata, and top movers |
 | Market Scanner | `frontend/src/app/market-scanner/page.tsx` | Morning plans, formula and historical scans, breakout results, daily structure zones, and local coverage states |
-| FII / DII Insights | `frontend/src/app/insights/fii-dii/page.tsx` | Official NSE institutional-flow cards, combo chart, filters, and ledger |
+| FII / DII Insights | `frontend/src/app/insights/fii-dii/page.tsx` | Separate Tapetide history and NSE latest-snapshot views, each backed by its own SQLite rows |
 | Settings | `frontend/src/app/settings/page.tsx` | Local configuration and provider status |
 
 Shared frontend infrastructure:
@@ -317,7 +317,7 @@ API schemas live in `src/quant_research/api/schemas.py`; route behavior lives in
 
 `POST /scenario-simulator/run` reads only locally cached `1day` candles. It re-samples 10,000 repeatable daily OHLC bars with replacement from the lookback window, applies a fixed percentage stop and R-multiple target, and compares them with rolling historical outcomes whose full holding window ends no later than the latest cached candle. It does not select historical entries for similarity. When one daily candle reaches both levels it counts the stop first. The endpoint never fetches data, predicts prices, or submits orders; it returns `422` with the required history count when the cache is too short.
 
-`GET /insights/fii-dii` returns locally normalized official NSE FII/FPI-DII rows, daily/weekly/monthly summaries, chart points, available Nifty 50 index closes, and a coverage note when the requested range is not locally complete. `POST /insights/fii-dii/import` and `GET /insights/fii-dii/import/{job_id}` manage the background report snapshot import. Raw snapshots are kept under `data/nse_archives/fii_dii/`; the SQLite cache owns normalized `fii_dii_rows`, `fii_dii_snapshots`, and `nifty50_closes` tables. The current public NSE FII/DII endpoint is latest-session only; historical sessions are not invented from date query parameters.
+`GET /insights/fii-dii` returns rows from the explicitly selected source. `source=nse` reads official latest-session rows; `source=tapetide` reads the locally saved history. Each response includes daily/weekly/monthly summaries, chart points, available official Nifty 50 closes, and source coverage. `POST /insights/fii-dii/import` and `GET /insights/fii-dii/import/{job_id}` retain the NSE snapshot workflow. Official rows and third-party history remain separate in `fii_dii_rows` and `fii_dii_history_rows`. NSE's public FII/DII endpoint is latest-session only; date-range selections do not create historical rows.
 
 `GET /screeners/catalog` and `GET /screeners/universes` expose the checked-in JSON formula and index-membership catalogues. `POST /screeners/run` performs an explicit current-snapshot formula evaluation, `POST /structure-zones/scan` scans a selected configured universe using local daily bars, and `GET /insights/{universe}?period=1d|1w|1m|3m` returns local daily breadth, selected-index constituents, sector aggregates, top movers, data freshness, and coverage/missing-symbol metadata. Formula definitions live in `src/quant_research/config/scanner_catalog.json`; index membership lives in `src/quant_research/config/index_universes.json`. Scanner presets and recent-run metadata are browser-local and do not require a SQLite migration. The structure-zone scan is read-only and does not add a database table.
 
@@ -586,3 +586,14 @@ Next owner/action:
 - Layout checked at a 1600 CSS-pixel desktop viewport and at the narrow responsive breakpoint. The browser returned 487 CSS px after a requested 390 px viewport, with no document-level horizontal overflow; exact 390 px device emulation could not be confirmed. Existing local UI/API processes on ports `4003`/`8001` were preserved; the test UI at `5003` stayed available.
 - Next: if judging the strategy itself, widen the tested period after confirming local history; this one-year result contains only one closed trade and is not enough to evaluate the rule.
 - Checklist: `docs/RESEARCH_RUN_CLARITY_CHECKLIST.md`.
+## 24. FII/DII SQLite history visibility
+
+- Date: 2026-10-29.
+- Branch: `codex/fii-dii-sqlite-history-20261029`.
+- Connect the FII/DII page to the Tapetide history already stored in SQLite, keep it separate from the official NSE snapshot, and show the actual local coverage for longer display ranges.
+- Database inspection before the UI fix found 122 Tapetide rows across 61 sessions from 2026-07-31 to 2026-10-28. The active API page was using only `fii_dii_rows`, which contains four NSE rows over two sessions; that is why the previously loaded history was not visible.
+- Page load and date-range changes read the saved rows only; they do not call Tapetide again. Selecting 6M/1Y displays the saved rows in that period and reports when local history does not cover the full range.
+- Verification: the existing configured cache path resolves to `data/market_cache.sqlite3`. The live local page at `http://127.0.0.1:5003/insights/fii-dii` loaded 61 sessions in the 1Y view with the partial-coverage note; switching to 3M filtered the same saved rows and made no provider request. Ruff, full pytest, frontend ESLint, 20 Vitest tests, the webpack production build, and `git diff --check` passed. Full mypy reports 13 pre-existing errors in four unchanged files.
+- Browser checks: desktop rendered the chart, summary cards, and ledger with no console errors. A requested 390px viewport was provided as 487px; the document had no horizontal overflow at 487px and the wide ledger scrolled inside its table container. The active 4003/5003 and 8001 processes were not restarted.
+- No provider request was made during validation. The isolated 6003/8002 preview could not bind ports under the sandbox, so the existing 5003/8001 local app was used for browser validation.
+- Commit and pull request: pending.
