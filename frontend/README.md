@@ -36,7 +36,7 @@ The home page guides the local-data → research → saved-results → compariso
 | --- | --- |
 | `/` | Home and simple workflow entry points |
 | `/data` | Bulk NSE history download and local stock search |
-| `/research` | Hypothesis review, data preparation, and backtest handoff |
+| `/research` | Hypothesis review, volume/momentum study, data preparation, and backtest handoff |
 | `/stock-research` | One-stock indicators, conditional levels, fixed-rule holdout, and persistent run log |
 | `/strategy` | Build indicator/rule strategies |
 | `/strategy-import` | Import and review YouTube strategy rules |
@@ -44,7 +44,7 @@ The home page guides the local-data → research → saved-results → compariso
 | `/backtests/[id]` | Detailed metrics and charts |
 | `/replay` | Historical candle replay with simulated orders |
 | `/time-machine` | Seeded daily-bar scenario sample from local NSE history |
-| `/comparison` | Compare saved tests |
+| `/comparison` | Compare saved tests and inspect dated trade-level outcomes |
 | `/robustness` | Robustness and walk-forward analysis |
 | `/bias-validity` | Bias and validity checks |
 | `/market-scanner` | Multi-stock formula, historical strategy, breakout, and daily structure-zone scanning |
@@ -94,7 +94,7 @@ The Dhan-inspired part of the product is deliberately historical: Research can h
 
 ## Research chart workflow
 
-`/research` is the main stock-to-results surface:
+`/research` is the main stock-to-results surface. Its volume study compares each signal day's volume with the preceding 20 daily sessions, then groups the next available NSE session's close return by relative-volume band and same-day move. `/comparison` includes an expandable trade ledger under each strategy result.
 
 1. Search/select a local NSE symbol and inspect saved bars, date coverage, and latest close.
 2. Choose the daily date range and load validated local OHLCV plus volume.

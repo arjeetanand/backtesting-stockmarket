@@ -68,6 +68,8 @@ from quant_research.api.schemas import (
     StockResearchResponse,
     StructureZoneScanRequest,
     StructureZoneScanResponse,
+    VolumeMomentumRequest,
+    VolumeMomentumResponse,
     WatchlistAddRequest,
     YouTubeStrategyRequest,
 )
@@ -75,7 +77,7 @@ from quant_research.config import load_scanner_catalog, load_universe_catalog, r
 from quant_research.config.loader import UniverseDefinition
 from quant_research.data_providers.base import MarketDataProviderError
 from quant_research.domain.backtesting.models import BacktestResult
-from quant_research.domain.backtesting.vector_engine import run_rule_backtest
+from quant_research.domain.backtesting.vector_engine import VECTOR_ENGINE_VERSION, run_rule_backtest
 from quant_research.domain.data.models import OHLCVBar
 from quant_research.domain.data.validator import MarketDataValidator
 from quant_research.domain.robustness.diagnostics import analyze_robustness
@@ -105,6 +107,7 @@ from quant_research.services.research import (
 from quant_research.services.stock_research import ARTIFACT_KIND as STOCK_RESEARCH_ARTIFACT_KIND
 from quant_research.services.stock_research import StockResearchService
 from quant_research.services.time_machine import run_time_machine
+from quant_research.services.volume_momentum import analyze_volume_momentum
 from quant_research.services.youtube_strategy import extract_strategy
 
 
@@ -876,6 +879,24 @@ def create_api_router(
             quality=result.quality,
         )
 
+    @router.post("/research/volume-momentum", response_model=VolumeMomentumResponse, tags=["research"])
+    def volume_momentum_analysis(payload: VolumeMomentumRequest) -> VolumeMomentumResponse:
+        """Describe daily next-session outcomes by prior-only relative volume."""
+        if market_cache is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="The local NSE market cache is not configured.",
+            )
+        symbol = payload.symbol.strip().upper().removesuffix(".NS")
+        bars = market_cache.get(symbol, timeframe="1day")
+        if not bars:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No local NSE daily candles are available for {symbol}. Import its history first.",
+            )
+        result = analyze_volume_momentum(bars, symbol=symbol, start=payload.start, end=payload.end)
+        return VolumeMomentumResponse.model_validate(result)
+
     @router.post(
         "/scenario-simulator/run",
         response_model=ScenarioSimulatorResponse,
@@ -951,7 +972,7 @@ def create_api_router(
     def run_custom_backtest(payload: CustomBacktestRequest) -> dict[str, object]:
         """Execute a vectorized multi-indicator strategy backtest with strict no-lookahead execution."""
         frame = market_frame(payload.symbol, payload.timeframe, payload.start, payload.end)
-        cache_key = calculate_value_hash({"kind": "custom_backtest", **payload.model_dump(mode="json"), "data": frame.to_dict("records")})
+        cache_key = calculate_value_hash({"kind": "custom_backtest", "engine_version": VECTOR_ENGINE_VERSION, **payload.model_dump(mode="json"), "data": frame.to_dict("records")})
         if artifacts is not None:
             cached = artifacts.get("custom_backtest", cache_key)
             if cached is not None:

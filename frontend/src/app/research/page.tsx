@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { BarChart3, Check, CheckCircle, ChevronRight, Circle, Code2, Loader2, MessageSquare, Play, Send, Sparkles, Star } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import SectionArtwork from "@/components/illustrations/SectionArtwork";
-import { getMarketAvailability, getMarketData, type MarketAvailability, type MarketDataBar } from "@/lib/market-data";
+import SelectMenu from "@/components/ui/SelectMenu";
+import { analyzeVolumeMomentum, getMarketAvailability, getMarketData, type MarketAvailability, type MarketDataBar, type VolumeMomentumResponse } from "@/lib/market-data";
 import { SymbolCombobox } from "@/components/data/SymbolCombobox";
 import { STRATEGY_LIBRARY, UNIFIED_STRATEGIES } from "@/lib/strategy-library";
 import { FinancialChart } from "@/components/charts/FinancialChart";
@@ -106,6 +107,13 @@ export default function ResearchPage() {
   const [marketBars, setMarketBars] = useState<MarketDataBar[]>([]);
   const [marketDataLoading, setMarketDataLoading] = useState(false);
   const [marketDataError, setMarketDataError] = useState<string | null>(null);
+  const [volumeStudy, setVolumeStudy] = useState<VolumeMomentumResponse | null>(null);
+  const [volumeStudyKey, setVolumeStudyKey] = useState("");
+  const [volumeStudyError, setVolumeStudyError] = useState<string | null>(null);
+  const [volumeStudyErrorKey, setVolumeStudyErrorKey] = useState("");
+  const [volumeStudyLoading, setVolumeStudyLoading] = useState(false);
+  const [volumeStudyLoadingKey, setVolumeStudyLoadingKey] = useState("");
+  const volumeStudyRequestId = useRef(0);
   const [selectedTradeId, setSelectedTradeId] = useState<string | null>(null);
   const [hiddenIndicators, setHiddenIndicators] = useState<string[]>([]);
 
@@ -462,7 +470,40 @@ export default function ResearchPage() {
     }
   };
 
+  const volumeStudyInputKey = `${symbol.trim().toUpperCase()}|${startDate}|${endDate}`;
+  const currentVolumeStudy = volumeStudyKey === volumeStudyInputKey ? volumeStudy : null;
+  const currentVolumeStudyError = volumeStudyErrorKey === volumeStudyInputKey ? volumeStudyError : null;
+  const currentVolumeStudyLoading = volumeStudyLoading && volumeStudyLoadingKey === volumeStudyInputKey;
+
+  const runVolumeStudy = async () => {
+    if (!availability?.bars || !startDate || !endDate || startDate > endDate) return;
+    const requestId = ++volumeStudyRequestId.current;
+    const key = `${symbol.trim().toUpperCase()}|${startDate}|${endDate}`;
+    setVolumeStudyLoading(true);
+    setVolumeStudyLoadingKey(key);
+    setVolumeStudyError(null);
+    setVolumeStudyErrorKey(key);
+    try {
+      const result = await withTimeout(
+        analyzeVolumeMomentum(symbol.trim().toUpperCase(), startDate, endDate),
+        "The volume study timed out. Check the API connection and retry.",
+        20000,
+      );
+      if (requestId === volumeStudyRequestId.current) {
+        setVolumeStudy(result);
+        setVolumeStudyKey(key);
+      }
+    } catch (requestError) {
+      if (requestId === volumeStudyRequestId.current) {
+        setVolumeStudyError(requestError instanceof Error ? requestError.message : "Could not calculate the historical volume study.");
+      }
+    } finally {
+      if (requestId === volumeStudyRequestId.current) setVolumeStudyLoading(false);
+    }
+  };
+
   const formatPercent = (value: number | undefined) => `${((value ?? 0) * 100).toFixed(2)}%`;
+  const formatPercentOrDash = (value: number | null) => value === null ? "—" : formatPercent(value);
 
   const primaryAction = () => {
     if (!analysis) { void parseHypothesis(); return; }
@@ -514,14 +555,14 @@ export default function ResearchPage() {
         <textarea id="research-hypothesis" className="bt-hypothesis-textarea" value={hypothesis} onChange={(event) => { setHypothesis(event.target.value); setAnalysis(null); invalidateRun(); }} />
         <div className="bt-grid-2 bt-research-inputs">
           <div><label className="bt-field-label">NSE symbol</label><SymbolCombobox value={symbol} onChange={(nextSymbol) => { setSymbol(nextSymbol); setAnalysis(null); setAvailability(null); setStartDate(""); setEndDate(""); invalidateRun(); setImportJob(null); }} /></div>
-          <div><label className="bt-field-label">Strategy rule</label><select className="bt-field-input" aria-label="Strategy to test" value={strategyId} onChange={(event) => { setStrategyId(event.target.value); setAnalysis(null); invalidateRun(); }}><option value="sma_crossover">SMA crossover</option>{STRATEGY_LIBRARY.filter((item) => item.id !== "golden-cross" && item.strategyId !== "sma_crossover").map((item) => <option key={item.id} value={item.strategyId}>{item.name}</option>)}</select></div>
+          <div><label className="bt-field-label">Strategy rule</label><SelectMenu className="bt-field-input" aria-label="Strategy to test" value={strategyId} onChange={(event) => { setStrategyId(event.target.value); setAnalysis(null); invalidateRun(); }}><option value="sma_crossover">SMA crossover</option>{STRATEGY_LIBRARY.filter((item) => item.id !== "golden-cross" && item.strategyId !== "sma_crossover").map((item) => <option key={item.id} value={item.strategyId}>{item.name}</option>)}</SelectMenu></div>
           <div><label className="bt-field-label">Backtest from</label><input className="bt-field-input" type="date" max={requestedEnd} value={requestedStart} onChange={(event) => { setRequestedStart(event.target.value); setStartDate(""); setEndDate(""); invalidateRun(); setImportJob(null); }} /></div>
           <div><label className="bt-field-label">Backtest to</label><input className="bt-field-input" type="date" min={requestedStart} max={today} value={requestedEnd} onChange={(event) => { setRequestedEnd(event.target.value); setStartDate(""); setEndDate(""); invalidateRun(); setImportJob(null); }} /></div>
         </div>
         <details className="bt-advanced-settings">
           <summary><span>Timeframe, capital &amp; risk</span><small>Daily NSE · {moneyLabel(initialCapital)} start · {moneyLabel(positionSizeAmount)} per trade</small></summary>
           <div className="bt-grid-2 bt-research-inputs">
-            <div><label className="bt-field-label">Timeframe</label><select className="bt-field-input" aria-label="Backtest timeframe" value={timeframe} onChange={(event) => { setTimeframe(event.target.value); setAnalysis(null); invalidateRun(); }} >{TIMEFRAMES.map((item) => <option key={item.value} value={item.value}>{item.label} · {item.detail}</option>)}</select><span className="bt-field-help">Weekly and monthly are resampled from saved NSE daily candles. Hourly requires an intraday provider and is unavailable.</span></div>
+            <div><label className="bt-field-label">Timeframe</label><SelectMenu className="bt-field-input" aria-label="Backtest timeframe" value={timeframe} onChange={(event) => { setTimeframe(event.target.value); setAnalysis(null); invalidateRun(); }} >{TIMEFRAMES.map((item) => <option key={item.value} value={item.value}>{item.label} · {item.detail}</option>)}</SelectMenu><span className="bt-field-help">Weekly and monthly are resampled from saved NSE daily candles. Hourly requires an intraday provider and is unavailable.</span></div>
             <div><label className="bt-field-label">Starting capital (₹)</label><input className="bt-field-input" type="number" min="1000" step="1000" value={initialCapital} onChange={(event) => { setInitialCapital(Math.max(1000, Number(event.target.value) || 1000)); invalidateRun(); }} /></div>
             <div><label className="bt-field-label">Money per trade (₹)</label><input className="bt-field-input" type="number" min="100" step="100" value={positionSizeAmount} onChange={(event) => { setPositionSizeAmount(Math.max(100, Number(event.target.value) || 100)); invalidateRun(); }} /><span className="bt-field-help">Fixed amount committed to each entry.</span></div>
             <div><label className="bt-field-label">Maximum loss per trade (%)</label><input className="bt-field-input" type="number" min="0" max="99" step="0.25" value={stopLossPct} onChange={(event) => { setStopLossPct(Math.min(99, Math.max(0, Number(event.target.value) || 0))); invalidateRun(); }} /><span className="bt-field-help">0 disables the stop-loss rule.</span></div>
@@ -573,6 +614,38 @@ export default function ResearchPage() {
         <div className="bt-row-between"><div><div className="bt-row"><BarChart3 size={16} style={{ color: "#4f46e5" }} /><h3>Historical data coverage</h3></div><p className="text-xs text-slate-500" style={{ marginTop: "6px" }}>This paper-only test uses {moneyLabel(initialCapital)} account size, {moneyLabel(positionSizeAmount)} per trade, {stopLossPct}% maximum loss, and {takeProfitPct}% profit target.</p></div><span className="data-source">{availability ? `${availability.bars} daily bars available` : "Checking data…"}</span></div>
         {!availability?.bars ? <div className="bt-alert-error" role="alert" style={{ marginTop: "16px" }}>No imported daily NSE data exists for {symbol.trim().toUpperCase() || "this symbol"}.</div> : <>
           <p className="bt-action-help"><CheckCircle size={13} /> Available history: {availability.earliest?.slice(0, 10)} → {availability.latest?.slice(0, 10)}. Choose the backtest dates once above; this section only confirms the stock has local NSE coverage.</p>
+        </>}
+      </section>}
+
+      {availability?.bars && startDate && endDate && (!importJob || importJob.status === "complete") && <section className="bt-panel bt-volume-study" aria-label="Volume and next-day historical study">
+        <div className="bt-row-between bt-volume-study-head"><div><div className="bt-row"><BarChart3 size={16} style={{ color: "#4f46e5" }} /><h3>Volume vs. next-day move</h3></div><p className="text-xs text-slate-500" style={{ marginTop: "6px" }}>For {symbol.trim().toUpperCase()}, compare each day’s trading volume and price move with the next available NSE session.</p></div><button type="button" className="bt-secondary" onClick={() => void runVolumeStudy()} disabled={currentVolumeStudyLoading || !availability?.bars || startDate > endDate}>{currentVolumeStudyLoading ? <><Loader2 size={14} className="spin" /> Analyzing…</> : "Run 20-day volume study"}</button></div>
+        <p className="bt-volume-study-method">“High volume” is measured against this stock’s previous 20 sessions: &lt;1×, 1–1.5×, 1.5–2×, 2–3×, or 3× and above. The day being measured is excluded from its own average. Momentum groups use the same day’s close change: up above +0.5%, down below −0.5%, otherwise near-flat.</p>
+        {!currentVolumeStudy && !currentVolumeStudyError && !currentVolumeStudyLoading && <p className="bt-field-help">Selected window: {startDate} to {endDate}. Run the study to see how many next sessions rose, fell, or stayed within ±0.5%.</p>}
+        {currentVolumeStudyLoading && <div className="comparison-empty" role="status"><Loader2 size={18} className="spin" /> Calculating from locally saved daily NSE candles…</div>}
+        {currentVolumeStudyError && <div className="bt-alert-error" role="alert">{currentVolumeStudyError}</div>}
+        {currentVolumeStudy && <>
+          {currentVolumeStudy.overall.observations === 0 ? <div className="bt-empty-result"><strong>No eligible day pairs in this range</strong><span>This study needs 20 earlier daily bars for volume and momentum, plus the next available trading day inside the selected dates. Import more history or widen the date range.</span></div> : <>
+            <div className="bt-grid-3 bt-volume-study-summary">
+              <div className="bt-callout"><strong>Day pairs counted</strong><p>{currentVolumeStudy.overall.observations.toLocaleString()}</p><small>Each pair is one signal day and its next available session</small></div>
+              <div className="bt-callout"><strong>Next session up</strong><p>{formatPercentOrDash(currentVolumeStudy.overall.next_up_rate)}</p><small>{currentVolumeStudy.overall.next_up_count} rose more than 0.5% · {currentVolumeStudy.overall.next_down_count} fell more than 0.5%</small></div>
+              <div className="bt-callout"><strong>Average next-session move</strong><p className={(currentVolumeStudy.overall.average_next_return ?? 0) >= 0 ? "bt-result-positive" : "bt-result-negative"}>{formatPercentOrDash(currentVolumeStudy.overall.average_next_return)}</p><small>Median {formatPercentOrDash(currentVolumeStudy.overall.median_next_return)} · close-to-close</small></div>
+            </div>
+            <div className="bt-volume-study-table-wrap bt-table-wrap"><table className="bt-table bt-volume-study-table"><thead><tr><th scope="col">Today’s volume vs prior 20-day avg</th><th scope="col">Today’s move</th><th scope="col" className="right">Days</th><th scope="col" className="right">Next day up</th><th scope="col" className="right">Next day down</th><th scope="col" className="right">Average next move</th><th scope="col" className="right">Median next move</th></tr></thead><tbody>{currentVolumeStudy.groups.map((group) => <tr key={`${group.volume_band}-${group.momentum_direction}`}><td><strong>{group.volume_band}</strong></td><td>{group.momentum_direction === "up" ? "Up day" : group.momentum_direction === "down" ? "Down day" : "Near-flat day"}</td><td className="right">{group.observations}{group.observations > 0 && group.observations < 30 && <small className="bt-volume-small-sample">exploratory</small>}</td><td className="right">{formatPercentOrDash(group.next_up_rate)}{group.observations > 0 && <small className="bt-volume-small-sample">{group.next_up_count} days</small>}</td><td className="right">{formatPercentOrDash(group.next_down_rate)}{group.observations > 0 && <small className="bt-volume-small-sample">{group.next_down_count} days</small>}</td><td className={`right ${(group.average_next_return ?? 0) >= 0 ? "bt-result-positive" : "bt-result-negative"}`}>{formatPercentOrDash(group.average_next_return)}</td><td className={`right ${(group.median_next_return ?? 0) >= 0 ? "bt-result-positive" : "bt-result-negative"}`}>{formatPercentOrDash(group.median_next_return)}</td></tr>)}</tbody></table></div>
+            <div className="bt-volume-study-cards">
+              {currentVolumeStudy.groups.map((group) => <article className="bt-volume-study-card" key={`${group.volume_band}-${group.momentum_direction}`}>
+                <div className="bt-volume-study-card-title"><strong>{group.volume_band} volume · {group.momentum_direction === "up" ? "Up day" : group.momentum_direction === "down" ? "Down day" : "Near-flat day"}</strong>{group.observations > 0 && group.observations < 30 && <span>Small sample</span>}</div>
+                <small>Compared with the stock’s prior 20 sessions</small>
+                <div className="bt-volume-study-card-values">
+                  <div><span>Days measured</span><strong>{group.observations}</strong></div>
+                  <div><span>Next session up</span><strong>{formatPercentOrDash(group.next_up_rate)}{group.observations > 0 ? ` · ${group.next_up_count} days` : ""}</strong></div>
+                  <div><span>Next session down</span><strong>{formatPercentOrDash(group.next_down_rate)}{group.observations > 0 ? ` · ${group.next_down_count} days` : ""}</strong></div>
+                  <div><span>Average move</span><strong className={(group.average_next_return ?? 0) >= 0 ? "bt-result-positive" : "bt-result-negative"}>{formatPercentOrDash(group.average_next_return)}</strong></div>
+                  <div><span>Typical move (median)</span><strong className={(group.median_next_return ?? 0) >= 0 ? "bt-result-positive" : "bt-result-negative"}>{formatPercentOrDash(group.median_next_return)}</strong></div>
+                </div>
+              </article>)}
+            </div>
+            <p className="bt-volume-study-footnote">Cells with fewer than 30 examples are exploratory. “Up” means above +0.5%, “down” below −0.5%, and flat is between those levels. These are historical tendencies, not a prediction or a buy/sell signal. NSE daily share volume cannot tell who bought or sold; stored close prices are not adjusted for corporate actions.</p>
+          </>}
         </>}
       </section>}
 

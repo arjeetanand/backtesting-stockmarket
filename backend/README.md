@@ -100,6 +100,7 @@ All routes are prefixed with `/api/v1`.
 
 - `POST /research/ensure-data`
 - `POST /research/hypothesis`
+- `POST /research/volume-momentum` — summarize daily next-session outcomes by prior-20-session relative volume and same-day momentum for one symbol.
 - `POST /backtests/sma-crossover`
 - `POST /backtests/custom`
 - `GET /backtests`

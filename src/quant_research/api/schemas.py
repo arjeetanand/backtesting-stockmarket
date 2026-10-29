@@ -326,6 +326,52 @@ class MarketDataResponse(BaseModel):
     quality: DataQualityReport
 
 
+class VolumeMomentumRequest(BaseModel):
+    """One NSE symbol and inclusive daily signal-date range."""
+
+    symbol: str = Field(..., min_length=1, max_length=50)
+    start: date
+    end: date
+
+    @model_validator(mode="after")
+    def validate_range(self) -> "VolumeMomentumRequest":
+        if self.start > self.end:
+            raise ValueError("start must be on or before end")
+        return self
+
+
+class VolumeMomentumStats(BaseModel):
+    observations: int
+    next_up_count: int
+    next_down_count: int
+    next_flat_count: int
+    next_up_rate: float | None
+    next_down_rate: float | None
+    average_next_return: float | None
+    median_next_return: float | None
+
+
+class VolumeMomentumGroup(VolumeMomentumStats):
+    volume_band: Literal["<1.0x", "1.0–1.5x", "1.5–2.0x", "2.0–3.0x", "≥3.0x"]
+    momentum_direction: Literal["down", "flat", "up"]
+
+
+class VolumeMomentumResponse(BaseModel):
+    symbol: str
+    start: date
+    end: date
+    lookback_sessions: int
+    momentum_cutoff_pct: float
+    next_day_direction_cutoff_pct: float
+    overall: VolumeMomentumStats
+    groups: list[VolumeMomentumGroup]
+    excluded_insufficient_history: int
+    excluded_no_next_session: int
+    excluded_next_session_after_end: int
+    excluded_zero_volume_baseline: int
+    notes: list[str]
+
+
 class ScenarioSimulatorRequest(BaseModel):
     """Bounded inputs for a local daily-bar scenario sample."""
 

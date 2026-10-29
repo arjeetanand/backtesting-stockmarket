@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pandas as pd
 import pytest
 from fastapi import HTTPException
 
 from quant_research.api.routes.api import create_api_router
 from quant_research.api.schemas import CustomBacktestRequest
 from quant_research.domain.data.models import OHLCVBar
+from quant_research.domain.utils.hashing import calculate_value_hash
 from quant_research.repositories.backtests import InMemoryBacktestRepository
 from quant_research.services.hypotheses import HypothesisService
 from quant_research.services.research import ResearchService
@@ -40,6 +42,22 @@ class FakeMarketDataProvider:
                 )
             )
         return bars
+
+
+class ArtifactStoreWithLegacyCustomResult:
+    def __init__(self, legacy_key: str) -> None:
+        self.legacy_key = legacy_key
+        self.requested_keys: list[str] = []
+        self.saved: list[tuple[str, dict[str, object]]] = []
+
+    def get(self, kind: str, artifact_key: str) -> dict[str, object] | None:
+        assert kind == "custom_backtest"
+        self.requested_keys.append(artifact_key)
+        return {"run_id": "stale-pre-fee-result"} if artifact_key == self.legacy_key else None
+
+    def save(self, kind: str, artifact_key: str, payload: dict[str, object]) -> None:
+        assert kind == "custom_backtest"
+        self.saved.append((artifact_key, payload))
 
 
 def test_custom_backtest_result_keeps_existing_shape_with_additive_chart_fields() -> None:
@@ -105,3 +123,36 @@ def test_custom_backtest_rejects_unsupported_strategy_as_actionable_422() -> Non
 
     assert raised.value.status_code == 422
     assert "Unsupported strategy" in str(raised.value.detail)
+
+
+def test_custom_backtest_does_not_reuse_pre_versioned_commission_results() -> None:
+    provider = FakeMarketDataProvider()
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    end = datetime(2024, 3, 20, tzinfo=UTC)
+    payload = CustomBacktestRequest(
+        symbol="RELIANCE",
+        strategy_id="sma_crossover",
+        start=start,
+        end=end,
+        fast_ema=5,
+        slow_ema=10,
+    )
+    frame = pd.DataFrame(
+        [bar.model_dump() for bar in provider.get_ohlcv("RELIANCE", "1day", start, end)]
+    ).rename(columns={"timestamp": "date"})
+    legacy_key = calculate_value_hash(
+        {"kind": "custom_backtest", **payload.model_dump(mode="json"), "data": frame.to_dict("records")}
+    )
+    artifacts = ArtifactStoreWithLegacyCustomResult(legacy_key)
+    router = create_api_router(
+        ResearchService(provider, InMemoryBacktestRepository()),
+        HypothesisService(StubLlm()),
+        artifacts=artifacts,  # type: ignore[arg-type]
+    )
+    endpoint = next(route.endpoint for route in router.routes if route.path.endswith("/backtests/custom"))
+
+    response = endpoint(payload)
+
+    assert response["run_id"] != "stale-pre-fee-result"
+    assert artifacts.requested_keys == [artifacts.saved[0][0]]
+    assert artifacts.requested_keys[0] != legacy_key
