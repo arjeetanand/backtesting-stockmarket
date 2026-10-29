@@ -604,6 +604,8 @@ Next owner/action:
 
 - Date: 2026-10-29.
 - Branch: `codex/fii-dii-long-range-sync-20261029`, based on `main` at `c0321ba`.
+- Implementation commit: `54f6efd` (`Add long-range FII DII history sync`).
+- PR: [#25](https://github.com/arjeetanand/backtesting-stockmarket/pull/25).
 - Add explicit 30D/3M/6M/1Y/5Y/10Y/20Y/All range selection and on-demand Tapetide history refresh. Page loads and range changes remain local SQLite reads.
 - Sync uses Tapetide's documented `/v1/market/institutional-flows` date-range API with cursor pagination. It validates returned rows, skips incomplete gross-value participant records instead of converting nulls to zero, gathers every page before a transactionally upsert into `fii_dii_history_rows`, and never writes Tapetide data into NSE's latest-snapshot table.
 - Tapetide documents this daily cash-market series from 2014-01-01. Requests before then are clamped for sync; the 20Y selection explicitly reports that data can only be shown from 2014 onward. Provider quota applies. Configure `TAPETIDE_API_TOKEN` in the backend `.env` and restart Backtrack before using the sync button.
