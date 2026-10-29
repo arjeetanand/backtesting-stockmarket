@@ -500,3 +500,14 @@ Next owner/action:
 - The available browser stayed at desktop width; mobile viewport and forced API-error rendering were not checked. The local NSE cache is partial for this universe.
 - Implementation commit: `af9a8cb` (`Add independent daily structure-zone scan`). No push or merge was authorized.
 - Run with `./run.sh`; UI port `4003`, API port `8001`. Open `http://127.0.0.1:4003/market-scanner`.
+
+## Market Scanner clarity and search scope
+
+- Date: 2026-10-29.
+- Branch: `codex/market-scanner-plain-language-20261029`.
+- Rewrote the Market Scanner heading and controls in plain language, removed the unsupported claim that every NIFTY stock is always scanned, and explained that local daily history powers these research tools.
+- Clarified that **Search completed results** filters the historical scan by ticker, company, or sector. **All imported stocks** widens a scan only to symbols available in the local cache; the NSE data page searches the local catalogue and reports saved-history coverage.
+- Updated `README.md`, `PROJECT_GUIDE.md`, `frontend/README.md`, and `docs/MARKET_SCANNER_CLARITY_CHECKLIST.md`. No backend or market-data behavior changed.
+- Verification: frontend lint passed with 0 errors and one unrelated unused-function warning in `frontend/src/components/ui/SelectMenu.tsx`; an isolated webpack production build passed; `git diff --check` passed. Desktop browser rendering confirmed the updated wording and explicit API-unavailable state. The local API on port `8000` could not be reached, so scan results and post-scan search were not runtime-tested. Mobile viewport review remains pending because viewport emulation was unavailable.
+- The preview page was `http://127.0.0.1:5003/market-scanner`. Run the project with `./run.sh` for the documented UI port `4003` and API port `8001`.
+- Implementation commit: `d2c60d8` (`Clarify Market Scanner guidance and search scope`).

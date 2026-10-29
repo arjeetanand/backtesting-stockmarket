@@ -7,4 +7,4 @@
 - [x] Frontend lint passed with 0 errors and one existing unused-function warning in `SelectMenu.tsx`; isolated webpack production build passed.
 - [x] Desktop browser review confirmed the new copy and controls. The local API was unreachable, so successful scan results and the post-scan search state were not exercised.
 - [ ] Mobile viewport review remains pending because viewport emulation is unavailable in the current browser surface.
-- [ ] Record the verification, branch, and commit in `handover.md`.
+- [x] Record the verification, branch, and commit in `handover.md`.
