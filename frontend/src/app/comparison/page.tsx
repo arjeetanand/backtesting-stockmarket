@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Check, Info, Loader2, Play, Scale, Search, TrendingUp } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import { SymbolCombobox } from "@/components/data/SymbolCombobox";
+import SelectMenu from "@/components/ui/SelectMenu";
 import { getMarketAvailability, type MarketAvailability } from "@/lib/market-data";
 import { getUnifiedComparisonList } from "@/lib/strategy-library";
 
@@ -26,8 +27,39 @@ type BacktestPayload = {
   initial_capital?: number;
   final_equity?: number;
   metrics?: Record<string, number>;
-  trades?: Array<unknown>;
+  trades?: ComparisonTrade[];
+  open_position?: ComparisonOpenPosition | null;
   detail?: string;
+};
+type ComparisonTrade = {
+  trade_id?: number;
+  id?: string;
+  symbol?: string;
+  entry_date?: string;
+  exit_date?: string;
+  entry_timestamp?: string;
+  exit_timestamp?: string;
+  entry_price?: number;
+  exit_price?: number;
+  position?: string;
+  direction?: string;
+  pnl?: number;
+  return_pct?: number;
+  holding_days?: number;
+  holding_period_seconds?: number;
+};
+type ComparisonOpenPosition = {
+  trade_id?: number;
+  entry_date?: string;
+  as_of_date?: string;
+  entry_price?: number;
+  mark_price?: number;
+  quantity?: number;
+  entry_amount?: number;
+  market_value?: number;
+  unrealized_pnl?: number;
+  return_pct?: number;
+  holding_days?: number;
 };
 type MatrixResult = { id: string; strategyId: string; title: string; result: BacktestPayload; source?: "matrix" | "saved" };
 
@@ -38,6 +70,9 @@ const TIMEFRAMES = [
   { value: "1month", label: "Monthly", detail: "Resampled from daily" },
 ];
 
+function strategyTitle(strategyId?: string): string {
+  return STRATEGIES.find((strategy) => strategy.id === strategyId)?.title ?? strategyId?.replaceAll("_", " ") ?? "strategy";
+}
 function metric(result: BacktestPayload | undefined, key: string): number {
   const metrics = result?.metrics ?? {};
   if (key === "return") return Number(metrics.total_return ?? metrics.cagr ?? 0);
@@ -46,12 +81,83 @@ function metric(result: BacktestPayload | undefined, key: string): number {
   return Number(metrics[key] ?? 0);
 }
 function percentage(value: number): string { return `${(value * 100).toFixed(2)}%`; }
+function tradeDate(value?: string): string { return value ? value.slice(0, 10) : "—"; }
+function tradeMoney(value?: number): string {
+  if (typeof value !== "number") return "—";
+  const formatted = Math.abs(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return value < 0 ? `-₹${formatted}` : `₹${formatted}`;
+}
+function tradeReturnPercent(trade: ComparisonTrade): string {
+  if (typeof trade.return_pct !== "number") return "—";
+  const value = trade.entry_date || trade.exit_date ? trade.return_pct : trade.return_pct * 100;
+  return `${value.toFixed(2)}%`;
+}
+function tradeHoldingDays(trade: ComparisonTrade): string {
+  if (typeof trade.holding_days === "number") return `${trade.holding_days} days`;
+  return typeof trade.holding_period_seconds === "number" ? `${Math.round(trade.holding_period_seconds / 86400)} days` : "—";
+}
 function diffClass(value: number): string { return value >= 0 ? "bt-diff up" : "bt-diff down"; }
 function withTimeout<T>(promise: Promise<T>, message: string, timeoutMs = 8000): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
     promise.then((value) => { clearTimeout(timer); resolve(value); }, (reason) => { clearTimeout(timer); reject(reason); });
   });
+}
+
+function ComparisonTradeLedger({ row }: { row: MatrixResult }) {
+  const trades = row.result.trades ?? [];
+  const openPosition = row.result.open_position;
+  const detailSummary = trades.length
+    ? `Show ${trades.length} closed trade results${openPosition ? " · 1 position open at end" : ""}`
+    : openPosition ? "No closed trades · 1 position open at end" : "No completed trades in this test";
+
+  return <details className="comparison-trade-details">
+    <summary>{detailSummary}</summary>
+    {(trades.length > 0 || openPosition) && <>
+      <p className="comparison-trade-note">Entry and exit prices include simulated slippage. Fresh comparisons deduct both entry and exit commission from closed trade P&amp;L; saved runs keep the values recorded when they were created. Trade return uses the amount committed to that trade; account change uses the starting account balance, so the percentages differ. An open position is marked at the final close and has no exit costs applied.</p>
+      <div className="bt-table-wrap comparison-trade-table-desktop"><table className="bt-table comparison-trade-table">
+        <thead><tr><th>Trade</th><th>Opened</th><th>Closed</th><th>Direction</th><th>Entry fill</th><th>Exit fill / mark</th><th className="right">P&amp;L</th><th className="right">Return</th><th className="right">Held</th></tr></thead>
+        <tbody>
+          {trades.map((trade, index) => {
+            const tradeId = trade.trade_id ?? trade.id ?? index + 1;
+            const pnl = trade.pnl;
+            const direction = (trade.position ?? trade.direction ?? "long").toUpperCase();
+            return <tr key={String(tradeId)}><td>#{tradeId}</td><td>{tradeDate(trade.entry_date ?? trade.entry_timestamp)}</td><td>{tradeDate(trade.exit_date ?? trade.exit_timestamp)}</td><td>{direction}</td><td>{tradeMoney(trade.entry_price)}</td><td>{tradeMoney(trade.exit_price)}</td><td className={`right ${typeof pnl === "number" && pnl >= 0 ? "bt-result-positive" : "bt-result-negative"}`}>{tradeMoney(pnl)}</td><td className="right">{tradeReturnPercent(trade)}</td><td className="right">{tradeHoldingDays(trade)}</td></tr>;
+          })}
+          {openPosition && <tr key={`open-${row.id}`}><td>Open #{openPosition.trade_id ?? "—"}</td><td>{tradeDate(openPosition.entry_date)}</td><td>Still open</td><td>LONG</td><td>{tradeMoney(openPosition.entry_price)}</td><td>{tradeMoney(openPosition.mark_price)}</td><td className={`right ${(openPosition.unrealized_pnl ?? 0) >= 0 ? "bt-result-positive" : "bt-result-negative"}`}>{tradeMoney(openPosition.unrealized_pnl)}<small className="comparison-cell-hint">unrealized at close</small></td><td className="right">{typeof openPosition.return_pct === "number" ? `${openPosition.return_pct.toFixed(2)}%` : "—"}</td><td className="right">{tradeHoldingDays({ holding_days: openPosition.holding_days })}</td></tr>}
+        </tbody>
+      </table></div>
+      <div className="comparison-trade-cards">
+        {trades.map((trade, index) => {
+          const tradeId = trade.trade_id ?? trade.id ?? index + 1;
+          const pnl = trade.pnl;
+          const direction = (trade.position ?? trade.direction ?? "long").toUpperCase();
+          return <article className="comparison-trade-card" key={String(tradeId)}>
+            <div className="comparison-trade-card-head"><strong>Trade #{tradeId}</strong><span>{direction}</span></div>
+            <div className="comparison-trade-card-dates"><div>Opened<strong>{tradeDate(trade.entry_date ?? trade.entry_timestamp)}</strong></div><div>Closed<strong>{tradeDate(trade.exit_date ?? trade.exit_timestamp)}</strong></div></div>
+            <div className="comparison-trade-card-values">
+              <div><span>Entry price</span><strong>{tradeMoney(trade.entry_price)}</strong></div>
+              <div><span>Exit price</span><strong>{tradeMoney(trade.exit_price)}</strong></div>
+              <div><span>Profit / loss</span><strong className={typeof pnl === "number" && pnl >= 0 ? "bt-result-positive" : "bt-result-negative"}>{tradeMoney(pnl)}</strong></div>
+              <div><span>Return</span><strong>{tradeReturnPercent(trade)}</strong></div>
+              <div><span>Held</span><strong>{tradeHoldingDays(trade)}</strong></div>
+            </div>
+          </article>;
+        })}
+        {openPosition && <article className="comparison-trade-card is-open" key={`open-${row.id}`}>
+          <div className="comparison-trade-card-head"><strong>Position still open</strong><span>Marked at period end</span></div>
+          <div className="comparison-trade-card-dates"><div>Opened<strong>{tradeDate(openPosition.entry_date)}</strong></div><div>As of<strong>{tradeDate(openPosition.as_of_date)}</strong></div></div>
+          <div className="comparison-trade-card-values">
+            <div><span>Entry price</span><strong>{tradeMoney(openPosition.entry_price)}</strong></div>
+            <div><span>Last close</span><strong>{tradeMoney(openPosition.mark_price)}</strong></div>
+            <div><span>Unrealized P&amp;L</span><strong className={(openPosition.unrealized_pnl ?? 0) >= 0 ? "bt-result-positive" : "bt-result-negative"}>{tradeMoney(openPosition.unrealized_pnl)}</strong></div>
+            <div><span>Return</span><strong>{typeof openPosition.return_pct === "number" ? `${openPosition.return_pct.toFixed(2)}%` : "—"}</strong></div>
+            <div><span>Held</span><strong>{tradeHoldingDays({ holding_days: openPosition.holding_days })}</strong></div>
+          </div>
+        </article>}
+      </div>
+    </>}
+  </details>;
 }
 
 export default function ExperimentComparisonPage() {
@@ -112,8 +218,8 @@ export default function ExperimentComparisonPage() {
           Promise.all([savedSma, savedCustom]).then(([sma, custom]) => {
             if (!active) return;
             setSavedRuns([
-              ...sma.map((result) => ({ id: result.run_id, strategyId: "sma_crossover", title: "Saved SMA crossover", result, source: "saved" as const })),
-              ...custom.filter((result) => !result.symbol || result.symbol === symbol).map((result) => ({ id: result.run_id, strategyId: "custom", title: `Saved ${result.strategy_id ?? "strategy"}`, result, source: "saved" as const })),
+              ...sma.map((result) => ({ id: result.run_id, strategyId: "sma_crossover", title: `Saved ${strategyTitle("sma_crossover")}`, result, source: "saved" as const })),
+              ...custom.filter((result) => !result.symbol || result.symbol === symbol).map((result) => ({ id: result.run_id, strategyId: result.strategy_id ?? "custom", title: `Saved ${strategyTitle(result.strategy_id)}`, result, source: "saved" as const })),
             ]);
           }).catch(() => undefined);
         }
@@ -163,16 +269,57 @@ export default function ExperimentComparisonPage() {
   return <div className="backtrack-page"><TopBar /><main className="backtrack-content bt-stack comparison-page">
     <section className="bt-heading-row comparison-heading"><div><div className="bt-kicker"><span className="live-dot" /> COMPARE TESTS</div><h1>Compare rules on the same evidence.</h1><p>Run several strategies against the same NSE symbol, dates, costs and risk limits. This makes the differences between rules easy to see.</p></div><span className="data-source"><Scale size={14} /> Local NSE cache</span></section>
 
-    <section className="comparison-callout" aria-label="How compare tests works"><div className="comparison-callout-icon"><Info size={17} /></div><div><strong>What this page does</strong><p>It reruns each selected rule independently with identical inputs, then puts the historical metrics side by side. Higher return and Sharpe are generally better; a more negative drawdown means a deeper fall.</p><p><strong>What it does not do:</strong> it does not predict the next trade, select a guaranteed winner, or place an order. Use <Link href="/research">Test Strategy</Link> when you want one strategy’s candle-by-candle replay, entry/exit markers and trade P&amp;L.</p></div></section>
+    <section className="comparison-callout" aria-label="How compare tests works"><div className="comparison-callout-icon"><Info size={17} /></div><div><strong>What this page does</strong><p>It reruns each rule with the same stock, dates, costs, and risk limits, then compares the historical results. These numbers describe the selected past period; they do not predict the next trade or place an order.</p><details className="comparison-metric-guide"><summary>What the result columns mean</summary><ul><li><strong>Account change:</strong> how much the simulated account gained or lost from its starting balance. It can include an open position marked at the last close.</li><li><strong>Return vs. variation (Sharpe):</strong> compares average returns with how much they moved around. A negative score is below the model’s 2% annual reference after daily variation is considered; it is not a chance of winning.</li><li><strong>Largest fall:</strong> the biggest drop from an earlier account peak to a later low.</li><li><strong>Trades with a profit:</strong> the share of closed trades with positive recorded P&amp;L.</li></ul></details><p><strong>Trade details are below each strategy.</strong> Open one to see when each position opened and closed, its fill prices, rupee profit or loss, return, and holding time.</p></div></section>
     {loadedFromResearch && <div className="comparison-handoff"><Check size={15} /> Inputs loaded from Test Strategy. Add more rules, then run a fair side-by-side comparison.</div>}
 
-    <section className="bt-panel comparison-panel"><div className="comparison-section-title"><div><span className="bt-eyebrow">1 · EXPERIMENT INPUTS</span><h2>Keep the comparison fair</h2><p>Every selected strategy receives these exact settings.</p></div><span className="text-xs text-slate-500">{availability?.bars ? `${availability.bars.toLocaleString()} cached bars` : "Checking cache…"}</span></div><div className="bt-grid-2 comparison-fields"><div><label className="bt-field-label">NSE symbol</label><SymbolCombobox value={symbol} onChange={(next) => { setSymbol(next); setResults([]); }} /></div><div><label className="bt-field-label">Timeframe</label><select className="bt-field-input" value={timeframe} onChange={(event) => setTimeframe(event.target.value)}>{TIMEFRAMES.map((item) => <option value={item.value} key={item.value}>{item.label} · {item.detail}</option>)}</select></div><div><label className="bt-field-label">From</label><input className="bt-field-input" type="date" value={start} max={end} onChange={(event) => setStart(event.target.value)} /></div><div><label className="bt-field-label">To</label><input className="bt-field-input" type="date" value={end} min={start} max={today} onChange={(event) => setEnd(event.target.value)} /></div><div><label className="bt-field-label">Starting capital (₹)</label><input className="bt-field-input" type="number" min="1" value={initialCapital} onChange={(event) => setInitialCapital(Number(event.target.value))} /><span className="bt-field-help">The simulated account balance.</span></div><div><label className="bt-field-label">Amount per trade (₹)</label><input className="bt-field-input" type="number" min="1" value={positionSize} onChange={(event) => setPositionSize(Number(event.target.value))} /><span className="bt-field-help">The same rupee amount is committed by every rule.</span></div><div><label className="bt-field-label">Maximum loss per trade (%)</label><input className="bt-field-input" type="number" min="0" max="99" step="0.5" value={stopLoss} onChange={(event) => setStopLoss(Number(event.target.value))} /></div><div><label className="bt-field-label">Profit target per trade (%)</label><input className="bt-field-input" type="number" min="0" max="500" step="0.5" value={takeProfit} onChange={(event) => setTakeProfit(Number(event.target.value))} /></div></div>{availability?.bars === 0 && <div className="bt-alert-error" style={{ marginTop: 14 }}>No local history is available for {symbol}. Import it from Data &amp; Providers first.</div>}{error && <div className="bt-alert-error" role="alert" style={{ marginTop: 14 }}>{error}</div>}</section>
+    <section className="bt-panel comparison-panel"><div className="comparison-section-title"><div><span className="bt-eyebrow">1 · EXPERIMENT INPUTS</span><h2>Keep the comparison fair</h2><p>Every selected strategy receives these exact settings.</p></div><span className="text-xs text-slate-500">{availability?.bars ? `${availability.bars.toLocaleString()} cached bars` : "Checking cache…"}</span></div><div className="bt-grid-2 comparison-fields"><div><label className="bt-field-label">NSE symbol</label><SymbolCombobox value={symbol} onChange={(next) => { setSymbol(next); setResults([]); }} /></div><div><label className="bt-field-label">Timeframe</label><SelectMenu aria-label="Comparison timeframe" className="bt-field-input" value={timeframe} onChange={(event) => setTimeframe(event.target.value)}>{TIMEFRAMES.map((item) => <option value={item.value} key={item.value}>{item.label} · {item.detail}</option>)}</SelectMenu></div><div><label className="bt-field-label">From</label><input className="bt-field-input" type="date" value={start} max={end} onChange={(event) => setStart(event.target.value)} /></div><div><label className="bt-field-label">To</label><input className="bt-field-input" type="date" value={end} min={start} max={today} onChange={(event) => setEnd(event.target.value)} /></div><div><label className="bt-field-label">Starting capital (₹)</label><input className="bt-field-input" type="number" min="1" value={initialCapital} onChange={(event) => setInitialCapital(Number(event.target.value))} /><span className="bt-field-help">The simulated account balance.</span></div><div><label className="bt-field-label">Amount per trade (₹)</label><input className="bt-field-input" type="number" min="1" value={positionSize} onChange={(event) => setPositionSize(Number(event.target.value))} /><span className="bt-field-help">The same rupee amount is committed by every rule.</span></div><div><label className="bt-field-label">Maximum loss per trade (%)</label><input className="bt-field-input" type="number" min="0" max="99" step="0.5" value={stopLoss} onChange={(event) => setStopLoss(Number(event.target.value))} /></div><div><label className="bt-field-label">Profit target per trade (%)</label><input className="bt-field-input" type="number" min="0" max="500" step="0.5" value={takeProfit} onChange={(event) => setTakeProfit(Number(event.target.value))} /></div></div>{availability?.bars === 0 && <div className="bt-alert-error" style={{ marginTop: 14 }}>No local history is available for {symbol}. Import it from Data &amp; Providers first.</div>}{error && <div className="bt-alert-error" role="alert" style={{ marginTop: 14 }}>{error}</div>}</section>
 
     <section className="bt-panel comparison-panel"><div className="comparison-section-title"><div><span className="bt-eyebrow">2 · STRATEGY SET</span><h2>Choose the rules to compare</h2><p>These are deterministic, commonly used templates—not recommendations.</p></div><div className="comparison-search"><Search size={14} /><input aria-label="Search strategies" placeholder="Search by name or style" value={search} onChange={(event) => setSearch(event.target.value)} /></div></div><div className="comparison-strategy-grid">{visibleStrategies.map((strategy) => { const selected = selectedStrategies.includes(strategy.id); return <button key={strategy.id} type="button" aria-pressed={selected} onClick={() => toggleStrategy(strategy.id)} className={`comparison-strategy-card${selected ? " is-selected" : ""}`}><div className="bt-row-between"><span className="comparison-family">{strategy.family}</span><span className="comparison-check">{selected ? <Check size={15} /> : "＋"}</span></div><strong>{strategy.title}</strong><p>{strategy.description}</p><small>{strategy.use}</small><code>{strategy.parameters}</code></button>; })}</div><div className="comparison-run-row"><span className="text-xs text-slate-500">{selectedStrategies.length} selected · same dates, costs and risk settings</span><button className="bt-primary" onClick={() => void runMatrix()} disabled={running || !availability?.bars}>{running ? <><Loader2 size={14} className="spin" /> Running {selectedStrategies.length} tests…</> : <><Play size={14} /> Run comparison</>}</button></div></section>
 
-    <div className="bt-kpi-grid comparison-kpis"><div className="bt-stat-card mint"><span>Best total return</span><strong>{highestReturn ? percentage(metric(highestReturn.result, "return")) : "—"}</strong><small>{highestReturn?.title ?? "Run a comparison first"}</small><TrendingUp /></div><div className="bt-stat-card blue"><span>Best Sharpe</span><strong>{bestSharpe ? metric(bestSharpe.result, "sharpe_ratio").toFixed(2) : "—"}</strong><small>{bestSharpe?.title ?? "Risk-adjusted return"}</small><Scale /></div><div className="bt-stat-card rose"><span>Deepest drawdown</span><strong>{lowestDrawdown ? percentage(metric(lowestDrawdown.result, "drawdown")) : "—"}</strong><small>{lowestDrawdown?.title ?? "Most negative peak-to-trough fall"}</small><AlertTriangle /></div><div className="bt-stat-card violet"><span>Runs completed</span><strong>{results.length}</strong><small>Fresh tests in this matrix</small><Scale /></div></div>
+    <div className="bt-kpi-grid comparison-kpis"><div className="bt-stat-card mint"><span>Best account change</span><strong>{highestReturn ? percentage(metric(highestReturn.result, "return")) : "—"}</strong><small>{highestReturn?.title ?? "Run a comparison first"}</small><TrendingUp /></div><div className="bt-stat-card blue"><span>Highest return vs. variation</span><strong>{bestSharpe ? metric(bestSharpe.result, "sharpe_ratio").toFixed(2) : "—"}</strong><small>{bestSharpe ? `${bestSharpe.title}${metric(bestSharpe.result, "sharpe_ratio") < 0 ? " · still below zero" : ""}` : "Higher is generally better"}</small><Scale /></div><div className="bt-stat-card rose"><span>Largest historical fall</span><strong>{lowestDrawdown ? percentage(metric(lowestDrawdown.result, "drawdown")) : "—"}</strong><small>{lowestDrawdown?.title ?? "Largest drop from an earlier account peak"}</small><AlertTriangle /></div><div className="bt-stat-card violet"><span>Results shown</span><strong>{results.length}</strong><small>Runs in this comparison</small><Scale /></div></div>
 
-    <section className="bt-panel comparison-results"><div className="comparison-results-head"><div><span className="bt-eyebrow">3 · RESULTS</span><h2>Side-by-side historical outcome</h2><p>Use the reference row to see each strategy’s return difference. A metric is evidence, not a promise.</p></div>{results.length > 0 && <label className="comparison-baseline">Reference row<select className="bt-sort-select" value={baseline?.id ?? ""} onChange={(event) => setBaselineId(event.target.value)}>{results.map((row) => <option key={row.id} value={row.id}>{row.title}</option>)}</select></label>}</div>{loading ? <div className="comparison-empty"><Loader2 size={18} className="spin" /> Loading saved tests…</div> : results.length === 0 ? <div className="comparison-empty"><Scale size={20} /><strong>No comparison has been run yet.</strong><span>Select at least one strategy above. Previous saved tests are shown below as context.</span></div> : <div className="bt-table-wrap"><table className="bt-table"><thead><tr><th>Strategy / run</th><th className="right">Total return</th><th className="right">Sharpe</th><th className="right">Max drawdown</th><th className="right">Win rate</th><th className="right">Trades</th></tr></thead><tbody>{results.map((row) => { const base = baseline ? metric(baseline.result, "return") : 0; const difference = metric(row.result, "return") - base; return <tr key={row.id} className={row.id === baseline?.id ? "baseline" : undefined}><td><strong>{row.title}</strong><br /><span className="bt-val-muted">{row.result.timeframe ?? timeframe} · {symbol} · {start} to {end}</span></td><td className="right">{percentage(metric(row.result, "return"))} <span className={diffClass(difference)}>{difference >= 0 ? "+" : ""}{(difference * 100).toFixed(2)}%</span></td><td className="right">{metric(row.result, "sharpe_ratio").toFixed(2)}</td><td className="right">{percentage(metric(row.result, "drawdown"))}</td><td className="right">{percentage(metric(row.result, "win_rate"))}</td><td className="right">{Math.round(metric(row.result, "trades"))}</td></tr>; })}</tbody></table></div>}</section>
+    <section className="bt-panel comparison-results">
+      <div className="comparison-results-head">
+        <div><span className="bt-eyebrow">3 · RESULTS</span><h2>Side-by-side historical outcome</h2><p>Use the reference row to see each strategy’s return difference. A metric is evidence, not a promise.</p></div>
+        {results.length > 0 && <label className="comparison-baseline">Reference row<SelectMenu aria-label="Reference row" className="bt-sort-select" value={baseline?.id ?? ""} onChange={(event) => setBaselineId(event.target.value)}>{results.map((row) => <option key={row.id} value={row.id}>{row.title}</option>)}</SelectMenu></label>}
+      </div>
+      {loading ? <div className="comparison-empty"><Loader2 size={18} className="spin" /> Loading saved tests…</div> : results.length === 0 ? <div className="comparison-empty"><Scale size={20} /><strong>No comparison has been run yet.</strong><span>Select at least one strategy above. Previous saved tests are shown below as context.</span></div> : <>
+      <div className="bt-table-wrap comparison-result-table-wrap"><table className="bt-table comparison-result-table">
+        <thead><tr><th>Strategy / run</th><th className="right">Account change</th><th className="right">Return vs variation</th><th className="right">Largest fall</th><th className="right">Trades with a profit</th><th className="right">Closed trades</th></tr></thead>
+        <tbody>{results.map((row) => {
+          const base = baseline ? metric(baseline.result, "return") : 0;
+          const difference = metric(row.result, "return") - base;
+          return <Fragment key={row.id}>
+            <tr className={row.id === baseline?.id ? "baseline" : undefined}>
+              <td><strong>{row.title}</strong><br /><span className="bt-val-muted">{row.result.timeframe ?? timeframe} · {symbol} · {start} to {end}</span></td>
+              <td className="right">{percentage(metric(row.result, "return"))} <span className={diffClass(difference)}>{difference >= 0 ? "+" : ""}{(difference * 100).toFixed(2)}%</span></td>
+              <td className="right"><strong>{metric(row.result, "sharpe_ratio").toFixed(2)}</strong><small className="comparison-cell-hint">higher is generally better</small></td>
+              <td className="right">{percentage(metric(row.result, "drawdown"))}</td>
+              <td className="right">{percentage(metric(row.result, "win_rate"))}</td>
+              <td className="right">{Math.round(metric(row.result, "trades"))}</td>
+            </tr>
+            <tr className="comparison-trade-details-row"><td colSpan={6}><ComparisonTradeLedger row={row} /></td></tr>
+          </Fragment>;
+        })}</tbody>
+      </table></div>
+      <div className="comparison-mobile-results">
+        {results.map((row) => {
+          const difference = metric(row.result, "return") - (baseline ? metric(baseline.result, "return") : 0);
+          return <article className="comparison-mobile-result-card" key={row.id}>
+            <div className="comparison-mobile-result-head"><div><h3>{row.title}</h3><p>{row.result.timeframe ?? timeframe} · {symbol}<br />{start} to {end}</p></div><div className="comparison-mobile-account-change"><span>Account change</span><strong className={metric(row.result, "return") >= 0 ? "bt-result-positive" : "bt-result-negative"}>{percentage(metric(row.result, "return"))}</strong></div></div>
+            <p className="comparison-mobile-reference">{difference >= 0 ? "+" : ""}{(difference * 100).toFixed(2)}% versus selected reference</p>
+            <div className="comparison-mobile-metrics">
+              <div><span>Trades with a profit</span><strong>{percentage(metric(row.result, "win_rate"))}</strong></div>
+              <div><span>Largest account fall</span><strong>{percentage(metric(row.result, "drawdown"))}</strong></div>
+              <div><span>Closed trades</span><strong>{Math.round(metric(row.result, "trades"))}</strong></div>
+              <div><span>Return vs variation (Sharpe)</span><strong>{metric(row.result, "sharpe_ratio").toFixed(2)}</strong><small>Higher is generally better; a negative score is below the 2% annual reference.</small></div>
+            </div>
+            <ComparisonTradeLedger row={row} />
+          </article>;
+        })}
+      </div>
+      </>}
+    </section>
 
     {savedRuns.length > 0 && <section className="comparison-saved"><div><span className="bt-eyebrow">SAVED CONTEXT</span><h2>Previous tests</h2><p>Saved runs are kept separate from the fresh matrix so you do not mistake different dates or settings for a fair comparison.</p></div><div className="comparison-saved-list">{savedRuns.slice(0, 6).map((row) => <button key={row.id} type="button" onClick={() => { setResults((current) => current.some((item) => item.id === row.id) ? current : [...current, row]); setBaselineId(row.id); }}>{row.title}<span>{percentage(metric(row.result, "return"))} · {row.id}</span></button>)}</div></section>}
     <div className="comparison-footer"><Info size={15} /><span>For detailed candle replay, indicator lines, entry/exit markers and realized/unrealized trade P&amp;L, open a single run in Test Strategy.</span><Link href="/research" className="bt-secondary">Open Test Strategy</Link></div>

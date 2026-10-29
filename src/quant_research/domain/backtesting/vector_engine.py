@@ -33,6 +33,7 @@ SUPPORTED_STRATEGY_IDS: tuple[str, ...] = (
     "ict_liquidity_fvg",
     "multi_timeframe_trend",
 )
+VECTOR_ENGINE_VERSION = "2"
 
 
 @dataclass
@@ -55,6 +56,24 @@ class TradeRecord:
 
 
 @dataclass
+class OpenPositionRecord:
+    """A position still held at the final bar, marked at its close."""
+
+    trade_id: int
+    symbol: str
+    entry_date: str
+    as_of_date: str
+    entry_price: float
+    mark_price: float
+    quantity: float
+    entry_amount: float
+    market_value: float
+    unrealized_pnl: float
+    return_pct: float
+    holding_days: int
+
+
+@dataclass
 class VectorBacktestResult:
     """Complete result container for a vectorized backtest run."""
 
@@ -72,6 +91,7 @@ class VectorBacktestResult:
     indicators: dict[str, list[dict[str, float | str | None]]] = field(default_factory=dict)
     signals: list[dict[str, float | int | str]] = field(default_factory=list)
     trade_path: list[dict[str, float | str]] = field(default_factory=list)
+    open_position: OpenPositionRecord | None = None
 
 
 def run_rule_backtest(
@@ -262,6 +282,7 @@ def run_rule_backtest(
     trade_path: list[dict[str, float | str]] = []
     trade_counter = 1
     current_entry_amount = 0.0
+    current_entry_commission = 0.0
     current_max_unrealized = 0.0
     current_min_unrealized = 0.0
 
@@ -286,10 +307,10 @@ def run_rule_backtest(
             fill_exit_price = curr_open * (1.0 - slippage_pct)
             gross_pnl = (fill_exit_price - entry_price) * position
             exit_comm = fill_exit_price * position * commission_pct
-            net_pnl = gross_pnl - exit_comm
+            net_pnl = gross_pnl - current_entry_commission - exit_comm
 
             cash += (fill_exit_price * position) - exit_comm
-            ret_pct = (fill_exit_price / entry_price) - 1.0
+            ret_pct = net_pnl / current_entry_amount if current_entry_amount > 0 else 0.0
 
             trades.append(
                 TradeRecord(
@@ -316,6 +337,7 @@ def run_rule_backtest(
             position = 0.0
             entry_price = 0.0
             current_entry_amount = 0.0
+            current_entry_commission = 0.0
             current_max_unrealized = 0.0
             current_min_unrealized = 0.0
 
@@ -333,6 +355,7 @@ def run_rule_backtest(
             entry_price = fill_entry_price
             entry_idx = i
             current_entry_amount = capital_to_invest
+            current_entry_commission = entry_comm
             current_max_unrealized = 0.0
             current_min_unrealized = 0.0
 
@@ -386,6 +409,26 @@ def run_rule_backtest(
             }
         )
 
+    open_position = None
+    if position > 0 and not dates.empty:
+        mark_price = float(close.iloc[-1])
+        market_value = position * mark_price
+        unrealized_pnl = market_value - current_entry_amount - current_entry_commission
+        open_position = OpenPositionRecord(
+            trade_id=trade_counter,
+            symbol=symbol,
+            entry_date=str(dates[entry_idx].strftime("%Y-%m-%d") if hasattr(dates[entry_idx], "strftime") else dates[entry_idx]),
+            as_of_date=str(dates[-1].strftime("%Y-%m-%d") if hasattr(dates[-1], "strftime") else dates[-1]),
+            entry_price=round(entry_price, 2),
+            mark_price=round(mark_price, 2),
+            quantity=round(position, 6),
+            entry_amount=round(current_entry_amount, 2),
+            market_value=round(market_value, 2),
+            unrealized_pnl=round(unrealized_pnl, 2),
+            return_pct=round(unrealized_pnl / current_entry_amount * 100.0, 2) if current_entry_amount > 0 else 0.0,
+            holding_days=len(dates) - 1 - entry_idx,
+        )
+
     return VectorBacktestResult(
         run_id=run_id,
         symbol=symbol,
@@ -401,4 +444,5 @@ def run_rule_backtest(
         indicators=chart_indicators,
         signals=chart_signals,
         trade_path=trade_path,
+        open_position=open_position,
     )

@@ -155,6 +155,65 @@ def test_fixed_trade_amount_and_chart_signals(mock_ohlcv_data: pd.DataFrame) -> 
     assert all("unrealized_pnl" in point for point in result.trade_path)
 
 
+def test_trade_profit_and_return_include_both_commissions(mock_ohlcv_data: pd.DataFrame) -> None:
+    commission_pct = 0.001
+    result = run_rule_backtest(
+        df=mock_ohlcv_data,
+        symbol="RELIANCE",
+        strategy_id="sma_crossover",
+        fast_ema=10,
+        slow_ema=30,
+        initial_capital=100000.0,
+        commission_pct=commission_pct,
+        slippage_pct=0.0,
+        position_size_amount=5000.0,
+    )
+
+    assert result.trades
+    for trade in result.trades:
+        shares = trade.entry_amount / trade.entry_price
+        gross_pnl = (trade.exit_price - trade.entry_price) * shares
+        expected_net_pnl = gross_pnl - trade.entry_amount * commission_pct - trade.exit_price * shares * commission_pct
+        # The API rounds fill prices and committed capital to cents, so a small
+        # difference is expected when rebuilding P&L from the displayed fields.
+        assert trade.pnl == pytest.approx(expected_net_pnl, abs=0.5)
+        assert trade.return_pct == pytest.approx(expected_net_pnl / trade.entry_amount * 100.0, abs=0.1)
+
+
+def test_open_position_at_period_end_is_reported_with_mark_to_market_pnl() -> None:
+    closes = [100.0] * 10 + [101.0, 103.0, 105.0, 107.0, 109.0, 111.0, 113.0, 115.0, 117.0]
+    dates = pd.date_range("2025-01-01", periods=len(closes), freq="D")
+    frame = pd.DataFrame(
+        {
+            "open": closes,
+            "high": [value + 1.0 for value in closes],
+            "low": [value - 1.0 for value in closes],
+            "close": closes,
+            "volume": [1000.0] * len(closes),
+        },
+        index=dates,
+    )
+
+    result = run_rule_backtest(
+        df=frame,
+        symbol="RELIANCE",
+        strategy_id="sma_crossover",
+        fast_ema=2,
+        slow_ema=5,
+        initial_capital=50000.0,
+        commission_pct=0.001,
+        slippage_pct=0.0,
+        position_size_amount=5000.0,
+    )
+
+    assert result.trades == []
+    assert result.open_position is not None
+    assert result.open_position.as_of_date == dates[-1].strftime("%Y-%m-%d")
+    assert result.open_position.entry_date < result.open_position.as_of_date
+    expected_mark_to_market = result.open_position.market_value - result.open_position.entry_amount - result.open_position.entry_amount * 0.001
+    assert result.open_position.unrealized_pnl == pytest.approx(expected_mark_to_market, abs=0.05)
+
+
 def test_robustness_diagnostics(mock_ohlcv_data: pd.DataFrame) -> None:
     """Verify parameter sensitivity grid, Monte Carlo, and stress test scenarios."""
     report = analyze_robustness(

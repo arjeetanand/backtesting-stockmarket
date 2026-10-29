@@ -16,7 +16,7 @@ Backtrack is a local, research-only Indian-market backtesting application. It us
 | Page | User task | Current behavior |
 | --- | --- | --- |
 | Home | Start the unified research flow | Follow the linked NSE data → research → saved result steps, then open optional tools; recent tests come from the local API |
-| New research | Turn an idea into historical evidence | Review a draft rule, confirm the assumptions, ensure local NSE history, then explicitly run the simulation |
+| New research | Turn an idea into historical evidence | Compare daily relative volume and next-session outcomes, review a draft rule, confirm the assumptions, ensure local NSE history, then explicitly run the simulation |
 | Stock research | Prepare a simple NIFTY 50 check or explain one stock | Scan the built-in NSE constituent snapshot, show only a fresh trigger with a passed held-out screen, or search a local symbol for ranges, indicators, levels, candles, trade counts, and the run log |
 | Build rules | Create a rule strategy | Configure indicators, entries, exits, risk, fees, and slippage |
 | Use a YouTube strategy | Bring in an online idea | Extract a reviewable draft from a URL, captions, or pasted transcript; human review is required |
@@ -24,7 +24,7 @@ Backtrack is a local, research-only Indian-market backtesting application. It us
 | Market Insights | Review the selected index | Switch NIFTY 50, Sensex, Bank Nifty, or NIFTY 500; inspect 1D/1W/1M/3M breadth, stock/sector heatmaps, and top movers from local daily candles |
 | Market Scanner | Review local market scans | Run formula and historical scans, review morning-plan levels, and inspect daily structure-zone and pressure-proxy views |
 | My tests | Reopen prior tests | Read persisted backtest results and details from SQLite |
-| Compare tests | Compare alternatives | Compare saved configurations and performance metrics |
+| Compare tests | Compare alternatives | Compare account change, return vs variation, largest fall, and trades with a profit; expand each result to inspect dated trade fills and P&L |
 | Check reliability | Challenge stability | Run parameter sensitivity, Monte Carlo, walk-forward, and stress checks |
 | Risk Engine | Check validity | Review look-ahead, data quality, overfitting, and risk diagnostics |
 | ML Lab | Explore predictive features | Run chronological, past-only, cost-aware research experiments |
@@ -88,6 +88,16 @@ The visible checkpoints describe the actual in-app sequence; they do not imply t
 The research chart is populated only from locally validated NSE bars or the returned backtest result. It sorts and de-duplicates timestamps, omits invalid numeric points, preserves missing volume as unavailable, and shows explicit loading, empty, and error states. The current main workflow is daily data; intraday or unsupported timeframes must be imported and normalized before they can be charted or tested.
 
 Results are historical evidence, not predictions or financial advice.
+
+### Volume vs. next-day move
+
+In **New research**, choose the stock and dates, then run **Volume vs. next-day move**. The study compares each session's volume with the average of the preceding 20 daily sessions, excluding the session being measured. It groups same-day moves as up (above +0.5%), down (below −0.5%), or near-flat, and reports the next available session's close-to-close up/down share, average return, median return, and sample count for volume bands below 1×, 1–1.5×, 1.5–2×, 2–3×, and 3× or more.
+
+Only pairs whose signal day and next available session both fall within the selected dates are counted. A cell with fewer than 30 observations is exploratory. The study describes saved daily history; it is not a forecast, trading recommendation, buyer/seller imbalance, or order-flow measure. Stored close prices are not adjusted for corporate actions.
+
+### Compare tests and trade details
+
+**Compare tests** runs each selected strategy with identical inputs. Account change is the percent change from starting capital; return vs. variation (Sharpe) compares average returns with daily movement; largest fall is the peak-to-trough account decline; and trades with a profit is the share of closed trades with positive P&L. Expand **Show N trade results** under a strategy to review open/close dates, simulated fill prices, rupee profit or loss, return, and holding time. Trade return is measured against the amount committed to that trade, while account change uses starting capital. Fresh runs include both entry and exit commissions in trade P&L; previously saved runs preserve the values recorded when they were created. On narrow screens, result and trade details use labeled cards instead of a wide table.
 
 ## Single-stock research
 
