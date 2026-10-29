@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import MarketFlowBoard from "@/components/scanner/MarketFlowBoard";
+import SelectMenu from "@/components/ui/SelectMenu";
 import { getUnifiedComparisonList } from "@/lib/strategy-library";
 import {
   getScannerCatalog,
@@ -104,6 +105,21 @@ type StockLeaderboardItem = {
   trade_count: number;
 };
 
+type SavedWatchlistSetup = { symbol?: string; setup_type?: string; entry_price?: number };
+
+function watchlistSetupKey(item: { symbol: string; setup_type: string; entry_price: number }): string {
+  return `${item.symbol.trim().toUpperCase()}|${item.setup_type.trim()}|${Number(item.entry_price).toFixed(2)}`;
+}
+
+function breakoutSetupKey(setup: BreakoutSetup): string | null {
+  if (!setup.morning_plan) return null;
+  return watchlistSetupKey({
+    symbol: setup.symbol,
+    setup_type: setup.setup_type,
+    entry_price: setup.morning_plan.entry_trigger,
+  });
+}
+
 function pct(val: number | undefined, digits = 1): string {
   return Number.isFinite(val) ? `${(Number(val) * 100).toFixed(digits)}%` : "—";
 }
@@ -177,7 +193,7 @@ export default function MarketScannerPage() {
 
   // Screener state
   const [universe, setUniverse] = useState("nifty50");
-  const [formulaId, setFormulaId] = useState("sma_golden_cross");
+  const [formulaId, setFormulaId] = useState(FALLBACK_CATALOG[0]?.id ?? "sma_crossover");
   const [formulaParameters, setFormulaParameters] = useState<Record<string, string | number | boolean>>({});
   const [strategyType, setStrategyType] = useState("sma_crossover");
   const [scanStart, setScanStart] = useState(defaultScanStart);
@@ -354,16 +370,36 @@ export default function MarketScannerPage() {
     }
   };
 
-  const [bookmarkingSym, setBookmarkingSym] = useState<string | null>(null);
+  const [bookmarkingKey, setBookmarkingKey] = useState<string | null>(null);
+  const [savedSetupKeys, setSavedSetupKeys] = useState<Set<string>>(() => new Set());
+  const [watchlistLoading, setWatchlistLoading] = useState(true);
   const [bookmarkMessage, setBookmarkMessage] = useState<string | null>(null);
   const [bookmarkError, setBookmarkError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch(`${API_BASE_URL}/watchlist`).then(async (response) => {
+      if (!response.ok) return;
+      const saved = await response.json() as SavedWatchlistSetup[];
+      if (cancelled || !Array.isArray(saved)) return;
+      setSavedSetupKeys(new Set(saved.flatMap((item) => {
+        if (!item.symbol || !item.setup_type || !Number.isFinite(item.entry_price)) return [];
+        return [watchlistSetupKey({ symbol: item.symbol, setup_type: item.setup_type, entry_price: Number(item.entry_price) })];
+      })));
+    }).catch(() => undefined).finally(() => {
+      if (!cancelled) setWatchlistLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const addToWatchlist = async (setup: BreakoutSetup) => {
     if (!setup.morning_plan) {
       setBookmarkError(`${setup.symbol} has no usable prior-session range for a conditional plan.`);
       return;
     }
-    setBookmarkingSym(setup.symbol);
+    const key = breakoutSetupKey(setup);
+    if (!key || savedSetupKeys.has(key) || bookmarkingKey === key) return;
+    setBookmarkingKey(key);
     setBookmarkMessage(null);
     setBookmarkError(null);
     try {
@@ -381,11 +417,12 @@ export default function MarketScannerPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail ?? "Failed to add setup.");
+      setSavedSetupKeys((current) => new Set(current).add(key));
       setBookmarkMessage(`${setup.symbol} plan saved with its prior-high trigger, prior-low stop, and 2R target. The watchlist uses local daily bars and cannot confirm an intraday fill.`);
     } catch (err) {
       setBookmarkError(err instanceof Error ? err.message : "Error adding to watchlist.");
     } finally {
-      setBookmarkingSym(null);
+      setBookmarkingKey(null);
     }
   };
 
@@ -479,16 +516,16 @@ export default function MarketScannerPage() {
         <section className="bt-heading-row bt-scanner-heading">
           <div>
             <div className="bt-kicker">
-              <span className="live-dot" /> LOCAL NSE · MORNING RESEARCH
+              LOCAL NSE STOCK SCANNER
             </div>
-            <h1>Market Scanner &amp; Morning Plan</h1>
+            <h1>Find stocks and test strategies</h1>
             <p>
-              Review ranked technical candidates and conditional price levels from the latest available local NSE daily candles.
+              Choose a stock group and a rule to find matches in your saved NSE daily history. You can also compare a strategy over past dates or scan for breakout setups and daily price zones. These are historical research tools, not live prices or predictions.
             </p>
           </div>
           <div className="bt-heading-actions">
             <span className="data-source">
-              <ShieldCheck size={14} /> Local Official Cache · Fast Vectorized
+              <ShieldCheck size={14} /> Official NSE daily data · Saved locally
             </span>
           </div>
         </section>
@@ -500,7 +537,7 @@ export default function MarketScannerPage() {
             className={`scanner-tab-btn ${activeTab === "heatmap" ? "is-active" : ""}`}
             onClick={() => setActiveTab("heatmap")}
           >
-            <Globe size={16} /> Universe Screener &amp; Sector Heatmap
+            <Globe size={16} /> Rule scan &amp; sectors
           </button>
           <button
             type="button"
@@ -538,21 +575,21 @@ export default function MarketScannerPage() {
               <aside className="bt-panel scanner-filter-rail">
                 <div className="scanner-rail-heading">
                   <span className="bt-eyebrow">SCREEN NOW</span>
-                  <h2>Choose a formula</h2>
-                  <p>Build a local NSE screener configuration, then run it explicitly when you are ready.</p>
+                  <h2>Choose a rule</h2>
+                  <p>Select a technical rule and stock group. Press Run scan to find matches in the local daily data.</p>
                 </div>
 
                 <label className="scanner-rail-field">
-                  <span>Formula library</span>
-                  <select className="bt-field-input" value={formulaId} onChange={(event) => { setFormulaId(event.target.value); setFormulaParameters({}); }}>
+                  <span>Rule library</span>
+                  <SelectMenu aria-label="Formula library" className="bt-field-input" value={formulaId} onChange={(event) => { setFormulaId(event.target.value); setFormulaParameters({}); }}>
                     {scannerCatalog.formulas.map((formula) => <option key={formula.id} value={formula.id}>{formula.name}</option>)}
-                  </select>
+                  </SelectMenu>
                 </label>
                 <label className="scanner-rail-field">
-                  <span>Target universe</span>
-                  <select className="bt-field-input" value={universe} onChange={(event) => setUniverse(event.target.value)}>
+                  <span>Stock group</span>
+                  <SelectMenu aria-label="Target universe" className="bt-field-input" value={universe} onChange={(event) => setUniverse(event.target.value)}>
                     {availableUniverses.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-                  </select>
+                  </SelectMenu>
                 </label>
 
                 {activeFormula && (
@@ -567,9 +604,9 @@ export default function MarketScannerPage() {
                   <label className="scanner-rail-field" key={parameter.id}>
                     <span>{parameter.label}</span>
                     {parameter.options?.length ? (
-                      <select className="bt-field-input" value={String(formulaParameters[parameter.id] ?? parameter.default ?? "")} onChange={(event) => setFormulaParameters((current) => ({ ...current, [parameter.id]: event.target.value }))}>
+                      <SelectMenu aria-label={parameter.label} className="bt-field-input" value={String(formulaParameters[parameter.id] ?? parameter.default ?? "")} onChange={(event) => setFormulaParameters((current) => ({ ...current, [parameter.id]: event.target.value }))}>
                         {parameter.options.map((option) => <option key={String(option.value)} value={String(option.value)}>{option.label}</option>)}
-                      </select>
+                      </SelectMenu>
                     ) : (
                       <input className="bt-field-input" type={parameter.type === "number" ? "number" : "text"} value={String(formulaParameters[parameter.id] ?? parameter.default ?? "")} min={parameter.min} max={parameter.max} onChange={(event) => setFormulaParameters((current) => ({ ...current, [parameter.id]: parameter.type === "number" ? Number(event.target.value) : event.target.value }))} />
                     )}
@@ -585,7 +622,7 @@ export default function MarketScannerPage() {
                   <span>Configuration status</span>
                   <strong>{screenerIsStale ? "Changed · rerun required" : screenerResult ? "Results match filters" : "Ready to run"}</strong>
                 </div>
-                <button type="button" className="bt-primary scanner-rail-run" onClick={() => void runScreener()} disabled={loadingScreener}>
+                <button type="button" className="bt-primary scanner-rail-run" onClick={() => void runScreener()} disabled={catalogLoading || loadingScreener || !scannerCatalog.formulas.some((formula) => formula.id === formulaId)}>
                   {loadingScreener ? <RefreshCw size={13} className="spin" /> : <Play size={13} />}
                   {loadingScreener ? "Running…" : "Run scan"}
                 </button>
@@ -593,7 +630,7 @@ export default function MarketScannerPage() {
                 <div className="scanner-rail-source"><ShieldCheck size={13} /><span>Formula catalog from the API<br />official NSE daily cache only</span></div>
 
                 <div className="scanner-saved-scans">
-                  <div className="scanner-saved-heading"><ListChecks size={13} /><span>FORMULA LIBRARY</span></div>
+                  <div className="scanner-saved-heading"><ListChecks size={13} /><span>AVAILABLE RULES</span></div>
                   <small className="scanner-storage-note">{catalogLoading ? "Loading catalog…" : catalogError ? "Compatibility catalog · API unavailable" : `${scannerCatalog.formulas.length} formulas available`}</small>
                   <small className="scanner-storage-note">{activeFormula?.requiredFields.length ? `Needs: ${activeFormula.requiredFields.join(", ")}` : "Technical fields are validated by the backend."}</small>
                 </div>
@@ -641,7 +678,7 @@ export default function MarketScannerPage() {
                 )}
 
                 {!loadingScreener && !screenerResult && !screenerError && (
-                  <div className="bt-panel scanner-reference-empty"><ListChecks size={21} /><strong>Ready for an explicit scan</strong><span>Choose a formula and universe, review the dates, then press Run scan. Changing filters never starts a request.</span></div>
+                  <div className="bt-panel scanner-reference-empty"><ListChecks size={21} /><strong>Ready when you are</strong><span>Choose a rule and stock group, review the dates, then press Run scan. Changing filters never starts a request.</span></div>
                 )}
 
                 {!loadingScreener && screenerResult && (
@@ -679,11 +716,11 @@ export default function MarketScannerPage() {
                         </div>
                         <label className="scanner-heatmap-select">
                           <span>Color by</span>
-                          <select className="bt-field-input" value={heatmapMetric} onChange={(event) => setHeatmapMetric(event.target.value as HeatmapMetric)}>
+                          <SelectMenu aria-label="Heatmap color metric" className="bt-field-input" value={heatmapMetric} onChange={(event) => setHeatmapMetric(event.target.value as HeatmapMetric)}>
                             <option value="strategy">Strategy return</option>
                             <option value="alpha">Outperformance vs B&amp;H</option>
                             <option value="win_rate">Win rate</option>
-                          </select>
+                          </SelectMenu>
                         </label>
                       </div>
 
@@ -749,8 +786,8 @@ export default function MarketScannerPage() {
 
                     <div className="scanner-stock-grid">
                       <div className="scanner-leaderboard-tools" aria-label="Leaderboard controls">
-                        <label><span>Find a stock or sector</span><input className="bt-field-input" value={leaderboardQuery} onChange={(event) => setLeaderboardQuery(event.target.value)} placeholder="RELIANCE, banking…" /></label>
-                        <label><span>Rank by</span><select className="bt-field-input" value={leaderboardSort} onChange={(event) => setLeaderboardSort(event.target.value as LeaderboardSort)}><option value="strategy_return">Strategy return</option><option value="alpha">Alpha vs buy &amp; hold</option><option value="win_rate">Win rate</option><option value="drawdown">Lowest drawdown</option><option value="sharpe">Sharpe ratio</option></select></label>
+                        <label className="scanner-result-search"><span>Search completed results</span><input className="bt-field-input" type="search" value={leaderboardQuery} onChange={(event) => setLeaderboardQuery(event.target.value)} placeholder="Ticker, company, or sector" /><small>Filters this scan only. Choose “All imported stocks” for wider coverage, or search the NSE catalogue in <Link className="bt-link" href="/data">NSE data</Link>.</small></label>
+                        <label><span>Rank by</span><SelectMenu aria-label="Leaderboard rank" className="bt-field-input" value={leaderboardSort} onChange={(event) => setLeaderboardSort(event.target.value as LeaderboardSort)}><option value="strategy_return">Strategy return</option><option value="alpha">Alpha vs buy &amp; hold</option><option value="win_rate">Win rate</option><option value="drawdown">Lowest drawdown</option><option value="sharpe">Sharpe ratio</option></SelectMenu></label>
                         <button type="button" className="bt-secondary-btn" onClick={exportLeaderboard} disabled={!filteredLeaderboard.length}><Database size={13} /> Export CSV</button>
                       </div>
                       {visibleLeaderboard.map((item) => {
@@ -789,7 +826,8 @@ export default function MarketScannerPage() {
               <div className="scanner-control-grid">
                 <label className="ml-control-field">
                   <span className="bt-field-label">Target Universe</span>
-                  <select
+                  <SelectMenu
+                    aria-label="Target universe"
                     className="bt-field-input"
                     value={universe}
                     onChange={(e) => setUniverse(e.target.value)}
@@ -797,18 +835,19 @@ export default function MarketScannerPage() {
                     <option value="nifty50">NIFTY 50 (Top Bluechips)</option>
                     <option value="nifty500">NIFTY 500 (Broad Market)</option>
                     <option value="all">All Imported Stocks</option>
-                  </select>
+                  </SelectMenu>
                 </label>
 
                 <label className="ml-control-field">
                   <span className="bt-field-label">Strategy Template</span>
-                  <select
+                  <SelectMenu
+                    aria-label="Strategy template"
                     className="bt-field-input"
                     value={strategyType}
                     onChange={(e) => setStrategyType(e.target.value)}
                   >
                     {UNIFIED_STRATEGY_OPTIONS.map((strategy) => <option key={strategy.id} value={strategy.id}>{strategy.title} · {strategy.parameters}</option>)}
-                  </select>
+                  </SelectMenu>
                 </label>
 
                 <div className="scanner-run-btn-wrap">
@@ -1235,7 +1274,11 @@ export default function MarketScannerPage() {
                     <p style={{ color: "#64748b" }}>No setup candidates matched the minimum score of {minConviction}. Lower the slider to view additional technical matches.</p>
                   </div>
                 ) : (
-                  filteredSetups.map((setup, index) => (
+                  filteredSetups.map((setup, index) => {
+                    const setupKey = breakoutSetupKey(setup);
+                    const isSaved = setupKey !== null && savedSetupKeys.has(setupKey);
+                    const isSaving = setupKey !== null && bookmarkingKey === setupKey;
+                    return (
                     <div key={`${setup.symbol}-${setup.setup_type}`} className="breakout-card">
                       <div className="breakout-card-head">
                         <div>
@@ -1297,20 +1340,22 @@ export default function MarketScannerPage() {
                         <p className="breakout-desc" style={{ borderTop: 0, paddingTop: 0, marginTop: 0, flex: 1 }}>{setup.description}</p>
                         <button
                           type="button"
-                          className="bt-secondary-btn"
+                          className={`bt-secondary-btn${isSaved ? " is-saved" : ""}`}
                           style={{ padding: "4px 8px", fontSize: "10px", gap: "4px", flexShrink: 0 }}
                           onClick={() => void addToWatchlist(setup)}
-                          disabled={bookmarkingSym === setup.symbol || !setup.morning_plan}
-                          >
-                            <BookmarkCheck size={12} />
-                            {bookmarkingSym === setup.symbol ? "Saving…" : "Save Plan"}
+                          disabled={watchlistLoading || isSaving || isSaved || !setup.morning_plan}
+                          aria-label={watchlistLoading ? `Checking ${setup.symbol} in Daily Watchlist` : isSaving ? `Saving ${setup.symbol} to Daily Watchlist` : isSaved ? `${setup.symbol} is saved to Daily Watchlist` : `Save ${setup.symbol} plan to Daily Watchlist`}
+                        >
+                          {isSaved ? <Check size={12} /> : <BookmarkCheck size={12} />}
+                          {watchlistLoading ? "Checking Daily Watchlist…" : isSaving ? "Saving…" : isSaved ? "Saved to Daily Watchlist" : "Save Plan"}
                           </button>
                           <Link href={`/research?symbol=${encodeURIComponent(setup.symbol)}&strategy=donchian_breakout&source=breakout-scanner`} className="bt-secondary-btn" style={{ padding: "4px 8px", fontSize: "10px", gap: "4px", flexShrink: 0, textDecoration: "none" }}>
                             Test history ↗
                           </Link>
                       </div>
                     </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             )}

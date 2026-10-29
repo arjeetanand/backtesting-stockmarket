@@ -37,6 +37,7 @@ export default function WatchlistPage() {
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   const fetchWatchlist = async () => {
     setLoading(true);
@@ -54,12 +55,16 @@ export default function WatchlistPage() {
   };
 
   const deleteItem = async (id: string) => {
+    setRemovingId(id);
+    setError(null);
     try {
       const res = await fetch(`${API_BASE_URL}/watchlist/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete watchlist item.");
+      if (!res.ok) throw new Error("Could not remove this setup from your Daily Watchlist.");
       setItems((prev) => prev.filter((x) => x.id !== id));
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete item.");
+      setError(err instanceof Error ? err.message : "Could not remove this setup from your Daily Watchlist.");
+    } finally {
+      setRemovingId(null);
     }
   };
 
@@ -83,7 +88,7 @@ export default function WatchlistPage() {
         <section className="bt-heading-row">
           <div>
             <div className="bt-kicker">
-              <span className="live-dot" /> FORWARD SETUP TRACKER
+              <span className="live-dot" /> DAILY SETUP TRACKER
             </div>
             <h1>Daily Watchlist &amp; Setup Tracker</h1>
             <p>
@@ -97,7 +102,7 @@ export default function WatchlistPage() {
               onClick={() => void fetchWatchlist()}
               disabled={loading}
             >
-              <RefreshCw size={14} className={loading ? "spin" : ""} /> Refresh Tracker
+              <RefreshCw size={14} className={loading ? "spin" : ""} /> Recheck local bars
             </button>
           </div>
         </section>
@@ -156,7 +161,7 @@ export default function WatchlistPage() {
           {loading ? (
             <div className="bt-loading-state">
               <RefreshCw size={18} className="spin" />
-              <span>Evaluating watchlist items against latest daily market bars…</span>
+              <span>Checking saved setups against the latest imported daily bars…</span>
             </div>
           ) : items.length === 0 ? (
             <div style={{ padding: "30px", textAlign: "center", color: "#64748b" }}>
@@ -230,9 +235,10 @@ export default function WatchlistPage() {
                           type="button"
                           className="watchlist-del-btn"
                           onClick={() => void deleteItem(item.id)}
-                          title="Remove item"
+                          aria-label={removingId === item.id ? `Removing ${item.symbol} from Daily Watchlist` : `Remove ${item.symbol} from Daily Watchlist`}
+                          disabled={removingId === item.id}
                         >
-                          <Trash2 size={14} />
+                          <Trash2 size={13} /> {removingId === item.id ? "Removing…" : "Remove"}
                         </button>
                       </td>
                     </tr>

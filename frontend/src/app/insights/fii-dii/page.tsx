@@ -23,6 +23,7 @@ import {
   YAxis,
 } from "recharts";
 import TopBar from "@/components/layout/TopBar";
+import SelectMenu from "@/components/ui/SelectMenu";
 import {
   getFiiDiiData,
   getFiiDiiImportStatus,
@@ -297,9 +298,9 @@ export default function FiiDiiPage() {
 
         <section className="fii-controls-row">
           <label className="fii-select-label">Participant
-            <select value={participant} onChange={(event) => setParticipant(event.target.value as Participant)}>
+            <SelectMenu aria-label="Participant" value={participant} onChange={(event) => setParticipant(event.target.value as Participant)}>
               <option value="both">Both FII &amp; DII</option><option value="FII">FII / FPI only</option><option value="DII">DII only</option>
-            </select>
+            </SelectMenu>
           </label>
           {source === "nse" && <label className="fii-select-label">Scope
             <select value={scope} onChange={(event) => setScope(event.target.value as FiiDiiScope)}>

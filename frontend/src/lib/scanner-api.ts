@@ -388,6 +388,15 @@ export async function inspectMarketFlowSymbol(symbol: string): Promise<MarketFlo
   return await assertOk(response, "Could not inspect daily price-action zones.") as MarketFlowSymbol;
 }
 
+export async function runStructureZoneScan(universe: string): Promise<StructureZoneScanResponse> {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/structure-zones/scan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ universe }),
+  }, 60_000);
+  return await assertOk(response, "Could not scan daily structure zones.") as StructureZoneScanResponse;
+}
+
 export function scannerApiErrorMessage(error: unknown, timeoutMessage: string, fallback: string): string {
   if (error instanceof DOMException && error.name === "AbortError") return timeoutMessage;
   if (error instanceof TypeError && error.message === "Failed to fetch") return "Local Backtrack API is unavailable. Start the backend on port 8000, then retry.";

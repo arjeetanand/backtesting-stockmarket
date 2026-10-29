@@ -5,6 +5,7 @@ import { AlertCircle, ArrowRight, CalendarDays, CheckCircle2, Database, Download
 import Link from "next/link";
 import TopBar from "@/components/layout/TopBar";
 import SectionArtwork from "@/components/illustrations/SectionArtwork";
+import SelectMenu from "@/components/ui/SelectMenu";
 import { fetchWithTimeout } from "@/lib/api";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
@@ -245,13 +246,13 @@ export default function DataPage() {
           </div>
           <div className="bt-first-run-action">
             <label className="bt-field-label" htmlFor="historical-scope"><CalendarDays size={13} /> History to download</label>
-            <select id="historical-scope" className="bt-field-input" value={bootstrapRange} onChange={(event) => setBootstrapRange(event.target.value)} disabled={bootstrapBusy || importing}>
+            <SelectMenu id="historical-scope" aria-label="History to download" className="bt-field-input" value={bootstrapRange} onChange={(event) => setBootstrapRange(event.target.value)} disabled={bootstrapBusy || importing}>
               <option value="all">All history · 2000 to today</option>
               <option value="4y">Last 4 years · one click</option>
               <option value="1y">Last 1 year · one click</option>
               <option value="custom">Custom start and end dates</option>
               {Array.from({ length: currentYear - 1999 }, (_, index) => currentYear - index).map((year) => <option key={year} value={`year:${year}`}>{year} only</option>)}
-            </select>
+            </SelectMenu>
             {bootstrapRange === "custom" && <div className="bt-custom-date-range">
               <label><span>Start date</span><input type="date" value={customStart} min={fullHistoryStart} max={today} onChange={(event) => setCustomStart(event.target.value)} disabled={bootstrapBusy || importing} /></label>
               <span className="bt-custom-date-separator">to</span>
