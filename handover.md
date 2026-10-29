@@ -638,6 +638,9 @@ Next owner/action:
 
 - Date: 2026-10-29. Integration branch: `codex/merge-unmerged-branches-20261029`, based on refreshed `origin/main` at `74e742e`.
 - Integrated `codex/cta-select-clarity-20261029` and `codex/drawdown-response-guide-20261029`; the latter also includes `codex/market-insights-detail-implementation-20261029`.
+- Merge commits: `1318896` (scanner clarity and choice controls) and `3490504` (Market Insights and drawdown guide). Local `main` was fast-forwarded from `6cb2c92` to `3490504`.
 - Historical feature branches represented in `origin/main` were not merged a second time. The FII/DII SQLite worktree had staged and unstaged edits; those edits were preserved and excluded.
+- Combined verification: frontend `npm run lint`, `npm run build -- --webpack` (TypeScript passed; all 24 routes generated), and `git diff --check` passed. The initial build found a duplicate `runStructureZoneScan` wrapper from the branch merge; the duplicate was removed before the successful rerun. Vitest and Python suites were not rerun.
 - GitHub fetch succeeded, but `gh pr list` could not reach `api.github.com`; current PR and CI status could not be confirmed. No remote push was performed.
-- Current combined-branch checks and local-main update are recorded in `docs/BRANCH_MERGE_CHECKLIST.md`.
+- Existing UI ports `4003`, `5003`, and `6003` remain stopped as requested; browser review was not performed.
+- Checklist: `docs/BRANCH_MERGE_CHECKLIST.md`.

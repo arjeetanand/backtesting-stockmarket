@@ -12,7 +12,7 @@
 - [x] Integrate the scanner clarity, selection-control, and saved-watchlist-state changes from `codex/cta-select-clarity-20261029`, preserving the newer morning-plan and pressure-flow behavior.
 - [x] Integrate Market Insights stock details and the beginner drawdown/re-entry guide from `codex/drawdown-response-guide-20261029`.
 - [x] Run combined frontend lint, webpack production build, and whitespace checks. The first build caught a duplicate scanner wrapper after merge; the duplicate was removed and the build passed on rerun.
-- [ ] Move local `main` forward to the verified integration commit.
+- [x] Fast-forward local `main` from `6cb2c92` to the verified integration commit `3490504`.
 - [ ] Confirm GitHub PR and required-check state (blocked: `gh pr list` could not reach `api.github.com`).
 
 ## Current boundary
