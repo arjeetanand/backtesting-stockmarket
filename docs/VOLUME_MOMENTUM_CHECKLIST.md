@@ -12,15 +12,22 @@
 
 ## Verification
 
-- [x] `uv run ruff check src tests`.
-- [x] Focused volume-study, custom-backtest API, and vector-engine tests; full `uv run pytest -q` also passed.
-- [x] Focused `mypy` passes for the changed modules; full `uv run mypy src` reports 13 existing errors in `market_cache.py`, `pattern_finder.py`, `breakout_scanner.py`, and `ml_research.py`.
+- [x] `./.venv/bin/ruff check src tests`.
+- [x] Full `./.venv/bin/pytest -q` passed.
+- [x] Focused `./.venv/bin/mypy` passes for the changed modules; full `mypy src` reports 13 existing errors in `market_cache.py`, `pattern_finder.py`, `breakout_scanner.py`, and `ml_research.py`.
 - [x] Frontend ESLint and isolated webpack production build.
 - [x] Rendered Research results and Comparison summary/trade details in the browser; narrow and mobile views use labeled cards, including at the 1600 CSS-pixel desktop viewport where the table would not fit.
 - [x] Verified the preview through the running local frontend and API without restarting the existing NSE runtime.
 - [ ] No-sample UI state.
-- [ ] Review staged diff and ensure SQLite, archive, cache, and generated files are excluded.
-- [ ] Create task commit and PR to `main`; record push/merge status.
+- [x] Review staged diff; SQLite, archive, cache, and generated files are excluded.
+- [x] Commit, push, and merge through PR #19 into `main`.
+
+## Delivery
+
+- Implementation branch: `codex/volume-momentum-results-ui-20261029`.
+- Implementation commit: `df4303d`.
+- PR: [#19](https://github.com/arjeetanand/backtesting-stockmarket/pull/19), squash-merged into `main` as `fce2cccd96ca420c3476ece3e2cdfd92ab81c58b`.
+- GitGuardian Security Checks passed. No-sample UI rendering remains the one unchecked visual state.
 
 ## Interpretation limits
 
