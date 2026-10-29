@@ -13,6 +13,7 @@ import { FinancialChart } from "@/components/charts/FinancialChart";
 import { DrawdownChart } from "@/components/charts/Charts";
 import { adaptBacktestChart, adaptMarketBars, type BacktestChartPayload } from "@/lib/research-chart";
 import { canRunHistoricalTest } from "@/lib/research-flow";
+import { buildResearchSessionSnapshot } from "@/lib/research-session";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 const EXAMPLES = [
@@ -39,6 +40,7 @@ type HypothesisAnalysis = {
 };
 type BacktestResult = {
   run_id: string;
+  _artifact_key?: string;
   symbol: string;
   timeframe: string;
   strategy_id?: string;
@@ -75,6 +77,59 @@ function withTimeout<T>(promise: Promise<T>, message: string, timeoutMs: number)
 }
 
 type Candle = { date: string; open: number; high: number; low: number; close: number; volume?: number | null };
+type RawBacktestResult = {
+  run_id: string;
+  _artifact_key?: string;
+  symbol?: string;
+  timeframe?: string;
+  strategy_id?: string;
+  initial_capital?: number;
+  final_equity?: number;
+  metrics?: Record<string, number>;
+  warnings?: string[];
+  equity_curve?: Array<{ timestamp?: string; date?: string; equity: number }>;
+  candles?: Candle[];
+  indicators?: BacktestResult["indicators"];
+  signals?: BacktestResult["signals"];
+  trade_path?: BacktestResult["trade_path"];
+  trades?: Array<Record<string, unknown>>;
+};
+
+function normalizeBacktestResult(
+  raw: RawBacktestResult,
+  fallback: { symbol: string; timeframe: string; strategyId: string; initialCapital: number },
+): BacktestResult {
+  return {
+    ...raw,
+    symbol: raw.symbol ?? fallback.symbol,
+    timeframe: raw.timeframe ?? fallback.timeframe,
+    strategy_id: raw.strategy_id ?? fallback.strategyId,
+    initial_capital: raw.initial_capital ?? fallback.initialCapital,
+    final_equity: raw.final_equity ?? raw.equity_curve?.at(-1)?.equity ?? fallback.initialCapital,
+    metrics: raw.metrics ?? {},
+    warnings: Array.isArray(raw.warnings) ? raw.warnings : [],
+    equity_curve: raw.equity_curve?.map((point) => ({ date: point.date ?? point.timestamp?.slice(0, 10) ?? "", equity: point.equity })) ?? [],
+    candles: raw.candles ?? [],
+    indicators: raw.indicators ?? {},
+    signals: raw.signals ?? [],
+    trade_path: raw.trade_path ?? [],
+    trades: (raw.trades ?? []).map((trade, index) => ({
+      id: String(trade.id ?? trade.trade_id ?? index + 1),
+      trade_id: Number(trade.trade_id ?? index + 1),
+      symbol: String(trade.symbol ?? fallback.symbol),
+      entry_date: String(trade.entry_date ?? trade.entry_timestamp ?? "").slice(0, 10),
+      exit_date: String(trade.exit_date ?? trade.exit_timestamp ?? "").slice(0, 10),
+      entry_price: Number(trade.entry_price ?? 0),
+      exit_price: Number(trade.exit_price ?? 0),
+      pnl: Number(trade.pnl ?? 0),
+      return_pct: Number(trade.return_pct ?? 0),
+      holding_days: Number(trade.holding_days ?? 0),
+      entry_amount: Number(trade.entry_amount ?? 0),
+      max_unrealized_pnl: Number(trade.max_unrealized_pnl ?? 0),
+      min_unrealized_pnl: Number(trade.min_unrealized_pnl ?? 0),
+    })),
+  };
+}
 
 export default function ResearchPage() {
   const today = new Date().toISOString().slice(0, 10);
@@ -94,6 +149,13 @@ export default function ResearchPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [backtest, setBacktest] = useState<BacktestResult | null>(null);
+  const [savedBacktestArtifactKey, setSavedBacktestArtifactKey] = useState<string | null>(null);
+  const [savedBacktestRunId, setSavedBacktestRunId] = useState<string | null>(null);
+  const [runElapsedMs, setRunElapsedMs] = useState(0);
+  const [lastRunDurationMs, setLastRunDurationMs] = useState<number | null>(null);
+  const [runAttemptCounts, setRunAttemptCounts] = useState({ completed: 0, failed: 0 });
+  const runStartedAtRef = useRef<number | null>(null);
+  const savedResultRequestId = useRef(0);
   const [importJob, setImportJob] = useState<ImportJob | null>(null);
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [chatMessage, setChatMessage] = useState("");
@@ -120,6 +182,8 @@ export default function ResearchPage() {
   const invalidateRun = () => {
     setReviewConfirmed(false);
     setBacktest(null);
+    setSavedBacktestArtifactKey(null);
+    setSavedBacktestRunId(null);
     setSelectedTradeId(null);
     setMarketBars([]);
     setMarketDataLoading(false);
@@ -148,6 +212,10 @@ export default function ResearchPage() {
           startDate: string;
           endDate: string;
           backtest: BacktestResult;
+          backtestArtifactKey: string | null;
+          backtestRunId: string | null;
+          lastRunDurationMs: number | null;
+          runAttemptCounts: { completed: number; failed: number };
           chatHistory: Array<{ role: "ai" | "user"; text: string }>;
           strategyId: string;
           timeframe: string;
@@ -165,7 +233,13 @@ export default function ResearchPage() {
         if (snapshot.availability) setAvailability(snapshot.availability);
         if (snapshot.startDate) setStartDate(snapshot.startDate);
         if (snapshot.endDate) setEndDate(snapshot.endDate);
-        if (snapshot.backtest) setBacktest({ ...snapshot.backtest, trades: snapshot.backtest.trades ?? [], warnings: snapshot.backtest.warnings ?? [], metrics: snapshot.backtest.metrics ?? {} });
+        const artifactKey = snapshot.backtestArtifactKey ?? snapshot.backtest?._artifact_key ?? null;
+        const runId = snapshot.backtestRunId ?? snapshot.backtest?.run_id ?? null;
+        setSavedBacktestArtifactKey(artifactKey);
+        setSavedBacktestRunId(runId);
+        if (snapshot.backtest && !artifactKey && !runId) {
+          setBacktest({ ...snapshot.backtest, trades: snapshot.backtest.trades ?? [], warnings: snapshot.backtest.warnings ?? [], metrics: snapshot.backtest.metrics ?? {} });
+        }
         if (snapshot.chatHistory) setChatHistory(snapshot.chatHistory);
         if (snapshot.strategyId) setStrategyId(snapshot.strategyId);
         if (snapshot.timeframe) setTimeframe(snapshot.timeframe);
@@ -174,6 +248,12 @@ export default function ResearchPage() {
         if (typeof snapshot.stopLossPct === "number") setStopLossPct(snapshot.stopLossPct);
         if (typeof snapshot.takeProfitPct === "number") setTakeProfitPct(snapshot.takeProfitPct);
         if (typeof snapshot.proposalScore === "number") setProposalScore(snapshot.proposalScore);
+        if (typeof snapshot.lastRunDurationMs === "number") setLastRunDurationMs(snapshot.lastRunDurationMs);
+        if (snapshot.runAttemptCounts
+          && Number.isFinite(snapshot.runAttemptCounts.completed)
+          && Number.isFinite(snapshot.runAttemptCounts.failed)) {
+          setRunAttemptCounts(snapshot.runAttemptCounts);
+        }
       }
     } catch {
       window.localStorage.removeItem("backtrack:research-session");
@@ -185,10 +265,57 @@ export default function ResearchPage() {
 
   useEffect(() => {
     if (!restored) return;
-    window.localStorage.setItem("backtrack:research-session", JSON.stringify({
-    hypothesis, symbol, strategyId, timeframe, initialCapital, positionSizeAmount, stopLossPct, takeProfitPct, requestedStart, requestedEnd, analysis, availability, startDate, endDate, backtest, chatHistory, proposalScore,
-  }));
-  }, [restored, hypothesis, symbol, strategyId, timeframe, initialCapital, positionSizeAmount, stopLossPct, takeProfitPct, requestedStart, requestedEnd, analysis, availability, startDate, endDate, backtest, chatHistory, proposalScore]);
+    const snapshot = buildResearchSessionSnapshot({
+      hypothesis, symbol, strategyId, timeframe, initialCapital, positionSizeAmount, stopLossPct, takeProfitPct,
+      requestedStart, requestedEnd, analysis, availability, startDate, endDate,
+      backtest: backtest ?? (savedBacktestArtifactKey || savedBacktestRunId
+        ? { _artifact_key: savedBacktestArtifactKey ?? undefined, run_id: savedBacktestRunId ?? undefined }
+        : null),
+      chatHistory, proposalScore, lastRunDurationMs, runAttemptCounts,
+    });
+    try {
+      window.localStorage.setItem("backtrack:research-session", JSON.stringify(snapshot));
+    } catch { /* The saved SQLite report remains the durable copy if browser storage is unavailable. */ }
+  }, [restored, hypothesis, symbol, strategyId, timeframe, initialCapital, positionSizeAmount, stopLossPct, takeProfitPct, requestedStart, requestedEnd, analysis, availability, startDate, endDate, backtest, savedBacktestArtifactKey, savedBacktestRunId, chatHistory, proposalScore, lastRunDurationMs, runAttemptCounts]);
+
+  useEffect(() => {
+    if (!restored || (!savedBacktestArtifactKey && !savedBacktestRunId) || backtest) return;
+    const requestId = ++savedResultRequestId.current;
+    let disposed = false;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 20000);
+    void withTimeout(
+      fetch(savedBacktestArtifactKey
+        ? `${API_BASE_URL}/research/artifacts/custom_backtest/${encodeURIComponent(savedBacktestArtifactKey)}`
+        : `${API_BASE_URL}/research/artifacts/custom_backtest/by-run-id/${encodeURIComponent(savedBacktestRunId!)}`, { signal: controller.signal }),
+      "Your saved result is taking too long to reopen. Try Saved tests or check the local API.",
+      20000,
+    ).then(async (response) => {
+      const payload = await response.json().catch(() => null) as RawBacktestResult | { detail?: string } | null;
+      if (!response.ok) throw new Error(payload && "detail" in payload ? payload.detail ?? "Saved result was not found." : "Saved result was not found.");
+      if (!payload || !("run_id" in payload) || typeof payload.run_id !== "string") throw new Error("Saved result could not be read. Open Saved tests and retry.");
+      if (!disposed && requestId === savedResultRequestId.current) {
+        setBacktest(normalizeBacktestResult(payload, { symbol, timeframe, strategyId, initialCapital }));
+        setSavedBacktestArtifactKey(payload._artifact_key ?? savedBacktestArtifactKey);
+        setSavedBacktestRunId(null);
+      }
+    }).catch((requestError) => {
+      if (!disposed && requestId === savedResultRequestId.current) {
+        setError(requestError instanceof Error ? requestError.message : "Could not reopen the saved result.");
+      }
+    }).finally(() => {
+      window.clearTimeout(timeoutId);
+    });
+    return () => { disposed = true; controller.abort(); window.clearTimeout(timeoutId); };
+  }, [restored, savedBacktestArtifactKey, savedBacktestRunId, backtest, symbol, timeframe, strategyId, initialCapital]);
+
+  useEffect(() => {
+    if (!runningBacktest || runStartedAtRef.current === null) return;
+    const updateElapsed = () => setRunElapsedMs(Date.now() - (runStartedAtRef.current ?? Date.now()));
+    updateElapsed();
+    const interval = window.setInterval(updateElapsed, 1000);
+    return () => window.clearInterval(interval);
+  }, [runningBacktest]);
 
   useEffect(() => {
     if (!availability?.bars || !startDate || !endDate || timeframe === "1hour") return;
@@ -237,6 +364,7 @@ export default function ResearchPage() {
     isBusy: loading || runningBacktest,
     importComplete: !importJob || importJob.status === "complete",
   });
+  const loadingSavedBacktest = restored && Boolean(savedBacktestArtifactKey || savedBacktestRunId) && !backtest && !error;
   const marketChart = useMemo(() => adaptMarketBars(marketBars), [marketBars]);
   const resultChart = useMemo(() => adaptBacktestChart((backtest ?? {}) as BacktestChartPayload), [backtest]);
   const visibleResultIndicators = useMemo(
@@ -372,6 +500,9 @@ export default function ResearchPage() {
       setChatHistory([]);
       invalidateRun();
       setError(null);
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.delete("source");
+      window.history.replaceState(window.history.state, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
     });
     // Scanner handoffs intentionally override the locally saved Research session.
   }, []);
@@ -424,8 +555,12 @@ export default function ResearchPage() {
       setError("The start date must be on or before the end date.");
       return;
     }
+    runStartedAtRef.current = Date.now();
+    setRunElapsedMs(0);
     setRunningBacktest(true);
     setError(null);
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 60000);
     try {
       if (timeframe === "1hour") {
         setError("Hourly testing needs an intraday data provider. The current official NSE archive is daily, so hourly candles are not invented or approximated.");
@@ -443,29 +578,27 @@ export default function ResearchPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),
+        signal: controller.signal,
       }), "The backtest is taking longer than expected. Check the API and local market data, then retry.", 60000);
       const payload = await response.json().catch(() => null) as BacktestResult | { detail?: string } | null;
       if (!response.ok) throw new Error(payload && "detail" in payload ? payload.detail ?? "Backtest failed." : "Backtest failed.");
-      const raw = payload as { run_id: string; symbol?: string; timeframe?: string; strategy_id?: string; initial_capital?: number; final_equity?: number; metrics?: Record<string, number>; warnings?: string[]; equity_curve?: Array<{ timestamp?: string; date?: string; equity: number }>; candles?: Candle[]; indicators?: BacktestResult["indicators"]; signals?: BacktestResult["signals"]; trade_path?: BacktestResult["trade_path"]; trades?: Array<Record<string, unknown>> };
-      setBacktest({
-        ...raw,
-        symbol: raw.symbol ?? symbol.trim().toUpperCase(),
-        timeframe: raw.timeframe ?? timeframe,
-        strategy_id: raw.strategy_id ?? strategyId,
-        initial_capital: raw.initial_capital ?? initialCapital,
-        final_equity: raw.final_equity ?? raw.equity_curve?.at(-1)?.equity ?? initialCapital,
-        metrics: raw.metrics ?? {},
-        warnings: Array.isArray(raw.warnings) ? raw.warnings : [],
-        equity_curve: raw.equity_curve?.map((point) => ({ date: point.date ?? point.timestamp?.slice(0, 10) ?? "", equity: point.equity })) ?? [],
-        candles: raw.candles ?? [],
-        indicators: raw.indicators ?? {},
-        signals: raw.signals ?? [],
-        trade_path: raw.trade_path ?? [],
-        trades: (raw.trades ?? []).map((trade, index) => ({ id: String(trade.id ?? trade.trade_id ?? index + 1), trade_id: Number(trade.trade_id ?? index + 1), symbol: String(trade.symbol ?? symbol), entry_date: String(trade.entry_date ?? trade.entry_timestamp ?? "").slice(0, 10), exit_date: String(trade.exit_date ?? trade.exit_timestamp ?? "").slice(0, 10), entry_price: Number(trade.entry_price ?? 0), exit_price: Number(trade.exit_price ?? 0), pnl: Number(trade.pnl ?? 0), return_pct: Number(trade.return_pct ?? 0), holding_days: Number(trade.holding_days ?? 0), entry_amount: Number(trade.entry_amount ?? 0), max_unrealized_pnl: Number(trade.max_unrealized_pnl ?? 0), min_unrealized_pnl: Number(trade.min_unrealized_pnl ?? 0) })),
-      });
+      const raw = payload as RawBacktestResult;
+      const result = normalizeBacktestResult(raw, { symbol: symbol.trim().toUpperCase(), timeframe, strategyId, initialCapital });
+      setBacktest(result);
+      setSavedBacktestArtifactKey(result._artifact_key ?? null);
+      setSavedBacktestRunId(result.run_id);
+      setRunAttemptCounts((counts) => ({ ...counts, completed: counts.completed + 1 }));
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Backtest failed.");
+      setRunAttemptCounts((counts) => ({ ...counts, failed: counts.failed + 1 }));
+      setError(controller.signal.aborted
+        ? "The backtest was cancelled after 60 seconds. Shorten the date range or check the local API before retrying."
+        : requestError instanceof Error ? requestError.message : "Backtest failed.");
     } finally {
+      window.clearTimeout(timeoutId);
+      const duration = runStartedAtRef.current === null ? 0 : Date.now() - runStartedAtRef.current;
+      setRunElapsedMs(duration);
+      setLastRunDurationMs(duration);
+      runStartedAtRef.current = null;
       setRunningBacktest(false);
     }
   };
@@ -574,10 +707,12 @@ export default function ResearchPage() {
           <div className="bt-hypothesis-pills">{importedFlow ? <span className="bt-imported-formula-note"><CheckCircle size={13} /> Formula loaded from the strategy library. Review it before continuing.</span> : EXAMPLES.map((example) => <button type="button" key={example} className="bt-hypothesis-pill" onClick={() => { setHypothesis(example); setAnalysis(null); invalidateRun(); }}>{example.slice(0, 42)}…</button>)}</div>
           {!analysis && <button type="button" className="bt-primary" onClick={primaryAction} disabled={loading || runningBacktest || timeframe === "1hour"}>{loading ? <Loader2 size={14} className="spin" /> : <Sparkles size={14} />} {primaryActionLabel}</button>}
         </div>
-        {progressMessage && <div className="bt-run-status" role="status" aria-live="polite"><Loader2 size={15} className="spin" /><div><strong>{primaryActionLabel}</strong><span>{progressMessage}</span><small>This can take a little longer when NSE history or Ollama is being contacted. If Ollama is unavailable, a clearly labelled catalogue proposal keeps the historical test usable.</small></div></div>}
+        {progressMessage && <div className="bt-run-status" role="status" aria-live="polite"><Loader2 size={15} className="spin" /><div><strong>{primaryActionLabel}</strong><span>{progressMessage}</span><small>{runningBacktest ? `Elapsed ${Math.floor(runElapsedMs / 1000)} sec · ${symbol.trim().toUpperCase()} · ${startDate} to ${endDate}. The request will be cancelled after 60 seconds.` : "This can take a little longer when NSE history or Ollama is being contacted. If Ollama is unavailable, a clearly labelled catalogue proposal keeps the historical test usable."}</small></div></div>}
+        {lastRunDurationMs !== null && !runningBacktest && <p className="bt-run-history" role="status">Last attempt: {(lastRunDurationMs / 1000).toFixed(1)} sec · {runAttemptCounts.completed} completed · {runAttemptCounts.failed} failed this visit.</p>}
       </section>
 
       {error && <div className="bt-alert-error" role="alert">{error}</div>}
+      {loadingSavedBacktest && <div className="bt-run-status" role="status"><Loader2 size={15} className="spin" /><div><strong>Reopening your saved historical result</strong><span>Loading its candle chart and trade-by-trade details from the local research database.</span></div></div>}
 
       {importJob && <section className="bt-panel" style={{ padding: "20px" }}><div className="bt-row-between"><div><div className="bt-row"><Loader2 size={16} className={importJob.status === "complete" || importJob.status === "failed" ? "" : "spin"} style={{ color: importJob.status === "failed" ? "#e11d48" : "#4f46e5" }} /><h3>Official NSE history preparation</h3></div><p className="text-xs text-slate-500" style={{ marginTop: "6px" }}>{importJob.message}</p></div><span className="bt-ai-badge">{importJob.status}</span></div><div className="bt-grid-2" style={{ marginTop: "16px" }}>{["Validate local cache", "Download or reuse archive", "Save full archive to SQLite", "Ready to backtest"].map((step, index) => { const completed = importJob.status === "complete" || (index === 0 && importJob.status !== "queued") || (index === 1 && importJob.stage?.includes("Saving")); return <div key={step} className="bt-callout"><strong>{completed ? "✓ " : "○ "}{step}</strong><p>{index === 1 && importJob.total_days ? `${importJob.completed_days ?? 0}/${importJob.total_days} trading days checked` : completed ? "Done" : "Waiting"}</p></div>; })}</div>{importJob.status === "failed" && <div className="bt-alert-error" style={{ marginTop: "14px" }}>NSE history could not be prepared. Retry the local data check when the API is available.</div>}</section>}
 
@@ -654,13 +789,6 @@ export default function ResearchPage() {
         <FinancialChart candles={marketChart.candles} indicators={marketChart.indicators} tradeMarkers={marketChart.tradeMarkers} trades={marketChart.trades} loading={marketDataLoading} unavailable={timeframe === "1hour"} error={marketDataError} empty={!marketDataLoading && !marketDataError && marketChart.candles.length === 0} emptyMessage="No local candles were returned for this range. Import the official NSE history before running a test." title={`${symbol.trim().toUpperCase()} · ${timeframe}`} description="Historical local NSE OHLCV candles. This chart does not display live prices." />
       </section>}
 
-      {backtest && <section className="bt-panel bt-research-chart-panel" aria-label="Backtest price chart">
-        <div className="bt-row-between"><div><div className="bt-row"><CheckCircle size={16} style={{ color: "#059669" }} /><h3>Signals on the historical chart</h3></div><p className="text-xs text-slate-500" style={{ marginTop: "6px" }}>Click an entry or exit marker to highlight the matching simulated trade. All fills remain historical and paper-only.</p></div><span className="bt-ai-badge">{resultChart.tradeMarkers.length ? `${resultChart.tradeMarkers.length} markers` : "No markers"}</span></div>
-        {resultChart.indicators.length > 0 && <div className="bt-chart-indicator-toggle" aria-label="Show or hide backtest indicators"><span>Indicators</span>{resultChart.indicators.map((indicator) => { const hidden = hiddenIndicators.includes(indicator.id); return <button key={indicator.id} type="button" aria-pressed={!hidden} className={hidden ? "" : "is-active"} onClick={() => setHiddenIndicators((current) => hidden ? current.filter((id) => id !== indicator.id) : [...current, indicator.id])}>{indicator.label}</button>; })}</div>}
-        <FinancialChart candles={resultChart.candles} indicators={visibleResultIndicators} tradeMarkers={resultChart.tradeMarkers} trades={resultChart.trades} selectedTradeId={selectedTradeId} onTradeSelect={setSelectedTradeId} empty={resultChart.candles.length === 0} emptyMessage="The backtest did not return chart candles. Re-run after confirming local history is available." title={`${backtest.symbol} · ${backtest.strategy_id ?? strategyId}`} description="Historical NSE candlesticks with backend-calculated indicators and simulated entry and exit markers." />
-        {selectedTradeId && <div className="bt-chart-selection-note" role="status">Selected trade <strong>#{selectedTradeId}</strong>. The highlighted line connects its entry and exit when both points are visible.</div>}
-      </section>}
-
       {backtest && <section className="bt-panel bt-research-result" style={{ padding: "20px" }}>
         <div className="bt-row-between"><div><div className="bt-row"><CheckCircle size={17} style={{ color: "#059669" }} /><h3>Backtest result</h3></div><p className="text-xs text-slate-500" style={{ marginTop: "6px" }}>{backtest.symbol} · {backtest.timeframe} · {startDate} to {endDate}</p></div><span className="bt-ai-badge">Historical NSE candles</span></div>
         <div className={`bt-result-outcome ${netPnl >= 0 ? "is-positive" : "is-negative"}`}>
@@ -679,6 +807,13 @@ export default function ResearchPage() {
         {(backtest.warnings?.length ?? 0) > 0 && <div className="bt-alert-error" style={{ marginTop: "16px" }}>{backtest.warnings?.join(" ")}</div>}
         <div className="bt-row-between bt-research-next-actions" style={{ marginTop: "16px" }}><span className="text-xs text-slate-500">Historical simulation only · no real order was placed. Follow-up tools ask you to confirm their own inputs.</span><span className="bt-row"><Link href="/robustness" className="bt-secondary">Reliability analysis <ChevronRight size={14} /> </Link><Link href="/bias-validity" className="bt-secondary">Validity checklist <ChevronRight size={14} /> </Link><Link href={{ pathname: "/replay", query: { source: "research", symbol, timeframe, start: startDate, end: endDate } }} className="bt-secondary">Replay these candles <ChevronRight size={14} /> </Link><Link href="/strategy" className="bt-secondary">Adjust rules <ChevronRight size={14} /> </Link><Link href={{ pathname: "/comparison", query: { source: "research", symbol, strategy: strategyId, timeframe, start: startDate, end: endDate, capital: initialCapital, position: positionSizeAmount, stop: stopLossPct, target: takeProfitPct } }} className="bt-secondary">Compare this run <ChevronRight size={14} /> </Link></span></div>
       </section>}
+      {backtest && <section className="bt-panel bt-research-chart-panel" aria-label="Backtest price chart">
+        <div className="bt-row-between"><div><div className="bt-row"><CheckCircle size={16} style={{ color: "#059669" }} /><h3>Signals on the historical chart</h3></div><p className="text-xs text-slate-500" style={{ marginTop: "6px" }}>Click an entry or exit marker to highlight the matching simulated trade. {strategyId === "donchian_breakout" ? `Donchian lines mark the previous ${analysis?.suggested_backtest.slow_window ?? 50} sessions’ high and low. A close above the old high signals an entry; the simulation fills on the next session’s open.` : "All fills remain historical and paper-only."}</p></div><span className="bt-ai-badge">{resultChart.tradeMarkers.length ? `${resultChart.tradeMarkers.length} markers` : "No markers"}</span></div>
+        {resultChart.indicators.length > 0 && <div className="bt-chart-indicator-toggle" aria-label="Show or hide backtest indicators"><span>Indicators</span>{resultChart.indicators.map((indicator) => { const hidden = hiddenIndicators.includes(indicator.id); return <button key={indicator.id} type="button" aria-pressed={!hidden} className={hidden ? "" : "is-active"} onClick={() => setHiddenIndicators((current) => hidden ? current.filter((id) => id !== indicator.id) : [...current, indicator.id])}>{indicator.label}</button>; })}</div>}
+        <FinancialChart candles={resultChart.candles} indicators={visibleResultIndicators} tradeMarkers={resultChart.tradeMarkers} trades={resultChart.trades} selectedTradeId={selectedTradeId} onTradeSelect={setSelectedTradeId} empty={resultChart.candles.length === 0} emptyMessage="The backtest did not return chart candles. Re-run after confirming local history is available." title={`${backtest.symbol} · ${backtest.strategy_id ?? strategyId}`} description="Historical NSE candlesticks with backend-calculated indicators and simulated entry and exit markers." />
+        {selectedTradeId && <div className="bt-chart-selection-note" role="status">Selected trade <strong>#{selectedTradeId}</strong>. The highlighted line connects its entry and exit when both points are visible.</div>}
+      </section>}
+
       {selectedDrawdown.length > 1 && <section className="bt-panel bt-research-chart-panel" aria-label="Backtest drawdown curve"><div className="bt-row-between"><div><h3>Drawdown through the same test window</h3><p className="text-xs text-slate-500" style={{ marginTop: "6px" }}>{startDate} → {endDate}. The percentage fall from the previous equity peak.</p></div><span className="data-source">Max {formatPercent(backtest?.metrics?.maximum_drawdown ?? backtest?.metrics?.max_drawdown)}</span></div><DrawdownChart data={selectedDrawdown} height={220} /></section>}
     </main>
   </div>;

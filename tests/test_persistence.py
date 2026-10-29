@@ -48,7 +48,12 @@ def test_testing_history_can_delete_one_run_and_clear_analysis_artifacts(tmp_pat
 
     artifacts = SqliteArtifactStore(path)
     artifacts.save("custom_backtest", "custom-1", {"status": "complete"})
+    artifacts.save("custom_backtest", "custom-2", {"run_id": "bt_legacy", "status": "complete"})
     artifacts.save("import_job", "import-1", {"status": "complete"})
-    assert artifacts.clear_kinds(("custom_backtest", "hypothesis", "robustness", "youtube_strategy", "replay_session")) == 1
+    assert artifacts.get_by_json_value("custom_backtest", "$.run_id", "bt_legacy") == (
+        "custom-2",
+        {"run_id": "bt_legacy", "status": "complete"},
+    )
+    assert artifacts.clear_kinds(("custom_backtest", "hypothesis", "robustness", "youtube_strategy", "replay_session")) == 2
     assert artifacts.list("custom_backtest") == []
     assert artifacts.get("import_job", "import-1") == {"status": "complete"}
