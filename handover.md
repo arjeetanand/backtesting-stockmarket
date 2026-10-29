@@ -586,3 +586,15 @@ Next owner/action:
 - Layout checked at a 1600 CSS-pixel desktop viewport and at the narrow responsive breakpoint. The browser returned 487 CSS px after a requested 390 px viewport, with no document-level horizontal overflow; exact 390 px device emulation could not be confirmed. Existing local UI/API processes on ports `4003`/`8001` were preserved; the test UI at `5003` stayed available.
 - Next: if judging the strategy itself, widen the tested period after confirming local history; this one-year result contains only one closed trade and is not enough to evaluate the rule.
 - Checklist: `docs/RESEARCH_RUN_CLARITY_CHECKLIST.md`.
+
+## 24. Market Insights stock details and paper plan
+
+- Date: 2026-10-29.
+- Branch: `codex/market-insights-detail-implementation-20261029`, based on `main` at `6cb2c92`.
+- Implementation commit: `abe552d` (`Add stock details to Market Insights`).
+- Show the weekday and date of the latest cached NSE session. Add a user-triggered sync through the existing `/data/sync-today` route and reload the selected index when it completes.
+- Selecting a stock fetches its local daily bars through the existing `/market-data` route and shows latest volume, combined volume across the last five sessions, prior-20-session average excluding the latest bar, relative volume, and five dated closes/volumes.
+- **Create paper plan** saves the existing prior-high trigger, prior-low stop, and 2R target through `/watchlist/add`. The tracker evaluates later daily bars; when a daily bar touches both stop and target, it counts the stop first. No broker or live-order behavior was added.
+- Verification: frontend ESLint, all 22 Vitest tests, isolated webpack production build, and `git diff --check` passed. No backend files or API contracts changed, so the Python suite was not run.
+- Browser/runtime verification is pending: the sandbox denied the isolated Next.js listener on port 6003 (`listen EPERM`), and its shell could not reach API port 8001. Existing servers were left untouched. No on-screen result or stock-data sync/save action was verified.
+- Run with `./run.sh` (UI port 4003, API port 8001) and open **Market Insights**. Checklist: `docs/MARKET_INSIGHTS_DETAILS_CHECKLIST.md`.

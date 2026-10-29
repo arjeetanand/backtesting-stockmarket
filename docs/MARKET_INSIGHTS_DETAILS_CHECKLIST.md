@@ -8,4 +8,4 @@
 - [x] Add regression coverage for volume summaries and conditional plan levels.
 - [x] Frontend lint, 22 tests, webpack production build, and `git diff --check` pass.
 - [ ] Browser check is blocked: the sandbox denied the local Next.js listener on port 6003 (`EPERM`), and the configured API could not be reached from the sandbox.
-- [ ] Record final branch, commit, verification, and remaining UI/runtime limits in `handover.md`.
+- [x] Record final branch, commit, verification, and remaining UI/runtime limits in `handover.md`.
