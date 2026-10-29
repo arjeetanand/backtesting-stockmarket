@@ -609,4 +609,4 @@ Next owner/action:
 - Checklist: `docs/STOCK_RESEARCH_CHECKLIST.md`.
 - Verification: all 24 frontend tests, ESLint, webpack production build, and `git diff --check` passed. No backend code or API contract changed.
 - Browser check: blocked by `listen EPERM` when the branch preview attempted to bind its mapped test port 6003. The existing 5003 and 4003 services were left untouched; actual cached-symbol response and rendered result states were not verified in-browser.
-- Implementation commit: pending; record its hash in the follow-up handoff commit.
+- Implementation commit: `16b994b` (`Add beginner stock drawdown guide`).
