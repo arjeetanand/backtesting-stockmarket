@@ -60,6 +60,22 @@ class ArtifactStoreWithLegacyCustomResult:
         self.saved.append((artifact_key, payload))
 
 
+class ArtifactStore:
+    def __init__(self) -> None:
+        self.saved: dict[tuple[str, str], dict[str, object]] = {}
+
+    def get(self, kind: str, artifact_key: str) -> dict[str, object] | None:
+        return self.saved.get((kind, artifact_key))
+
+    def save(self, kind: str, artifact_key: str, payload: dict[str, object]) -> None:
+        self.saved[(kind, artifact_key)] = payload
+
+    def get_by_json_value(self, kind: str, path: str, value: str) -> tuple[str, dict[str, object]] | None:
+        assert kind == "custom_backtest"
+        assert path == "$.run_id"
+        return next(((key, payload) for (saved_kind, key), payload in self.saved.items() if saved_kind == kind and payload.get("run_id") == value), None)
+
+
 def test_custom_backtest_result_keeps_existing_shape_with_additive_chart_fields() -> None:
     router = create_api_router(
         ResearchService(FakeMarketDataProvider(), InMemoryBacktestRepository()),
@@ -92,6 +108,7 @@ def test_custom_backtest_result_keeps_existing_shape_with_additive_chart_fields(
         "indicators",
         "signals",
         "trade_path",
+        "_artifact_key",
     }.issubset(response)
     assert response["symbol"] == "RELIANCE"
     assert response["candles"][0].keys() >= {"date", "open", "high", "low", "close", "volume"}
@@ -102,6 +119,37 @@ def test_custom_backtest_result_keeps_existing_shape_with_additive_chart_fields(
         and signal["type"] in {"entry", "exit"}
         for signal in response["signals"]
     )
+
+
+def test_custom_backtest_artifact_can_be_reloaded_by_reference() -> None:
+    artifacts = ArtifactStore()
+    router = create_api_router(
+        ResearchService(FakeMarketDataProvider(), InMemoryBacktestRepository()),
+        HypothesisService(StubLlm()),
+        artifacts=artifacts,  # type: ignore[arg-type]
+    )
+    run_endpoint = next(route.endpoint for route in router.routes if route.path.endswith("/backtests/custom"))
+    read_endpoint = next(route.endpoint for route in router.routes if route.path.endswith("/research/artifacts/{kind}/{artifact_key}"))
+    result = run_endpoint(
+        CustomBacktestRequest(
+            symbol="RELIANCE",
+            strategy_id="sma_crossover",
+            start=datetime(2024, 1, 1, tzinfo=UTC),
+            end=datetime(2024, 3, 20, tzinfo=UTC),
+            fast_ema=5,
+            slow_ema=10,
+        )
+    )
+
+    restored = read_endpoint("custom_backtest", result["_artifact_key"])
+    read_legacy_endpoint = next(route.endpoint for route in router.routes if route.path.endswith("/research/artifacts/custom_backtest/by-run-id/{run_id}"))
+    restored_by_run_id = read_legacy_endpoint(result["run_id"])
+
+    assert restored["_artifact_key"] == result["_artifact_key"]
+    assert restored["run_id"] == result["run_id"]
+    assert restored["candles"] == result["candles"]
+    assert restored_by_run_id["_artifact_key"] == result["_artifact_key"]
+    assert restored_by_run_id["run_id"] == result["run_id"]
 
 
 def test_custom_backtest_rejects_unsupported_strategy_as_actionable_422() -> None:

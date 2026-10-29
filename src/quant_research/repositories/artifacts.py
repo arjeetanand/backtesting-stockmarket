@@ -40,6 +40,22 @@ class SqliteArtifactStore:
         value = json.loads(row[0])
         return value if isinstance(value, dict) else None
 
+    def get_by_json_value(self, kind: str, path: str, value: str) -> tuple[str, dict[str, Any]] | None:
+        """Find one artifact by a JSON field without loading the whole artifact list."""
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT artifact_key, payload FROM research_artifacts
+                WHERE kind = ? AND json_extract(payload, ?) = ?
+                ORDER BY updated_at DESC LIMIT 1
+                """,
+                (kind, path, value),
+            ).fetchone()
+        if row is None:
+            return None
+        payload = json.loads(row[1])
+        return (str(row[0]), payload) if isinstance(payload, dict) else None
+
     def save(self, kind: str, artifact_key: str, payload: dict[str, Any]) -> None:
         with self._connect() as connection:
             connection.execute(

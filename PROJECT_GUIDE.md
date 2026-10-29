@@ -80,12 +80,12 @@ The normal path is:
 3. Confirm the review. Backtrack does not start a historical simulation before this action.
 4. Confirm the date range has local official NSE history; missing bars are prepared or reported unavailable.
 5. Run the historical simulation.
-6. Inspect the loaded OHLCV/volume chart, entry/exit markers, trade details, return, win rate, trade count, drawdown, equity curve, and trade ledger.
+6. Read the plain-language outcome, net profit/loss, trade count, win rate, and drawdown first; then inspect the OHLCV/volume chart, entry/exit markers, and dated trade ledger.
 7. Challenge the result with comparison, reliability, validity, and replay tools. Each follow-up uses its own inputs.
 
 The visible checkpoints describe the actual in-app sequence; they do not imply that independent AI agents ran. Hypothesis assistance uses local Ollama when configured. The clearly labelled deterministic catalogue fallback keeps the workflow usable when Ollama is unavailable. Review confirmation is not carried across a page reload.
 
-The research chart is populated only from locally validated NSE bars or the returned backtest result. It sorts and de-duplicates timestamps, omits invalid numeric points, preserves missing volume as unavailable, and shows explicit loading, empty, and error states. The current main workflow is daily data; intraday or unsupported timeframes must be imported and normalized before they can be charted or tested.
+The research chart is populated only from locally validated NSE bars or the returned backtest result. It sorts and de-duplicates timestamps, omits invalid numeric points, preserves missing volume as unavailable, and shows explicit loading, empty, and error states. Its visible readout starts on the latest session and follows the hovered candle, showing date, open, high, low, close, open-to-close change, and volume in shares. Candle bodies show open-to-close direction; wicks show that session's high and low; matching green/red bars show shares traded. The plain-language backtest summary appears before its detailed chart. The current main workflow is daily data; intraday or unsupported timeframes must be imported and normalized before they can be charted or tested.
 
 Results are historical evidence, not predictions or financial advice.
 
@@ -133,7 +133,7 @@ This is daily-bar scenario analysis. It does not model intraday movement, fees, 
 
 ## Persistence and caching
 
-The backend persists market data, archive metadata, raw rows, backtests, research artifacts, import jobs, and replay sessions in `data/market_cache.sqlite3`. The research page stores its active session key in browser storage, and replay stores its server session ID so a refresh can recover the session.
+The backend persists market data, archive metadata, raw rows, backtests, research artifacts, import jobs, and replay sessions in `data/market_cache.sqlite3`. The research page stores compact inputs and a saved-result reference in browser storage; full candles, indicators, trades, and curves stay in SQLite and load asynchronously when reopening a result. Replay stores its server session ID so a refresh can recover the session.
 
 The importer is incremental. Existing ZIPs and complete archive days are reused; candle upserts prevent duplicate `(symbol, timeframe, timestamp)` rows. The background job is process-local, so a server restart may require starting the same import again, but committed data remains safe.
 

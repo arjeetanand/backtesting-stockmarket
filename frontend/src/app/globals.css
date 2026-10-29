@@ -2821,6 +2821,15 @@ body {
 .bt-chart-legend i.is-buy { background: var(--gain) !important; }
 .bt-chart-legend i.is-sell { background: var(--loss) !important; }
 .bt-chart-legend small { color: var(--bt-muted-soft); margin-left: auto; font-size: 9px; }
+.bt-chart-readout { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--bt-surface-low); background: #fff; }
+.bt-chart-readout > div { min-width: 0; display: grid; align-content: center; gap: 3px; padding: 5px 8px; border-left: 1px solid var(--bt-surface-low); }
+.bt-chart-readout > div:first-child { border-left: 0; }
+.bt-chart-readout span { color: var(--bt-muted-soft); font-size: 9px; line-height: 1.35; }
+.bt-chart-readout strong { overflow-wrap: anywhere; color: var(--bt-ink); font-size: 12px; font-variant-numeric: tabular-nums; }
+.bt-chart-readout small { color: var(--bt-muted); font-size: 9px; }
+.bt-chart-readout-day strong { font-size: 13px; }
+.bt-chart-readout-day.is-positive small { color: var(--gain); }
+.bt-chart-readout-day.is-negative small { color: var(--loss); }
 .bt-chart-navigator small { margin-left: auto; color: var(--bt-muted-soft); }
 
 .bt-proposal-panel { min-width: 0; }
@@ -2847,6 +2856,7 @@ body {
 .bt-proposal-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 15px; padding-top: 14px; border-top: 1px solid var(--bt-border); }
 .bt-proposal-actions > span:first-child { color: var(--bt-muted); font-size: 10px; line-height: 1.4; }
 .bt-proposal-actions .bt-row { flex-wrap: wrap; justify-content: flex-end; }
+.bt-run-history { margin-top: 8px; color: var(--bt-muted); font-size: 10px; font-variant-numeric: tabular-nums; }
 .bt-proposal-empty { margin-top: 4px; padding: 14px; color: var(--bt-muted); background: var(--bt-surface); border: 1px dashed var(--bt-control-border); border-radius: 8px; font-size: 11px; }
 .bt-clarification-panel { min-width: 0; }
 .bt-clarification-details > summary > .bt-row { min-width: 0; align-items: flex-start; }
@@ -2862,10 +2872,18 @@ body {
   .bt-result-outcome > div + div { border-top: 1px solid var(--bt-surface-low); border-left: 0; }
   .bt-result-outcome strong { font-size: 27px; }
   .bt-chart-legend small { flex-basis: 100%; margin-left: 0; }
+  .bt-chart-readout { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .bt-chart-readout > div:nth-child(4) { border-left: 0; }
   .bt-proposal-summary { grid-template-columns: 1fr; }
   .bt-proposal-settings { padding-top: 10px; padding-left: 0; border-top: 1px solid var(--bt-border); border-left: 0; }
   .bt-proposal-actions { align-items: stretch; flex-direction: column; }
   .bt-proposal-actions .bt-row, .bt-proposal-actions .bt-primary, .bt-proposal-actions .bt-secondary { width: 100%; justify-content: center; }
+}
+
+@media (max-width: 460px) {
+  .bt-chart-readout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .bt-chart-readout > div:nth-child(odd) { border-left: 0; }
+  .bt-chart-readout > div:nth-child(4) { border-left: 1px solid var(--bt-surface-low); }
 }
 
 /* Market Scanner & Breakout Scanner Styles */

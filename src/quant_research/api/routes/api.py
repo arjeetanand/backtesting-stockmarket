@@ -976,7 +976,7 @@ def create_api_router(
         if artifacts is not None:
             cached = artifacts.get("custom_backtest", cache_key)
             if cached is not None:
-                return cached
+                return {**cached, "_artifact_key": cache_key}
         try:
             res = run_rule_backtest(
                 df=frame,
@@ -999,6 +999,7 @@ def create_api_router(
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
         result = asdict(res)
+        result["_artifact_key"] = cache_key
         if artifacts is not None:
             artifacts.save("custom_backtest", cache_key, result)
         return result
@@ -1087,6 +1088,27 @@ def create_api_router(
         if artifacts is None or kind not in {"custom_backtest", "robustness", "hypothesis", STOCK_RESEARCH_ARTIFACT_KIND}:
             return []
         return artifacts.list_with_metadata(kind, limit=limit)
+
+    @router.get("/research/artifacts/{kind}/{artifact_key}", tags=["research"])
+    def get_saved_artifact(kind: str, artifact_key: str) -> dict[str, Any]:
+        """Return one saved research result by its stable local artifact key."""
+        if artifacts is None or kind not in {"custom_backtest", "robustness", "hypothesis", STOCK_RESEARCH_ARTIFACT_KIND}:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved research result was not found.")
+        saved = artifacts.get(kind, artifact_key)
+        if saved is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved research result was not found.")
+        return {**saved, "_artifact_key": artifact_key}
+
+    @router.get("/research/artifacts/custom_backtest/by-run-id/{run_id}", tags=["research"])
+    def get_custom_backtest_by_run_id(run_id: str) -> dict[str, Any]:
+        """Reopen a legacy saved backtest whose browser snapshot predates artifact keys."""
+        if artifacts is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved research result was not found.")
+        match = artifacts.get_by_json_value("custom_backtest", "$.run_id", run_id)
+        if match is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved research result was not found.")
+        artifact_key, saved = match
+        return {**saved, "_artifact_key": artifact_key}
 
     @router.delete("/research/artifacts/{kind}/{artifact_key}", tags=["research"])
     def delete_saved_artifact(kind: str, artifact_key: str) -> Response:

@@ -206,7 +206,7 @@ Persisted state includes:
 - Completed backtest results and deterministic cache keys.
 - Cached hypothesis, custom backtest, robustness, YouTube, import-job, and replay artifacts.
 - Replay sessions, orders, events, cursor, and revealed bars.
-- Research page state in `backtrack:research-session` localStorage.
+- Compact Research inputs, completed/failed run counts, elapsed time, and a result reference in `backtrack:research-session` localStorage. Full custom-backtest chart and trade arrays stay in SQLite; Research reopens them by artifact key (or legacy run ID) rather than synchronously serializing them into browser storage.
 - Replay session ID in `backtrack:replay-session` localStorage.
 
 Persistence is local single-user SQLite. There is no authentication, multi-user isolation, job queue, backup policy, or distributed locking.
@@ -296,6 +296,8 @@ API schemas live in `src/quant_research/api/schemas.py`; route behavior lives in
 - `POST /research/ensure-data`
 - `POST /research/hypothesis`
 - `GET /research/artifacts/{kind}`
+- `GET /research/artifacts/{kind}/{artifact_key}`
+- `GET /research/artifacts/custom_backtest/by-run-id/{run_id}`
 - `POST /strategy/youtube`
 - `POST /backtests/sma-crossover`
 - `POST /backtests/custom`
@@ -311,7 +313,7 @@ API schemas live in `src/quant_research/api/schemas.py`; route behavior lives in
 - `DELETE /testing-history`
 - `DELETE /research/artifacts/{kind}/{artifact_key}`
 
-`GET /market-data` returns validated local bars for the selected symbol, date range, and timeframe. The custom backtest response keeps its existing result fields and adds chart-ready candle `volume` plus stable signal `id` and `trade_id` metadata. Invalid strategy parameters and insufficient history return actionable `422` errors rather than an opaque server error.
+`GET /market-data` returns validated local bars for the selected symbol, date range, and timeframe. The custom backtest response keeps its existing result fields and adds chart-ready candle `volume`, stable signal `id` and `trade_id` metadata, and `_artifact_key` for lightweight session recovery. Invalid strategy parameters and insufficient history return actionable `422` errors rather than an opaque server error.
 
 `POST /scenario-simulator/run` reads only locally cached `1day` candles. It re-samples 10,000 repeatable daily OHLC bars with replacement from the lookback window, applies a fixed percentage stop and R-multiple target, and compares them with rolling historical outcomes whose full holding window ends no later than the latest cached candle. It does not select historical entries for similarity. When one daily candle reaches both levels it counts the stop first. The endpoint never fetches data, predicts prices, or submits orders; it returns `422` with the required history count when the cache is too short.
 
@@ -570,3 +572,15 @@ Next owner/action:
 - Verification: full Ruff and pytest passed; focused mypy passed on all changed backend modules. Full mypy still reports 13 existing errors in `market_cache.py`, `pattern_finder.py`, `breakout_scanner.py`, and `ml_research.py`. Frontend ESLint, webpack production build, and `git diff --check` passed. Browser rendered RELIANCE's 246-pair one-year study and comparison/trade cards. At a 1600 CSS-pixel desktop viewport, labeled cards fit the strategy results and trade details. The 20-year local range is available in the selected-symbol daily cache. No-sample rendering remains pending.
 - The comparison was run for 3 RELIANCE strategies over the cached 2000-01-03 to 2026-10-27 range. The UI showed 83 SMA, 8 RSI/EMA, and 259 MACD closed trades, with dates, prices, P&L, return, and holding days. These are local saved simulation results, not recommendations or orders.
 - Run with `./run.sh`; main UI port `4003`, API port `8001`; existing test UI ports `5003` and `6003`. Do not restart an active NSE import without checking process ownership.
+
+## 23. Research run responsiveness and readable results
+
+- Date: 2026-10-29.
+- Branch: `codex/research-run-performance-clarity-20261029`, based on `main` at `d92c4d2`.
+- Keep the Research browser snapshot compact: full candle, indicator, signal, equity, and trade arrays stay in the local SQLite artifact store. The page stores a result key (or legacy run ID) and reloads that report asynchronously. The API exposes a single-artifact read route and a legacy custom-run lookup.
+- Add a 60-second abort for historical runs and show elapsed time plus completed/failed counts. Present the plain-language outcome, net P&L, ending equity, trade count, win rate, drawdown, total return, and dated trade details before the chart. The chart shows the active session's OHLC, open-to-close move, and volume in shares, with an explanation of candle bodies, wicks, and volume bars.
+- Browser verification on `/research?symbol=TATACONSUM&strategy=donchian_breakout`: one-year daily sample, 246 candles, one closed trade (2026-05-12 to 2026-05-14), net result −₹256 after modeled costs, ending equity ₹99,744, total return −0.26%, and maximum drawdown −0.29%. The latest displayed candle is 2026-10-27 with ₹969 open, ₹1,000 high, ₹957.45 low, ₹1,000 close, and 7.6 million shares. The result reopened after a page reload from the local artifact store. One trade is too small a sample to judge strategy quality; this is a historical simulation, not a recommendation.
+- Verification: Ruff and the full `pytest -q` suite passed; all 20 frontend Vitest tests, ESLint, the webpack production build, and `git diff --check` passed. The default Turbopack build cannot bind its worker port in this sandbox, so production validation used `npm --prefix frontend run build -- --webpack`.
+- Layout checked at a 1600 CSS-pixel desktop viewport and at the narrow responsive breakpoint. The browser returned 487 CSS px after a requested 390 px viewport, with no document-level horizontal overflow; exact 390 px device emulation could not be confirmed. Existing local UI/API processes on ports `4003`/`8001` were preserved; the test UI at `5003` stayed available.
+- Commit, pull request, merge state, and final next action are recorded after the authorized PR workflow completes.
+- Checklist: `docs/RESEARCH_RUN_CLARITY_CHECKLIST.md`.

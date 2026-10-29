@@ -63,7 +63,7 @@ export interface FinancialChartProps {
 }
 
 type ChartTime = { time: Time; key: string };
-type HoveredCandle = ChartCandle | null;
+type HoveredCandle = { candle: ChartCandle; sourceCandles: ReadonlyArray<ChartCandle> } | null;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -96,9 +96,9 @@ function formatPrice(value: number): string {
 
 function formatVolume(value: number | null): string {
   if (value === null) return "Unavailable";
-  if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (Math.abs(value) >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
-  return Math.round(value).toLocaleString("en-IN");
+  if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M shares`;
+  if (Math.abs(value) >= 1_000) return `${(value / 1_000).toFixed(1)}K shares`;
+  return `${Math.round(value).toLocaleString("en-IN")} shares`;
 }
 
 function formatTimestamp(timestamp: string | number): string {
@@ -192,6 +192,10 @@ export function FinancialChart({
   const errorMessage = error instanceof Error ? error.message : error;
   const showEmpty = empty || data.candles.length === 0;
   const viewState = getChartViewState({ loading, error: errorMessage, unavailable, empty: showEmpty, hasCandles: data.candles.length > 0 });
+  const currentHoveredCandle = hoveredCandle?.sourceCandles === data.candles ? hoveredCandle.candle : null;
+  const activeCandle = currentHoveredCandle ?? data.candles.at(-1) ?? null;
+  const sessionMove = activeCandle ? activeCandle.close - activeCandle.open : 0;
+  const sessionMovePercent = activeCandle && activeCandle.open !== 0 ? sessionMove / activeCandle.open * 100 : 0;
   const minVisible = Math.min(12, data.candles.length || 1);
   const chartHeight = Math.max(height, 280) + (showVolume ? 84 : 0) + groupIndicatorPanes(data.indicators).length * 128;
   const chartClassName = ["bt-interactive-chart", className].filter(Boolean).join(" ");
@@ -332,7 +336,8 @@ export function FinancialChart({
 
     const handleCrosshairMove = (param: MouseEventParams<Time>) => {
       const key = timeKey(param.time);
-      setHoveredCandle(key ? visibleCandles.find((candle) => candle.timestampKey === key) ?? null : null);
+      const candle = key ? visibleCandles.find((item) => item.timestampKey === key) : null;
+      setHoveredCandle(candle ? { candle, sourceCandles: data.candles } : null);
     };
     const handleClick = (param: MouseEventParams<Time>) => {
       const hoveredId = typeof param.hoveredObjectId === "string" ? param.hoveredObjectId : "";
@@ -384,11 +389,23 @@ export function FinancialChart({
       </div>
       {viewState === "ready" && <div className="bt-chart-legend" aria-label="How to read this chart">
         <strong>How to read it</strong>
-        {showVolume && <span><i style={{ background: "#94a3b8" }} />Volume</span>}
+        {showVolume && <span><i style={{ background: "#94a3b8" }} />Volume · shares traded</span>}
         {data.indicators.map((indicator) => <span key={indicator.id}><i style={{ background: indicator.color ?? "#4f46e5" }} />{indicator.label}{indicator.placement === "pane" ? " · separate pane" : ""}</span>)}
         {data.tradeMarkers.some((marker) => marker.kind === "entry") && <span><i className="is-buy" />Buy / entry</span>}
         {data.tradeMarkers.some((marker) => marker.kind === "exit") && <span><i className="is-sell" />Sell / exit</span>}
-        <small>Hover a candle for OHLC. Select a marker or trade to highlight it.</small>
+        <small>Each candle is one trading session: the body shows open and close; the wick shows the session high and low. Green means close above open; red means close below open. Volume bars use the same colour.</small>
+      </div>}
+      {viewState === "ready" && activeCandle && <div className="bt-chart-readout" aria-label="Selected historical candle values">
+        <div className={`bt-chart-readout-day ${sessionMove >= 0 ? "is-positive" : "is-negative"}`}>
+          <span>{currentHoveredCandle ? "Selected session" : "Latest session"}</span>
+          <strong>{formatTimestamp(activeCandle.timestamp)}</strong>
+          <small>{sessionMove >= 0 ? "Up" : "Down"} {sessionMove >= 0 ? "+" : "−"}{Math.abs(sessionMovePercent).toFixed(2)}% from open</small>
+        </div>
+        <div><span>Open</span><strong>{formatPrice(activeCandle.open)}</strong></div>
+        <div><span>High · session peak</span><strong>{formatPrice(activeCandle.high)}</strong></div>
+        <div><span>Low · session bottom</span><strong>{formatPrice(activeCandle.low)}</strong></div>
+        <div><span>Close</span><strong>{formatPrice(activeCandle.close)}</strong></div>
+        <div><span>Volume traded</span><strong title={activeCandle.volume === null ? "Share volume unavailable" : `${Math.round(activeCandle.volume).toLocaleString("en-IN")} shares`}>{formatVolume(activeCandle.volume)}</strong></div>
       </div>}
       {viewState === "loading"
         ? <ChartStatus kind="loading" message="Historical candles and chart overlays are being prepared." />
@@ -399,7 +416,7 @@ export function FinancialChart({
             : viewState === "empty"
               ? <ChartStatus kind="empty" message={emptyMessage} />
             : <div ref={chartContainerRef} role="img" aria-label={`${title}. ${description}`} style={{ minHeight: chartHeight }} />}
-      <span style={visuallyHidden} aria-live="polite">{hoveredCandle ? `${formatTimestamp(hoveredCandle.timestamp)} open ${formatPrice(hoveredCandle.open)}, high ${formatPrice(hoveredCandle.high)}, low ${formatPrice(hoveredCandle.low)}, close ${formatPrice(hoveredCandle.close)}, volume ${formatVolume(hoveredCandle.volume)}` : ""}</span>
+      <span style={visuallyHidden} aria-live="polite">{currentHoveredCandle ? `${formatTimestamp(currentHoveredCandle.timestamp)} open ${formatPrice(currentHoveredCandle.open)}, high ${formatPrice(currentHoveredCandle.high)}, low ${formatPrice(currentHoveredCandle.low)}, close ${formatPrice(currentHoveredCandle.close)}, volume ${formatVolume(currentHoveredCandle.volume)}` : ""}</span>
       {chartNavigator && <div className="bt-chart-navigator" aria-label="Chart range summary"><Maximize2 size={13} aria-hidden="true" /><span>{chartNavigator}</span><small>Historical only · no live prices</small></div>}
     </div>
   );
