@@ -44,6 +44,10 @@ OLLAMA_TIMEOUT_SECONDS=25
 
 No environment secret is required for the local NSE workflow.
 
+## FII/DII history
+
+`GET /api/v1/insights/fii-dii?...&source=tapetide` reads previously saved third-party history from SQLite. Page loads and date-range changes do not call the provider. Tapetide rows stay separate from official NSE data in `fii_dii_history_rows` and `fii_dii_rows`; the UI reports the dates actually available locally.
+
 ## Historical NSE importer
 
 `NseBhavcopyImporter` works at archive-day level:

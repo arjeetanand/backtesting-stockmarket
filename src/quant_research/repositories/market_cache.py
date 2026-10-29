@@ -212,6 +212,21 @@ class SqliteMarketCache:
             )
             connection.execute(
                 """
+                CREATE TABLE IF NOT EXISTS fii_dii_history_rows (
+                    trading_day TEXT NOT NULL,
+                    participant TEXT NOT NULL,
+                    scope TEXT NOT NULL,
+                    segment TEXT NOT NULL,
+                    buy_value REAL NOT NULL,
+                    sell_value REAL NOT NULL,
+                    net_value REAL NOT NULL,
+                    source TEXT NOT NULL,
+                    PRIMARY KEY (trading_day, participant, scope, segment)
+                )
+                """
+            )
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS nifty50_closes (
                     trading_day TEXT PRIMARY KEY,
                     close REAL NOT NULL,
@@ -692,6 +707,37 @@ class SqliteMarketCache:
             )
             for record in records
         ]
+
+    def get_fii_dii_history_rows(self, start: date, end: date) -> list[FiiDiiRow]:
+        with self._connect() as connection:
+            records = connection.execute(
+                """
+                SELECT trading_day, participant, scope, segment, buy_value, sell_value, net_value, source
+                FROM fii_dii_history_rows
+                WHERE trading_day >= ? AND trading_day <= ?
+                ORDER BY trading_day ASC, participant ASC
+                """,
+                (start.isoformat(), end.isoformat()),
+            ).fetchall()
+        return [
+            FiiDiiRow(
+                trading_day=date.fromisoformat(str(record[0])), participant=str(record[1]), scope=str(record[2]),
+                segment=str(record[3]), buy_value=float(record[4]), sell_value=float(record[5]),
+                net_value=float(record[6]), source=str(record[7]),
+            )
+            for record in records
+        ]
+
+    def fii_dii_history_coverage(self) -> tuple[date | None, date | None, int]:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT MIN(trading_day), MAX(trading_day), COUNT(DISTINCT trading_day) FROM fii_dii_history_rows"
+            ).fetchone()
+        return (
+            date.fromisoformat(str(row[0])) if row and row[0] else None,
+            date.fromisoformat(str(row[1])) if row and row[1] else None,
+            int(row[2] or 0) if row else 0,
+        )
 
     def fii_dii_coverage(self, scope: str = "combined", segment: str = "equity") -> tuple[date | None, date | None, int]:
         with self._connect() as connection:

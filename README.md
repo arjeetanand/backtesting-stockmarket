@@ -106,7 +106,7 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 | `/options` | Educational options payoff and breakeven calculator |
 | `/analytics` | Performance and trade-quality views |
 | `/insights` | Local NSE index breadth, stock/sector heatmaps, and top movers |
-| `/insights/fii-dii` | Official NSE FII/FPI and DII institutional-flow chart and ledger |
+| `/insights/fii-dii` | Saved Tapetide FII/DII history from SQLite, with a separate official NSE latest-session view |
 | `/settings` | Local data, Ollama, and application status |
 
 See [PROJECT_GUIDE.md](PROJECT_GUIDE.md) for the complete user guide.
@@ -174,7 +174,7 @@ npm --prefix frontend run build
 - Daily structure zones are an independent Backtrack OHLCV heuristic. They are confirmed range breaks with a nearby opposite candle, not evidence of institutional activity, and they do not use intraday data.
 - Market flow ranks the close-location value of the latest 20 saved daily candles, weighted by traded value, and marks candidate daily price zones for a selected symbol. It cannot identify buyers or sellers, measure bid/ask depth, or provide live order blocks.
 - The current research chart and strategy engine support the local `1day` NSE path; other timeframes remain explicit unavailable/configuration states until normalized data exists.
-- FII/DII Insights uses NSE's separate provisional FII/FPI-DII report, archives raw snapshots under `data/nse_archives/fii_dii/`, and never derives institutional flows from stock prices. NSE's public report currently exposes the latest session only; older days appear after they have been captured locally, and the UI labels incomplete coverage instead of fabricating a month.
+- FII/DII Insights reads previously saved Tapetide rows from SQLite without another provider request. It keeps them separate from the official NSE latest-session report, and the 30D/3M/6M/1Y controls filter only locally stored dates. NSE does not provide the historical date range shown by those controls.
 - Replay and backtesting are simulations, not trading execution.
 - Normalized backtest bars currently cover supported EQ/BE/ETF rows; raw rows are retained for future work.
 - Options calculations are educational and do not model the complete derivatives lifecycle.

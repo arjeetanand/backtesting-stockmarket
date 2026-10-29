@@ -30,6 +30,7 @@ import {
   type FiiDiiChartPoint,
   type FiiDiiResponse,
   type FiiDiiRow,
+  type FiiDiiSource,
   type FiiDiiScope,
   type FiiDiiSegment,
 } from "@/lib/fii-dii-api";
@@ -52,14 +53,17 @@ const RANGES = [
   { value: 365, label: "Last 1 Year" },
 ];
 
-function isoDaysAgo(days: number): string {
-  const date = new Date();
-  date.setHours(0, 0, 0, 0);
-  date.setDate(date.getDate() - days);
-  return date.toISOString().slice(0, 10);
+function localIsoDate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-const today = new Date().toISOString().slice(0, 10);
+function isoDaysAgo(days: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() - (days - 1));
+  return localIsoDate(date);
+}
+
+const today = localIsoDate(new Date());
 
 function formatCr(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
@@ -156,48 +160,55 @@ function FlowTooltip({ active, payload, label }: { active?: boolean; payload?: A
 }
 
 export default function FiiDiiPage() {
+  const [source, setSource] = useState<FiiDiiSource>("tapetide");
   const [scope, setScope] = useState<FiiDiiScope>("combined");
   const [segment, setSegment] = useState<FiiDiiSegment>("equity");
   const [participant, setParticipant] = useState<Participant>("both");
   const [granularity, setGranularity] = useState<Granularity>("daily");
-  const [rangeDays, setRangeDays] = useState(30);
+  const [rangeDays, setRangeDays] = useState(365);
   const [data, setData] = useState<FiiDiiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [job, setJob] = useState<{ job_id: string; status: string; message: string } | null>(null);
   const autoImportKey = useRef("");
+  const requestId = useRef(0);
 
   const start = isoDaysAgo(rangeDays);
   const rangeLabel = RANGES.find((item) => item.value === rangeDays)?.label ?? "Selected range";
   const importing = job?.status === "queued" || job?.status === "running";
 
   const loadData = useCallback(async (triggerImport = false) => {
+    const currentRequest = ++requestId.current;
     setLoading(true);
     setError(null);
     try {
-      const next = await getFiiDiiData(start, today, scope, segment);
+      const next = await getFiiDiiData(start, today, scope, segment, source);
+      if (currentRequest !== requestId.current) return;
       setData(next);
       const importKey = `${start}:${today}:${scope}`;
       const coverageStartsAfterRequestedRange = Boolean(next.coverage_start && next.coverage_start > start);
-      if (triggerImport && (!next.rows.length || coverageStartsAfterRequestedRange) && autoImportKey.current !== importKey) {
+      if (source === "nse" && triggerImport && (!next.rows.length || coverageStartsAfterRequestedRange) && autoImportKey.current !== importKey) {
         autoImportKey.current = importKey;
         const nextJob = await startFiiDiiImport(start, today, scope);
         setJob({ ...nextJob, status: "queued", message: "Official NSE import queued." });
       }
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not read local FII/DII data.");
+      if (currentRequest === requestId.current) setError(requestError instanceof Error ? requestError.message : "Could not read local FII/DII data.");
     } finally {
-      setLoading(false);
+      if (currentRequest === requestId.current) setLoading(false);
     }
-  }, [segment, scope, start]);
+  }, [segment, scope, source, start]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void loadData(true); }, 0);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      requestId.current += 1;
+    };
   }, [loadData]);
 
   useEffect(() => {
-    if (!job || !importing) return;
+    if (source !== "nse" || !job || !importing) return;
     const timer = window.setInterval(async () => {
       try {
         const next = await getFiiDiiImportStatus(job.job_id);
@@ -208,7 +219,7 @@ export default function FiiDiiPage() {
       }
     }, 1800);
     return () => window.clearInterval(timer);
-  }, [importing, job, loadData]);
+  }, [importing, job, loadData, source]);
 
   const filteredRows = useMemo(() => (data?.rows ?? []).filter((row) => participant === "both" || row.participant === participant), [data?.rows, participant]);
   const tableRows = useMemo(() => pivotRows(filteredRows), [filteredRows]);
@@ -236,21 +247,32 @@ export default function FiiDiiPage() {
           <div>
             <div className="bt-kicker"><span className="live-dot" /> MARKET INSIGHTS</div>
             <h1>FII / DII Data</h1>
-            <p>Track institutional cash-market flows against the historical NSE session.</p>
+            <p>{source === "tapetide" ? "Saved history loads from SQLite. Date ranges filter the rows already stored locally." : "Track the official NSE latest-session report and its locally archived history."}</p>
           </div>
           <div className="bt-heading-actions">
-            <span className="data-source"><BarChart3 size={14} /> Official NSE report</span>
-            <button type="button" className="bt-secondary" onClick={() => void manualImport()} disabled={importing}><RefreshCw size={14} className={importing ? "spin" : ""} /> {importing ? "Importing…" : "Refresh NSE data"}</button>
+            <span className="data-source"><BarChart3 size={14} /> {source === "tapetide" ? "Tapetide history" : "Official NSE report"}</span>
+            {source === "nse" && (
+              <button type="button" className="bt-secondary" onClick={() => void manualImport()} disabled={importing}><RefreshCw size={14} className={importing ? "spin" : ""} /> {importing ? "Importing…" : "Refresh NSE data"}</button>
+            )}
           </div>
         </section>
 
-        <section className="fii-source-note"><Info size={15} /><span><strong>Provisional institutional activity.</strong> FII/FPI and DII values are reported by NSE and may change after custodial confirmation. This page is for research, not trading instructions.</span><a href={data?.source_url ?? "https://www.nseindia.com/reports/fii-dii/"} target="_blank" rel="noreferrer">NSE source ↗</a></section>
+        <section className="fii-segment-tabs" aria-label="FII/DII data source">
+          <button type="button" aria-pressed={source === "tapetide"} className={source === "tapetide" ? "is-active" : ""} onClick={() => setSource("tapetide")}>Tapetide history · saved locally</button>
+          <button type="button" aria-pressed={source === "nse"} className={source === "nse" ? "is-active" : ""} onClick={() => setSource("nse")}>Official NSE latest snapshot</button>
+        </section>
+
+        {source === "tapetide" ? (
+          <section className="fii-source-note"><Info size={15} /><span><strong>Provisional third-party data.</strong> Saved rows are read from SQLite when this page opens. Tapetide does not document the feed’s upstream source. Longer selections show only the saved rows that fall in that period.</span><a href={data?.source_url ?? "https://tapetide.com/fii-dii-data"} target="_blank" rel="noreferrer">Tapetide source ↗</a></section>
+        ) : (
+          <section className="fii-source-note"><Info size={15} /><span><strong>Provisional institutional activity.</strong> FII/FPI and DII values are reported by NSE and may change after custodial confirmation. This page is for research, not trading instructions.</span><a href={data?.source_url ?? "https://www.nseindia.com/reports/fii-dii/"} target="_blank" rel="noreferrer">NSE source ↗</a></section>
+        )}
 
         {data?.coverage_note && <section className="fii-source-note fii-coverage-note"><AlertCircle size={15} /><span>{data.coverage_note}</span></section>}
 
-        <section className="fii-segment-tabs" aria-label="Institutional flow segment">
+        {source === "nse" && <section className="fii-segment-tabs" aria-label="Institutional flow segment">
           {SEGMENTS.map((item) => <button type="button" key={item.value} className={segment === item.value ? "is-active" : ""} onClick={() => setSegment(item.value)}>{item.label}</button>)}
-        </section>
+        </section>}
 
         <section className="fii-summary-grid">
           <SummaryCard label="Daily" date={summary("daily")?.end} fii={summary("daily")?.fii_net ?? 0} dii={summary("daily")?.dii_net ?? 0} />
@@ -264,11 +286,11 @@ export default function FiiDiiPage() {
               <option value="both">Both FII &amp; DII</option><option value="FII">FII / FPI only</option><option value="DII">DII only</option>
             </select>
           </label>
-          <label className="fii-select-label">Scope
+          {source === "nse" && <label className="fii-select-label">Scope
             <select value={scope} onChange={(event) => setScope(event.target.value as FiiDiiScope)}>
               <option value="combined">NSE + BSE + MSEI</option><option value="nse_only">NSE only</option>
             </select>
-          </label>
+          </label>}
           <div className="fii-control-group" aria-label="Chart granularity">{(["daily", "weekly", "monthly"] as Granularity[]).map((item) => <button type="button" key={item} className={granularity === item ? "is-active" : ""} onClick={() => setGranularity(item)}>{item[0].toUpperCase() + item.slice(1)}</button>)}</div>
           <div className="fii-range-control" aria-label="Date range">{RANGES.map((item) => <button type="button" key={item.value} className={rangeDays === item.value ? "is-active" : ""} onClick={() => setRangeDays(item.value)}>{item.value === 30 ? "30D" : item.value === 90 ? "3M" : item.value === 180 ? "6M" : "1Y"}</button>)}</div>
           <span className="fii-range-label"><CalendarRange size={14} /> {rangeLabel}</span>
@@ -277,10 +299,10 @@ export default function FiiDiiPage() {
         {error && <div className="fii-state fii-error" role="alert"><AlertCircle size={18} /><div><strong>FII/DII data needs attention</strong><p>{error}</p></div><button type="button" className="bt-secondary" onClick={() => void loadData(false)}>Retry</button></div>}
 
         <section className="bt-panel fii-chart-panel">
-          <div className="fii-panel-heading"><div><div className="bt-kicker"><BarChart3 size={13} /> FLOW MAP</div><h2>Institutional activity</h2><p>{data?.coverage_start && data?.coverage_end ? `${shortDate(data.coverage_start)} → ${shortDate(data.coverage_end)} · values in ₹ crore` : "Import official NSE rows to populate the chart."}</p></div><div className="fii-chart-legend"><span><i className="fii-legend-fii" />FII</span><span><i className="fii-legend-dii" />DII</span><span><i className="fii-legend-index" />Nifty 50</span></div></div>
+          <div className="fii-panel-heading"><div><div className="bt-kicker"><BarChart3 size={13} /> FLOW MAP</div><h2>Institutional activity</h2><p>{data?.coverage_start && data?.coverage_end ? `${shortDate(data.coverage_start)} → ${shortDate(data.coverage_end)} · values in ₹ crore` : source === "tapetide" ? "No saved Tapetide dates are available for this range." : "Import official NSE rows to populate the chart."}</p></div><div className="fii-chart-legend"><span><i className="fii-legend-fii" />FII</span><span><i className="fii-legend-dii" />DII</span><span><i className="fii-legend-index" />Nifty 50</span></div></div>
           <div className="fii-chart-wrap">
-            {loading && <div className="fii-state"><RefreshCw size={19} className="spin" /><span>Reading local NSE insight data…</span></div>}
-            {!loading && !ready && <div className="fii-state"><DatabaseIcon /><div><strong>No local FII/DII rows yet</strong><p>Backtrack will archive the official NSE report locally when you refresh the data.</p></div><button type="button" className="bt-primary" onClick={() => void manualImport()} disabled={importing}>{importing ? "Importing…" : "Import official data"}</button></div>}
+            {loading && <div className="fii-state"><RefreshCw size={19} className="spin" /><span>Reading local {source === "tapetide" ? "Tapetide" : "NSE"} insight data…</span></div>}
+            {!loading && !ready && <div className="fii-state"><DatabaseIcon /><div><strong>No local FII/DII rows in this range</strong><p>{source === "tapetide" ? "No saved Tapetide history matches this range." : "Backtrack will archive the official NSE report locally when you refresh the data."}</p></div>{source === "nse" && <button type="button" className="bt-primary" onClick={() => void manualImport()} disabled={importing}>{importing ? "Importing…" : "Import official data"}</button>}</div>}
             {!loading && ready && <ResponsiveContainer width="100%" height={355}><ComposedChart data={chart} margin={{ top: 12, right: 18, left: 0, bottom: 2 }}><CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} /><XAxis dataKey="label" minTickGap={24} tick={{ fill: "#64748b", fontFamily: "var(--font-jetbrains)", fontSize: 10 }} tickLine={false} axisLine={{ stroke: "#cbd5e1" }} /><YAxis yAxisId="flow" orientation="left" tickFormatter={(value) => `${value < 0 ? "−" : ""}${Math.abs(value / 1000).toFixed(1)}k`} tick={{ fill: "#64748b", fontFamily: "var(--font-jetbrains)", fontSize: 10 }} tickLine={false} axisLine={false} /><YAxis yAxisId="index" orientation="right" tickFormatter={(value) => value.toLocaleString("en-IN")} tick={{ fill: "#64748b", fontFamily: "var(--font-jetbrains)", fontSize: 10 }} tickLine={false} axisLine={false} /><Tooltip content={<FlowTooltip />} cursor={{ fill: "rgba(79,70,224,.04)" }} /><Legend content={() => null} /><Bar yAxisId="flow" dataKey="fii_net" name="FII" fill="#f59b3d" barSize={16} radius={[3, 3, 0, 0]} /><Bar yAxisId="flow" dataKey="dii_net" name="DII" fill="#5d4df5" barSize={16} radius={[3, 3, 0, 0]} /><Line yAxisId="index" type="monotone" dataKey="nifty50" name="Nifty 50" stroke="#1479ff" strokeWidth={2.25} dot={false} connectNulls={false} activeDot={{ r: 4, stroke: "#fff", strokeWidth: 2 }} /></ComposedChart></ResponsiveContainer>}
           </div>
           {ready && !data?.nifty50.length && <div className="fii-index-note"><Info size={13} /> Nifty 50 archives were not available for this range, so the line is shown only when official index closes are locally stored.</div>}
@@ -288,10 +310,10 @@ export default function FiiDiiPage() {
 
         <section className="bt-panel fii-table-panel">
           <div className="fii-panel-heading"><div><div className="bt-kicker"><Table2 size={13} /> DAILY LEDGER</div><h2>Cash activity by session</h2><p>All values are ₹ crore. Net cash equals buy value minus sell value.</p></div><button type="button" className="bt-secondary" onClick={() => exportRows(tableRows)} disabled={!tableRows.length}><Download size={14} /> Export CSV</button></div>
-          {tableRows.length ? <div className="fii-table-scroll"><table><thead><tr><th>Date</th><th>FII Buy Cash (Cr)</th><th>FII Sell Cash (Cr)</th><th>FII Net Cash (Cr)</th><th>DII Buy Cash (Cr)</th><th>DII Sell Cash (Cr)</th><th>DII Net Cash (Cr)</th></tr></thead><tbody>{tableRows.map((row) => <tr key={row.date}><td>{shortDate(row.date)} <small>{new Date(`${row.date}T00:00:00Z`).getUTCFullYear()}</small></td><td>{formatTableNumber(row.fii?.buy_value)}</td><td>{formatTableNumber(row.fii?.sell_value)}</td><td className={netClass(row.fii?.net_value)}>{formatCr(row.fii?.net_value)}</td><td>{formatTableNumber(row.dii?.buy_value)}</td><td>{formatTableNumber(row.dii?.sell_value)}</td><td className={netClass(row.dii?.net_value)}>{formatCr(row.dii?.net_value)}</td></tr>)}</tbody></table></div> : <div className="fii-empty-table">Import data to see the daily institutional activity ledger.</div>}
+          {tableRows.length ? <div className="fii-table-scroll"><table><thead><tr><th>Date</th><th>FII Buy Cash (Cr)</th><th>FII Sell Cash (Cr)</th><th>FII Net Cash (Cr)</th><th>DII Buy Cash (Cr)</th><th>DII Sell Cash (Cr)</th><th>DII Net Cash (Cr)</th></tr></thead><tbody>{tableRows.map((row) => <tr key={row.date}><td>{shortDate(row.date)} <small>{new Date(`${row.date}T00:00:00Z`).getUTCFullYear()}</small></td><td>{formatTableNumber(row.fii?.buy_value)}</td><td>{formatTableNumber(row.fii?.sell_value)}</td><td className={netClass(row.fii?.net_value)}>{formatCr(row.fii?.net_value)}</td><td>{formatTableNumber(row.dii?.buy_value)}</td><td>{formatTableNumber(row.dii?.sell_value)}</td><td className={netClass(row.dii?.net_value)}>{formatCr(row.dii?.net_value)}</td></tr>)}</tbody></table></div> : <div className="fii-empty-table">{source === "tapetide" ? "No saved Tapetide sessions match this range." : "Import data to see the daily institutional activity ledger."}</div>}
         </section>
 
-        <footer className="fii-footer"><span><CheckCircle2 size={14} /> Local archive coverage: {data?.coverage_days ?? 0} sessions</span><span>Source: official NSE FII/FPI-DII report · {scope === "combined" ? "NSE + BSE + MSEI" : "NSE only"}</span></footer>
+        <footer className="fii-footer"><span><CheckCircle2 size={14} /> Saved locally: {data?.coverage_days ?? 0} sessions</span><span>Source: {source === "tapetide" ? "Tapetide API · provisional cash-market flow" : `official NSE FII/FPI-DII report · ${scope === "combined" ? "NSE + BSE + MSEI" : "NSE only"}`}</span></footer>
       </div>
     </div>
   );

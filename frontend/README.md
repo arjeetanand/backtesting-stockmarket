@@ -49,7 +49,7 @@ The home page guides the local-data → research → saved-results → compariso
 | `/bias-validity` | Bias and validity checks |
 | `/market-scanner` | Multi-stock formula, historical strategy, breakout, and daily structure-zone scanning |
 | `/insights` | Local NSE index breadth, stock/sector heatmaps, and top movers |
-| `/insights/fii-dii` | Official NSE FII/FPI-DII institutional-flow chart and ledger |
+| `/insights/fii-dii` | Saved Tapetide FII/DII history from SQLite, with a separate official NSE latest-session view |
 | `/watchlist` | Persisted simulated setup tracking |
 | `/ml-lab` | Chronological ML experiments |
 | `/pattern-finder` | Historical pattern detection and review |
@@ -131,7 +131,7 @@ The strategy catalogue is the single frontend source of truth. `STRATEGY_LIBRARY
 
 The Market Scanner uses the local scanner API and real leaderboard values only. Its sector heatmap is a treemap-style surface: tile area represents scanned-stock breadth, tile color can be switched between strategy return, strategy alpha versus buy-and-hold, and win rate, and clicking a sector opens its ranked stocks with a derived research score, return, alpha, win rate, drawdown, and a Research handoff. This follows the interaction model documented by [TradingView's heatmap guide](https://www.tradingview.com/support/solutions/43000766446-tradingview-heatmaps-from-global-trends-to-details/) while staying honest about the local data: market-cap sizing is not claimed because the cache does not provide market-cap fundamentals. The legacy detailed table remains available in source for traceability but is not the primary composition. ML Lab uses the same visual language with a narrow model-configuration rail and a wide diagnostics surface. Both routes keep explicit loading, unavailable, empty, and result states and must never show seeded prices or fabricated time series.
 
-FII/DII Insights uses the official NSE institutional-activity report, archives raw snapshots locally, and derives daily/weekly/monthly net-flow summaries from normalized SQLite rows. NSE's current public endpoint is a latest-session snapshot rather than a historical date-range archive, so the page reports incomplete local coverage instead of presenting one snapshot as a month. The Nifty 50 line is rendered only from locally archived official index closes; unavailable index data is never approximated.
+FII/DII Insights reads previously saved Tapetide history from SQLite on load. Its 30D/3M/6M/1Y controls filter saved rows and show the actual coverage; they do not request new data. Tapetide history stays separate from the official NSE latest-session series. The Nifty 50 line uses locally archived official index closes only.
 
 Morning candidates follow one explicit handoff: **Save Plan** sends the displayed trigger, stop, and target to **Daily Watchlist**, while **Test history** opens Research with the scanner symbol, strategy, timeframe, and dates. The watchlist waits until a later daily bar reaches the trigger, then evaluates only subsequent bars; the trigger candle is left unresolved because daily OHLC cannot show which level traded first. Latest closes and paper returns are not live quotes or broker fills.
 
