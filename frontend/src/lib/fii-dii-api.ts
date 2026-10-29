@@ -50,6 +50,7 @@ export type FiiDiiResponse = {
   coverage_days: number;
   coverage_note: string | null;
   source_url: string;
+  tapetide_sync_available: boolean;
   provisional: boolean;
 };
 
@@ -58,7 +59,10 @@ export type FiiDiiImportStatus = {
   status: "queued" | "running" | "complete" | "failed";
   message: string;
   scope?: FiiDiiScope;
+  source?: FiiDiiSource;
   stored_rows?: number;
+  pages_fetched?: number;
+  skipped_records?: number;
   available_start?: string | null;
   available_end?: string | null;
   stage?: string;
@@ -80,11 +84,11 @@ export async function getFiiDiiData(start: string, end: string, scope: FiiDiiSco
   return jsonRequest<FiiDiiResponse>(`${API_BASE_URL}/insights/fii-dii?${params.toString()}`);
 }
 
-export async function startFiiDiiImport(start: string, end: string, scope: FiiDiiScope): Promise<{ job_id: string }> {
-  return jsonRequest<{ job_id: string }>(`${API_BASE_URL}/insights/fii-dii/import`, {
+export async function startFiiDiiImport(start: string, end: string, scope: FiiDiiScope, source: FiiDiiSource = "nse"): Promise<{ job_id: string; source: FiiDiiSource }> {
+  return jsonRequest<{ job_id: string; source: FiiDiiSource }>(`${API_BASE_URL}/insights/fii-dii/import`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ start, end, scope }),
+    body: JSON.stringify({ start, end, scope, source }),
   });
 }
 

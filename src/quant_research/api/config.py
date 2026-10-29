@@ -17,6 +17,7 @@ class Settings:
     market_cache_path: Path
     nse_archive_path: Path
     ollama_timeout_seconds: float = 25.0
+    tapetide_api_token: str | None = None
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -33,4 +34,5 @@ class Settings:
             ollama_timeout_seconds=min(60.0, max(5.0, ollama_timeout)),
             market_cache_path=Path(os.getenv("MARKET_CACHE_PATH", "data/market_cache.sqlite3")),
             nse_archive_path=Path(os.getenv("NSE_ARCHIVE_PATH", "data/nse_archives")),
+            tapetide_api_token=os.getenv("TAPETIDE_API_TOKEN", "").strip() or None,
         )

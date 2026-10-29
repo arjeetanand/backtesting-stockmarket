@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from collections.abc import Callable
 from datetime import UTC, date, datetime
 from pathlib import Path
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from quant_research.repositories.market_cache import FiiDiiRow, SqliteMarketCache
@@ -16,6 +18,9 @@ from quant_research.services.nse_indices import NseIndexArchiveImporter
 
 class FiiDiiImportError(RuntimeError):
     """Raised when the official NSE report cannot be downloaded or parsed."""
+
+
+TAPETIDE_HISTORY_START = date(2014, 1, 1)
 
 
 class NseFiiDiiImporter:
@@ -202,3 +207,138 @@ class NseFiiDiiImporter:
             return float(text)
         except ValueError:
             return None
+
+
+class TapetideFiiDiiHistoryImporter:
+    """Download Tapetide's documented daily cash-flow history into SQLite."""
+
+    endpoint = "https://api.tapetide.com/v1/market/institutional-flows"
+
+    def __init__(self, cache: SqliteMarketCache, token: str | None, timeout_seconds: float = 30.0) -> None:
+        self._cache = cache
+        self._token = token.strip() if token else ""
+        self._timeout_seconds = timeout_seconds
+
+    @property
+    def configured(self) -> bool:
+        return bool(self._token)
+
+    def sync(
+        self,
+        start: date,
+        end: date,
+        progress: Callable[[str], None] | None = None,
+    ) -> dict[str, object]:
+        if start > end:
+            raise FiiDiiImportError("start must be on or before end.")
+        if end > date.today():
+            raise FiiDiiImportError("End date cannot be in the future.")
+        if not self.configured:
+            raise FiiDiiImportError("Add TAPETIDE_API_TOKEN to the project .env file, then restart Backtrack.")
+        requested_start = max(start, TAPETIDE_HISTORY_START)
+        if requested_start > end:
+            raise FiiDiiImportError("Tapetide's documented FII/DII cash-flow history starts on 2014-01-01.")
+
+        rows: dict[tuple[date, str], FiiDiiRow] = {}
+        skipped_records = 0
+        pages_fetched = 0
+        cursor: str | None = None
+        seen_cursors: set[str] = set()
+        while True:
+            payload = self._download_page(requested_start, end, cursor)
+            records = payload.get("data")
+            meta = payload.get("meta")
+            if not isinstance(records, list) or not isinstance(meta, dict) or not isinstance(meta.get("has_more"), bool):
+                raise FiiDiiImportError("Tapetide returned an unexpected history response.")
+            pages_fetched += 1
+            for record in records:
+                if not isinstance(record, dict):
+                    raise FiiDiiImportError("Tapetide returned an invalid daily-flow row.")
+                try:
+                    trading_day = date.fromisoformat(str(record["date"]))
+                except (KeyError, ValueError) as exc:
+                    raise FiiDiiImportError("Tapetide returned a daily-flow row without a valid ISO date.") from exc
+                if not requested_start <= trading_day <= end:
+                    raise FiiDiiImportError("Tapetide returned a date outside the requested history range.")
+                for participant, buy_key, sell_key, net_key in (
+                    ("FII", "fii_buy_cr", "fii_sell_cr", "fii_net_cr"),
+                    ("DII", "dii_buy_cr", "dii_sell_cr", "dii_net_cr"),
+                ):
+                    buy = self._number(record.get(buy_key))
+                    sell = self._number(record.get(sell_key))
+                    if buy is None or sell is None:
+                        skipped_records += 1
+                        continue
+                    net = self._number(record.get(net_key))
+                    row = FiiDiiRow(
+                        trading_day=trading_day,
+                        participant=participant,
+                        scope="tapetide",
+                        segment="equity",
+                        buy_value=buy,
+                        sell_value=sell,
+                        net_value=net if net is not None else round(buy - sell, 2),
+                        source=self.endpoint,
+                    )
+                    key = (trading_day, participant)
+                    if key in rows and rows[key] != row:
+                        raise FiiDiiImportError(f"Tapetide returned conflicting duplicate rows for {trading_day}.")
+                    rows[key] = row
+            if progress:
+                progress(f"Downloaded Tapetide history page {pages_fetched}.")
+            if not meta["has_more"]:
+                break
+            next_cursor = meta.get("next_cursor")
+            if not isinstance(next_cursor, str) or not next_cursor or next_cursor in seen_cursors or pages_fetched >= 100:
+                raise FiiDiiImportError("Tapetide history pagination did not advance safely.")
+            seen_cursors.add(next_cursor)
+            cursor = next_cursor
+
+        normalized_rows = list(rows.values())
+        stored_rows = self._cache.store_fii_dii_history_rows(normalized_rows)
+        available_days = [row.trading_day for row in normalized_rows]
+        return {
+            "stored_rows": stored_rows,
+            "pages_fetched": pages_fetched,
+            "skipped_records": skipped_records,
+            "available_start": min(available_days) if available_days else None,
+            "available_end": max(available_days) if available_days else None,
+        }
+
+    def _download_page(self, start: date, end: date, cursor: str | None) -> dict[str, object]:
+        query = {"from": start.isoformat(), "to": end.isoformat(), "order": "asc", "limit": "1000"}
+        if cursor:
+            query["cursor"] = cursor
+        request = Request(
+            f"{self.endpoint}?{urlencode(query)}",
+            headers={"Authorization": f"Bearer {self._token}", "Accept": "application/json"},
+        )
+        try:
+            with urlopen(request, timeout=self._timeout_seconds) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except HTTPError as exc:
+            if exc.code in {401, 403}:
+                message = "Tapetide rejected the configured token. Check TAPETIDE_API_TOKEN in .env."
+            elif exc.code == 429:
+                message = "Tapetide's request limit was reached. Try syncing again later."
+            else:
+                message = f"Tapetide history returned HTTP {exc.code}. Try again later."
+            raise FiiDiiImportError(message) from exc
+        except (URLError, TimeoutError) as exc:
+            raise FiiDiiImportError("Could not reach Tapetide. Check the internet connection and try again.") from exc
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise FiiDiiImportError("Tapetide returned unreadable FII/DII history.") from exc
+        if not isinstance(payload, dict):
+            raise FiiDiiImportError("Tapetide returned an unexpected history response.")
+        return payload
+
+    @staticmethod
+    def _number(value: object) -> float | None:
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise FiiDiiImportError("Tapetide returned a non-numeric FII/DII amount.")
+        result = float(value)
+        if not math.isfinite(result):
+            raise FiiDiiImportError("Tapetide returned a non-finite FII/DII amount.")
+        return result

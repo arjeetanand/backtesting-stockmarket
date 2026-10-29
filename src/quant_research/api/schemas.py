@@ -134,6 +134,7 @@ class FiiDiiImportRequest(BaseModel):
     start: date
     end: date
     scope: str = Field(default="combined", pattern="^(combined|nse_only)$")
+    source: Literal["nse", "tapetide"] = "nse"
 
 
 class FiiDiiImportJobResponse(BaseModel):
@@ -142,6 +143,7 @@ class FiiDiiImportJobResponse(BaseModel):
     scope: str
     source_start: date
     source_end: date
+    source: Literal["nse", "tapetide"] = "nse"
 
 
 class FiiDiiImportStatusResponse(BaseModel):
@@ -153,6 +155,9 @@ class FiiDiiImportStatusResponse(BaseModel):
     available_start: date | None = None
     available_end: date | None = None
     stage: str | None = None
+    source: Literal["nse", "tapetide"] | None = None
+    pages_fetched: int | None = None
+    skipped_records: int | None = None
 
 
 class FiiDiiRowResponse(BaseModel):
@@ -201,6 +206,7 @@ class FiiDiiResponse(BaseModel):
     coverage_days: int
     coverage_note: str | None = None
     source_url: str
+    tapetide_sync_available: bool = False
     provisional: bool = True
 
 

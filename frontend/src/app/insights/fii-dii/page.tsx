@@ -30,6 +30,7 @@ import {
   type FiiDiiChartPoint,
   type FiiDiiResponse,
   type FiiDiiRow,
+  type FiiDiiImportStatus,
   type FiiDiiSource,
   type FiiDiiScope,
   type FiiDiiSegment,
@@ -46,20 +47,34 @@ const SEGMENTS: Array<{ value: FiiDiiSegment; label: string }> = [
   { value: "stock_option", label: "Stock Options" },
 ];
 
-const RANGES = [
-  { value: 30, label: "Last 30 Days" },
-  { value: 90, label: "Last 3 Months" },
-  { value: 180, label: "Last 6 Months" },
-  { value: 365, label: "Last 1 Year" },
+type HistoryRange = "30d" | "3m" | "6m" | "1y" | "5y" | "10y" | "20y" | "all";
+
+const HISTORY_START = "2014-01-01";
+const RANGES: Array<{ value: HistoryRange; label: string; short: string }> = [
+  { value: "30d", label: "Last 30 Days", short: "30D" },
+  { value: "3m", label: "Last 3 Months", short: "3M" },
+  { value: "6m", label: "Last 6 Months", short: "6M" },
+  { value: "1y", label: "Last 1 Year", short: "1Y" },
+  { value: "5y", label: "Last 5 Years", short: "5Y" },
+  { value: "10y", label: "Last 10 Years", short: "10Y" },
+  { value: "20y", label: "Last 20 Years", short: "20Y" },
+  { value: "all", label: "All Available", short: "All" },
 ];
 
 function localIsoDate(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-function isoDaysAgo(days: number): string {
+function rangeStart(range: HistoryRange): string {
+  if (range === "all") return HISTORY_START;
   const date = new Date();
-  date.setDate(date.getDate() - (days - 1));
+  if (range === "30d" || range === "3m" || range === "6m") {
+    const days = range === "30d" ? 30 : range === "3m" ? 90 : 180;
+    date.setDate(date.getDate() - (days - 1));
+  } else {
+    const years = range === "1y" ? 1 : range === "5y" ? 5 : range === "10y" ? 10 : 20;
+    date.setFullYear(date.getFullYear() - years);
+  }
   return localIsoDate(date);
 }
 
@@ -165,16 +180,16 @@ export default function FiiDiiPage() {
   const [segment, setSegment] = useState<FiiDiiSegment>("equity");
   const [participant, setParticipant] = useState<Participant>("both");
   const [granularity, setGranularity] = useState<Granularity>("daily");
-  const [rangeDays, setRangeDays] = useState(365);
+  const [range, setRange] = useState<HistoryRange>("1y");
   const [data, setData] = useState<FiiDiiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [job, setJob] = useState<{ job_id: string; status: string; message: string } | null>(null);
+  const [job, setJob] = useState<FiiDiiImportStatus | null>(null);
   const autoImportKey = useRef("");
   const requestId = useRef(0);
 
-  const start = isoDaysAgo(rangeDays);
-  const rangeLabel = RANGES.find((item) => item.value === rangeDays)?.label ?? "Selected range";
+  const start = rangeStart(range);
+  const rangeLabel = RANGES.find((item) => item.value === range)?.label ?? "Selected range";
   const importing = job?.status === "queued" || job?.status === "running";
 
   const loadData = useCallback(async (triggerImport = false) => {
@@ -208,7 +223,7 @@ export default function FiiDiiPage() {
   }, [loadData]);
 
   useEffect(() => {
-    if (source !== "nse" || !job || !importing) return;
+    if (!job || !importing) return;
     const timer = window.setInterval(async () => {
       try {
         const next = await getFiiDiiImportStatus(job.job_id);
@@ -232,10 +247,10 @@ export default function FiiDiiPage() {
   const manualImport = async () => {
     setError(null);
     try {
-      const nextJob = await startFiiDiiImport(start, today, scope);
-      setJob({ ...nextJob, status: "queued", message: "Official NSE import queued." });
+      const nextJob = await startFiiDiiImport(start, today, scope, source);
+      setJob({ ...nextJob, status: "queued", message: source === "tapetide" ? "Tapetide history sync queued." : "Official NSE import queued." });
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not start the official NSE import.");
+      setError(requestError instanceof Error ? requestError.message : `Could not start the ${source === "tapetide" ? "Tapetide history sync" : "official NSE import"}.`);
     }
   };
 
@@ -247,7 +262,7 @@ export default function FiiDiiPage() {
           <div>
             <div className="bt-kicker"><span className="live-dot" /> MARKET INSIGHTS</div>
             <h1>FII / DII Data</h1>
-            <p>{source === "tapetide" ? "Saved history loads from SQLite. Date ranges filter the rows already stored locally." : "Track the official NSE latest-session report and its locally archived history."}</p>
+            <p>{source === "tapetide" ? "Choose a period, sync it once, then explore the saved history from SQLite." : "Track the official NSE latest-session report and its locally archived history."}</p>
           </div>
           <div className="bt-heading-actions">
             <span className="data-source"><BarChart3 size={14} /> {source === "tapetide" ? "Tapetide history" : "Official NSE report"}</span>
@@ -263,7 +278,7 @@ export default function FiiDiiPage() {
         </section>
 
         {source === "tapetide" ? (
-          <section className="fii-source-note"><Info size={15} /><span><strong>Provisional third-party data.</strong> Saved rows are read from SQLite when this page opens. Tapetide does not document the feed’s upstream source. Longer selections show only the saved rows that fall in that period.</span><a href={data?.source_url ?? "https://tapetide.com/fii-dii-data"} target="_blank" rel="noreferrer">Tapetide source ↗</a></section>
+          <section className="fii-source-note"><Info size={15} /><span><strong>Provisional third-party data.</strong> Sync a period when you want to refresh it; saved rows load from SQLite on later visits. Tapetide documents daily cash-market history from January 2014.</span><a href={data?.source_url ?? "https://tapetide.com/fii-dii-data"} target="_blank" rel="noreferrer">Tapetide source ↗</a></section>
         ) : (
           <section className="fii-source-note"><Info size={15} /><span><strong>Provisional institutional activity.</strong> FII/FPI and DII values are reported by NSE and may change after custodial confirmation. This page is for research, not trading instructions.</span><a href={data?.source_url ?? "https://www.nseindia.com/reports/fii-dii/"} target="_blank" rel="noreferrer">NSE source ↗</a></section>
         )}
@@ -292,9 +307,20 @@ export default function FiiDiiPage() {
             </select>
           </label>}
           <div className="fii-control-group" aria-label="Chart granularity">{(["daily", "weekly", "monthly"] as Granularity[]).map((item) => <button type="button" key={item} className={granularity === item ? "is-active" : ""} onClick={() => setGranularity(item)}>{item[0].toUpperCase() + item.slice(1)}</button>)}</div>
-          <div className="fii-range-control" aria-label="Date range">{RANGES.map((item) => <button type="button" key={item.value} className={rangeDays === item.value ? "is-active" : ""} onClick={() => setRangeDays(item.value)}>{item.value === 30 ? "30D" : item.value === 90 ? "3M" : item.value === 180 ? "6M" : "1Y"}</button>)}</div>
+          <div className="fii-range-control" aria-label="Date range">{RANGES.map((item) => <button type="button" key={item.value} aria-pressed={range === item.value} disabled={importing} className={range === item.value ? "is-active" : ""} onClick={() => { setJob(null); setRange(item.value); }}>{item.short}</button>)}</div>
           <span className="fii-range-label"><CalendarRange size={14} /> {rangeLabel}</span>
+          {source === "tapetide" && <div className="fii-sync-action">
+            <button type="button" className="bt-primary" onClick={() => void manualImport()} disabled={!data?.tapetide_sync_available || importing || loading}>
+              <RefreshCw size={14} className={importing ? "spin" : ""} /> {importing ? "Syncing…" : `Sync ${rangeLabel}`}
+            </button>
+            {data && !data.tapetide_sync_available && <small>Add TAPETIDE_API_TOKEN to the project .env and restart Backtrack to enable sync.</small>}
+          </div>}
         </section>
+
+        {job?.source === source && <section className={`fii-job-status ${job.status === "failed" ? "is-error" : ""}`} role={job.status === "failed" ? "alert" : "status"}>
+          <RefreshCw size={15} className={importing ? "spin" : ""} />
+          <div><strong>{job.status === "complete" ? "Sync complete" : job.status === "failed" ? "Sync failed" : "Sync in progress"}</strong><p>{job.message}</p></div>
+        </section>}
 
         {error && <div className="fii-state fii-error" role="alert"><AlertCircle size={18} /><div><strong>FII/DII data needs attention</strong><p>{error}</p></div><button type="button" className="bt-secondary" onClick={() => void loadData(false)}>Retry</button></div>}
 
