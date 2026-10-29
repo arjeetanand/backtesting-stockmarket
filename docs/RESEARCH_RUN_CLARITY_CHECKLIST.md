@@ -10,4 +10,4 @@
 - [x] Test API artifact lookup by key and legacy run ID.
 - [x] Verify the Research page and a TATACONSUM Donchian run in the browser at desktop and a narrow responsive width; the browser reported 487 CSS px when asked for 390 px, so exact phone-width emulation remains unavailable.
 - [x] Run full backend/frontend checks: Ruff, pytest, Vitest, ESLint, webpack production build, and `git diff --check`.
-- [ ] Open the PR, then record its commit, PR, and merge details in `handover.md`.
+- [x] Commit `7435d52` was delivered by [PR #21](https://github.com/arjeetanand/backtesting-stockmarket/pull/21) and squash-merged into `main` as `08948ff`; final delivery details are in `handover.md`.

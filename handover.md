@@ -577,10 +577,12 @@ Next owner/action:
 
 - Date: 2026-10-29.
 - Branch: `codex/research-run-performance-clarity-20261029`, based on `main` at `d92c4d2`.
+- Implementation commit: `7435d52` (`Keep research backtests responsive and readable`).
+- PR: [#21](https://github.com/arjeetanand/backtesting-stockmarket/pull/21), squash-merged into `main` as `08948ff8ad28d2e70c7bd67416d67766003a5aae`; GitGuardian check passed. Local `main` is synced to `origin/main`.
 - Keep the Research browser snapshot compact: full candle, indicator, signal, equity, and trade arrays stay in the local SQLite artifact store. The page stores a result key (or legacy run ID) and reloads that report asynchronously. The API exposes a single-artifact read route and a legacy custom-run lookup.
 - Add a 60-second abort for historical runs and show elapsed time plus completed/failed counts. Present the plain-language outcome, net P&L, ending equity, trade count, win rate, drawdown, total return, and dated trade details before the chart. The chart shows the active session's OHLC, open-to-close move, and volume in shares, with an explanation of candle bodies, wicks, and volume bars.
 - Browser verification on `/research?symbol=TATACONSUM&strategy=donchian_breakout`: one-year daily sample, 246 candles, one closed trade (2026-05-12 to 2026-05-14), net result −₹256 after modeled costs, ending equity ₹99,744, total return −0.26%, and maximum drawdown −0.29%. The latest displayed candle is 2026-10-27 with ₹969 open, ₹1,000 high, ₹957.45 low, ₹1,000 close, and 7.6 million shares. The result reopened after a page reload from the local artifact store. One trade is too small a sample to judge strategy quality; this is a historical simulation, not a recommendation.
 - Verification: Ruff and the full `pytest -q` suite passed; all 20 frontend Vitest tests, ESLint, the webpack production build, and `git diff --check` passed. The default Turbopack build cannot bind its worker port in this sandbox, so production validation used `npm --prefix frontend run build -- --webpack`.
 - Layout checked at a 1600 CSS-pixel desktop viewport and at the narrow responsive breakpoint. The browser returned 487 CSS px after a requested 390 px viewport, with no document-level horizontal overflow; exact 390 px device emulation could not be confirmed. Existing local UI/API processes on ports `4003`/`8001` were preserved; the test UI at `5003` stayed available.
-- Commit, pull request, merge state, and final next action are recorded after the authorized PR workflow completes.
+- Next: if judging the strategy itself, widen the tested period after confirming local history; this one-year result contains only one closed trade and is not enough to evaluate the rule.
 - Checklist: `docs/RESEARCH_RUN_CLARITY_CHECKLIST.md`.
