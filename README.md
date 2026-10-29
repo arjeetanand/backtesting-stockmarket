@@ -80,6 +80,7 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 - [docs/UI_THEME_CHECKLIST.md](docs/UI_THEME_CHECKLIST.md) — theme implementation and delivery checklist.
 - [docs/MARKET_SCANNER_CLARITY_CHECKLIST.md](docs/MARKET_SCANNER_CLARITY_CHECKLIST.md) — scanner wording, search scope, and verification record.
 - [docs/CTA_SELECT_CHECKLIST.md](docs/CTA_SELECT_CHECKLIST.md) — CTA state, custom choice menus, and UI verification record.
+- [docs/BRANCH_MERGE_CHECKLIST.md](docs/BRANCH_MERGE_CHECKLIST.md) — branch audit, integration scope, and remaining remote checks.
 - [handover.md](handover.md) — engineering ownership, persistence contract, architecture, and handoff notes.
 - [TESTING.md](TESTING.md) — automated tests, UI smoke checks, data checks, and release checklist.
 - [docs/STRUCTURE_ZONE_SCAN_CHECKLIST.md](docs/STRUCTURE_ZONE_SCAN_CHECKLIST.md) — scope and delivery checklist for the local daily structure-zone scan.
@@ -93,7 +94,7 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 | `/` | Guided path from local NSE data to research, saved results, and comparison |
 | `/data` | Bulk NSE history download and local stock search |
 | `/research` | Describe an idea, review a proposal, prepare data, and run a backtest |
-| `/stock-research` | Run a gated NIFTY 50 morning scan or explain one symbol's indicators, conditional plan, historical test, candles, and persistent run ledger |
+| `/stock-research` | Run a gated NIFTY 50 scan or review one stock's recent moves, volume, drawdown, holding risk, and conditional re-entry levels |
 | `/strategy` | Build indicator and rule-based strategies |
 | `/strategy-import` | Extract reviewable rules from a YouTube URL or transcript |
 | `/backtests` | Reopen saved historical tests |
@@ -108,7 +109,7 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 | `/pattern-finder` | Detect repeatable historical price patterns and test them locally |
 | `/options` | Educational options payoff and breakeven calculator |
 | `/analytics` | Performance and trade-quality views |
-| `/insights` | Local NSE index breadth, stock/sector heatmaps, and top movers |
+| `/insights` | Local NSE index breadth, stock/sector heatmaps, recent stock volumes, conditional paper plans, and top movers |
 | `/insights/fii-dii` | Saved Tapetide FII/DII history with one-click 30D/3M/6M/1Y/5Y/10Y/20Y/All sync, plus a separate official NSE latest-session view |
 | `/settings` | Local data, Ollama, and application status |
 

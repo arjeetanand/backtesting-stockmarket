@@ -614,3 +614,30 @@ Next owner/action:
 - Checklist: `docs/FII_DII_HISTORY_CHECKLIST.md`.
 - Run with `./run.sh` (UI `4003`, API `8001`). The currently running checkout was not restarted.
 - Remaining: after adding a Tapetide token to the backend `.env`, restart Backtrack and sync the chosen range; browser visual review is still pending because the sandbox denied the isolated preview ports.
+
+## 26. Market Insights stock details
+
+- Date: 2026-10-29.
+- Source branch: `codex/market-insights-detail-implementation-20261029`, included by `codex/drawdown-response-guide-20261029`.
+- Show the cached NSE session date, allow a user-triggered daily sync, and show the selected stock's latest volume, five-session volume, prior-20-session average, relative volume, and five dated closes/volumes.
+- The **Create paper plan** action uses the existing conditional prior-high entry, prior-low stop, and 2R target workflow. It does not submit broker orders.
+- The source branch recorded frontend lint, Vitest, and webpack build as passing; browser checks were blocked by the isolated preview's `listen EPERM`, so the API result and rendered stock detail were not verified in-browser.
+- Checklist: `docs/MARKET_INSIGHTS_DETAILS_CHECKLIST.md`.
+
+## 27. Beginner stock drawdown guide
+
+- Date: 2026-10-29.
+- Source branch: `codex/drawdown-response-guide-20261029`.
+- `/stock-research` starts with YESBANK, offers IRFC as a quick example, and explains recent price movement, daily volume, drawdown, average cost, conditional exits, and re-entry levels using saved NSE daily data.
+- Personal cost/share inputs remain in page state. A user-entered stop is checked against daily lows. The position-size illustration requires user-entered loss and allocation limits and uses whole shares.
+- Local daily bars cannot identify a news cause or confirm fills; gaps, fees, and slippage can exceed the paper illustration. The page is not a personalized buy/hold/sell recommendation and has no broker-order connection.
+- The source branch recorded frontend lint, Vitest, and webpack build as passing; its isolated browser preview was blocked by `listen EPERM`.
+- Checklist: `docs/STOCK_RESEARCH_CHECKLIST.md`.
+
+## 28. Branch integration audit
+
+- Date: 2026-10-29. Integration branch: `codex/merge-unmerged-branches-20261029`, based on refreshed `origin/main` at `74e742e`.
+- Integrated `codex/cta-select-clarity-20261029` and `codex/drawdown-response-guide-20261029`; the latter also includes `codex/market-insights-detail-implementation-20261029`.
+- Historical feature branches represented in `origin/main` were not merged a second time. The FII/DII SQLite worktree had staged and unstaged edits; those edits were preserved and excluded.
+- GitHub fetch succeeded, but `gh pr list` could not reach `api.github.com`; current PR and CI status could not be confirmed. No remote push was performed.
+- Current combined-branch checks and local-main update are recorded in `docs/BRANCH_MERGE_CHECKLIST.md`.

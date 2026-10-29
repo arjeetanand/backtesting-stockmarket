@@ -14,6 +14,16 @@
 - [x] Source-check responsive navigation: Stock Research is available under the mobile **More → Explore markets** menu; wide tables use horizontal scrolling. Exact mobile-width rendering was unavailable because the browser connection exposes no viewport override.
 - [x] Record delivery: implementation branch `codex/single-stock-analysis-20261028`, source commit `d47adb3`, PR [#15](https://github.com/arjeetanand/backtesting-stockmarket/pull/15), squash-merged into `main` as `a64a87a329a3e9c1c436a8f00ac856e350407c05`; GitHub reported the repository check passing.
 
+## Beginner drawdown and re-entry guide
+
+- [x] Start the single-stock page with YESBANK; provide an IRFC example and keep arbitrary local NSE symbol search.
+- [x] Summarize the latest daily move, worst daily move and close-to-close drawdown over 20 sessions, latest volume versus the prior 20-session average, and total volume over five sessions.
+- [x] Add optional average-cost/share-count P&L and an optional user-defined exit-price touch check against the latest daily low; do not persist personal inputs or assert actual fills.
+- [x] Reuse the fixed rule's conditional entry, stop, targets, and exits for possible re-entry; explain setup status and show no news-cause inference.
+- [x] Calculate only a hypothetical whole-share size from user-entered maximum rupee loss and allocation caps; add a frontend regression check for the math.
+- [x] Run the frontend suite (24 tests), ESLint, webpack production build, and `git diff --check` successfully.
+- [ ] Browser-rendered behavior remains unchecked: the branch preview server could not bind reserved port 6003 (`listen EPERM`); the existing 5003 and 4003 services were left untouched.
+
 ## Evidence and delivery
 
 - Main local cache was queried read-only; the isolated test database contains only sampled OHLCV and 29 test run artifacts.

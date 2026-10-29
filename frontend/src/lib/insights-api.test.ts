@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeInsightsPayload } from "./insights-api";
+import { buildInsightPaperPlan, normalizeInsightsPayload, summarizeInsightVolume } from "./insights-api";
 
 describe("normalizeInsightsPayload", () => {
   it("normalizes the scanner contract without inventing unavailable members", () => {
@@ -70,5 +70,48 @@ describe("normalizeInsightsPayload", () => {
   it("treats backend *_pct fields as percentages even below one percent", () => {
     const result = normalizeInsightsPayload({ stocks: [{ symbol: "ITC", return_pct: 0.764 }] });
     expect(result.members[0].returnFraction).toBeCloseTo(0.00764);
+  });
+});
+
+describe("selected stock volume and paper plan", () => {
+  it("summarizes the latest five sessions and compares latest volume with the prior twenty", () => {
+    const bars = Array.from({ length: 21 }, (_, index) => ({
+      timestamp: `2026-10-${String(index + 1).padStart(2, "0")}T00:00:00Z`,
+      symbol: "ABC",
+      open: 100,
+      high: 110,
+      low: 90,
+      close: 105,
+      volume: index + 1,
+    }));
+
+    expect(summarizeInsightVolume(bars)).toEqual({
+      latestVolume: 21,
+      lastFiveVolume: 95,
+      lastFiveSessions: 5,
+      priorTwentyAverage: 10.5,
+      relativeVolume: 2,
+    });
+  });
+
+  it("uses the cached bar high and low for a conditional 2R plan and rejects a zero range", () => {
+    const bar = {
+      timestamp: "2026-10-29T00:00:00Z",
+      symbol: "ABC",
+      open: 109,
+      high: 110.13,
+      low: 108.1,
+      close: 109.5,
+      volume: 1_000,
+    };
+
+    expect(buildInsightPaperPlan(bar)).toEqual({
+      dataAsOf: "2026-10-29",
+      entryTrigger: 110.13,
+      stopLevel: 108.1,
+      target2R: 114.19,
+      riskPerShare: 2.03,
+    });
+    expect(buildInsightPaperPlan({ ...bar, high: bar.low })).toBeNull();
   });
 });

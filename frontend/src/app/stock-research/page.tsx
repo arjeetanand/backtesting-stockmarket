@@ -19,6 +19,7 @@ import TopBar from "@/components/layout/TopBar";
 import { SymbolCombobox } from "@/components/data/SymbolCombobox";
 import { FinancialChart } from "@/components/charts/FinancialChart";
 import type { IndicatorSeries, NormalizedCandle } from "@/lib/chart-data";
+import { calculatePaperPositionSize, summarizeRecentDrawdown } from "@/lib/drawdown-guide";
 import {
   getStockResearchHistory,
   runStockResearch,
@@ -41,6 +42,11 @@ const number = (value: number | null | undefined, digits = 2) => value == null |
 const costPct = (value: number) => `${Number(value.toFixed(6))}%`;
 const normalizeSymbol = (value: string) => value.trim().toUpperCase().replace(/\.NS$/, "");
 const date = (value: string | null | undefined) => value ? new Date(value).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+const volume = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? "—" : value.toLocaleString("en-IN", { maximumFractionDigits: 0 });
+const positiveInput = (value: string) => {
+  const parsed = Number(value);
+  return value.trim() && Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
 const nseFinancialResultsUrl = (symbol: string) => `https://www.nseindia.com/companies-listing/corporate-filings-financial-results?symbol=${encodeURIComponent(symbol)}&tabIndex=equity`;
 
 const GATE_COPY: Record<StockResearchResult["validation_gate"]["status"], string> = {
@@ -89,8 +95,13 @@ function MetricsTable({ title, metrics }: { title: string; metrics: StockResearc
 }
 
 export default function StockResearchPage() {
-  const [symbol, setSymbol] = useState("RELIANCE");
+  const [symbol, setSymbol] = useState("YESBANK");
   const [result, setResult] = useState<StockResearchResult | null>(null);
+  const [averageCost, setAverageCost] = useState("");
+  const [ownedShares, setOwnedShares] = useState("");
+  const [personalStop, setPersonalStop] = useState("");
+  const [maxLossBudget, setMaxLossBudget] = useState("");
+  const [allocationCap, setAllocationCap] = useState("");
   const [history, setHistory] = useState<StockResearchHistory | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyLoading, setHistoryLoading] = useState(true);
@@ -101,6 +112,21 @@ export default function StockResearchPage() {
   const [scanError, setScanError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const historyRequestId = useRef(0);
+
+  const clearPersonalInputs = () => {
+    setAverageCost("");
+    setOwnedShares("");
+    setPersonalStop("");
+    setMaxLossBudget("");
+    setAllocationCap("");
+  };
+
+  const selectSymbol = (nextSymbol: string) => {
+    setSymbol(normalizeSymbol(nextSymbol));
+    setResult(null);
+    setError(null);
+    clearPersonalInputs();
+  };
 
   const refreshHistory = useCallback(async () => {
     const requestId = ++historyRequestId.current;
@@ -138,6 +164,7 @@ export default function StockResearchPage() {
       setError("Enter an NSE symbol or choose a company from the list.");
       return;
     }
+    if (requestedSymbol !== normalizeSymbol(symbol)) clearPersonalInputs();
     setSymbol(requestedSymbol);
     setRunning(true);
     setRunningSymbol(requestedSymbol);
@@ -194,6 +221,22 @@ export default function StockResearchPage() {
 
   const technical = result?.technical;
   const setup = result?.setup;
+  const recentFacts = useMemo(() => summarizeRecentDrawdown(result?.chart ?? []), [result]);
+  const enteredAverageCost = positiveInput(averageCost);
+  const enteredShares = positiveInput(ownedShares);
+  const holdingPnl = result?.technical && enteredAverageCost && enteredShares && Number.isSafeInteger(enteredShares)
+    ? {
+      amount: (result.technical.close - enteredAverageCost) * enteredShares,
+      percent: (result.technical.close / enteredAverageCost - 1) * 100,
+    }
+    : null;
+  const enteredStop = positiveInput(personalStop);
+  const personalStopReached = enteredStop != null && recentFacts != null && recentFacts.latest.low <= enteredStop;
+  const enteredMaxLoss = positiveInput(maxLossBudget);
+  const enteredAllocation = positiveInput(allocationCap);
+  const plannedSize = setup?.status !== "stale_data" && setup?.entry_trigger != null && setup.stop_loss != null && enteredMaxLoss != null && enteredAllocation != null
+    ? calculatePaperPositionSize(setup.entry_trigger, setup.stop_loss, enteredMaxLoss, enteredAllocation)
+    : null;
   const oos = result?.out_of_sample_metrics;
   const latestTrades = [...(result?.trades ?? [])].slice(-30).reverse();
   const count = (value: number | undefined) => value ?? (historyLoading ? "…" : historyError ? "—" : 0);
@@ -206,8 +249,8 @@ export default function StockResearchPage() {
       <section className="bt-heading-row stock-research-heading">
         <div>
           <div className="bt-kicker"><Activity size={13} aria-hidden="true" /> ONE STOCK · EXPLAINED FROM DAILY NSE HISTORY</div>
-          <h1>Stock research</h1>
-          <p>Choose one NSE-listed company. We’ll explain the latest saved daily data, show conditional price levels, and check one fixed rule against past data.</p>
+          <h1>Stock decision guide</h1>
+          <p>Understand a sharp price drop, check your own holding against a stop you choose, and review a conditional re-entry plan from saved NSE daily data.</p>
         </div>
         <span className="stock-research-source"><ShieldCheck size={14} aria-hidden="true" /> Local NSE archive</span>
       </section>
@@ -280,10 +323,10 @@ export default function StockResearchPage() {
       </section>
 
       <section className="bt-panel stock-research-search" aria-label="Choose a stock">
-        <div className="stock-research-search-copy"><span className="bt-eyebrow">START WITH A SYMBOL</span><strong>Which company should we look at?</strong><small>Search by company name or NSE symbol, for example RELIANCE.</small></div>
+        <div className="stock-research-search-copy"><span className="bt-eyebrow">START WITH A SYMBOL</span><strong>Choose an example or search NSE</strong><small>YESBANK is the starting example. Search the local NSE catalogue for another listed stock.</small><div className="stock-research-examples" aria-label="Example stocks">{["YESBANK", "IRFC"].map((example) => <button key={example} type="button" className={symbol === example ? "selected" : ""} onClick={() => selectSymbol(example)} disabled={running || scanLoading}>{example === "YESBANK" ? "Yes Bank · YESBANK" : "IRFC"}</button>)}</div></div>
         <div className="stock-research-search-control">
           <label className="bt-field-label" htmlFor="stock-research-symbol">NSE symbol or company</label>
-          <SymbolCombobox value={symbol} onChange={(next) => { setSymbol(next); setResult(null); setError(null); }} label="" inputId="stock-research-symbol" maxLength={50} disabled={running || scanLoading} />
+          <SymbolCombobox value={symbol} onChange={selectSymbol} label="" inputId="stock-research-symbol" maxLength={50} disabled={running || scanLoading} />
         </div>
         <button type="button" className="bt-primary stock-research-run" onClick={() => void run()} disabled={running || scanLoading || !canRun}>
           {running ? <><LoaderCircle size={15} className="spin" aria-hidden="true" /> Analyzing history…</> : <><Activity size={15} aria-hidden="true" /> Analyze stock</>}
@@ -317,8 +360,60 @@ export default function StockResearchPage() {
             </aside>
           </section>
 
+          {recentFacts && <section className="stock-drawdown-guide bt-panel" aria-labelledby="stock-drawdown-guide-title">
+            <div className="stock-research-section-heading">
+              <div><span className="bt-eyebrow">PLAIN-LANGUAGE PLAN</span><h2 id="stock-drawdown-guide-title">What to check after a sharp fall</h2><p>All figures below use saved daily bars through {date(result.data_as_of)}. Daily prices show what happened, but this app has no news feed to confirm why.</p></div>
+              <span className="stock-research-source"><ShieldCheck size={14} aria-hidden="true" /> {result.data_source}</span>
+            </div>
+
+            <dl className="stock-drawdown-facts">
+              <div><dt>Latest session move</dt><dd>{percent(recentFacts.latestChangePct)}</dd><small>Close versus the previous close · {date(recentFacts.latest.timestamp)}</small></div>
+              <div><dt>Worst single-day move · last 20</dt><dd>{percent(recentFacts.worstSession?.changePct)}</dd><small>{recentFacts.worstSession ? date(recentFacts.worstSession.timestamp) : "Not enough saved sessions"}</small></div>
+              <div><dt>Pullback from 20-session high</dt><dd>{percent(recentFacts.drawdownFromRecentHighPct)}</dd><small>Compares latest close with the highest close in this window</small></div>
+              <div><dt>Latest session volume</dt><dd>{volume(recentFacts.latest.volume)}</dd><small>{recentFacts.latestVolumeRatio == null ? "Need 20 prior sessions for comparison" : `${number(recentFacts.latestVolumeRatio)}× the previous 20-session average`}</small></div>
+              <div><dt>Last five sessions volume</dt><dd>{volume(recentFacts.lastFiveVolume)}</dd><small>{recentFacts.lastFiveVsPriorAverage == null ? "Need five recent and 20 prior sessions" : `${number(recentFacts.lastFiveVsPriorAverage)}× the previous 20-session average per day`}</small></div>
+            </dl>
+
+            <div className="stock-drawdown-columns">
+              <section className="stock-drawdown-card">
+                <span className="bt-eyebrow">IF YOU ALREADY OWN IT</span>
+                <h3>Check your holding and your own exit price</h3>
+                <p>Enter what you paid and how many whole shares you own to see the paper profit or loss at the latest saved close. Add the exit price you chose for your plan to see whether the latest daily low reached it.</p>
+                <div className="stock-drawdown-inputs">
+                  <label>Average buy price (₹)<input type="number" min="0" step="0.01" value={averageCost} onChange={(event) => setAverageCost(event.target.value)} placeholder="Optional" inputMode="decimal" /></label>
+                  <label>Shares owned<input type="number" min="1" step="1" value={ownedShares} onChange={(event) => setOwnedShares(event.target.value)} placeholder="Whole shares" inputMode="numeric" /></label>
+                  <label>Your planned exit price (₹)<input type="number" min="0" step="0.01" value={personalStop} onChange={(event) => setPersonalStop(event.target.value)} placeholder="Optional" inputMode="decimal" /></label>
+                </div>
+                {ownedShares.trim() && enteredShares != null && !Number.isSafeInteger(enteredShares) && <p className="stock-drawdown-note">Enter a safe whole-share count for this cash-market calculation.</p>}
+                {(averageCost.trim() || ownedShares.trim()) && !holdingPnl && !(enteredShares != null && !Number.isSafeInteger(enteredShares)) && <p className="stock-drawdown-note">Enter a positive average buy price and a positive whole-share count to calculate P/L.</p>}
+                {holdingPnl && <div className={`stock-drawdown-result ${holdingPnl.amount < 0 ? "loss" : "gain"}`}><span>Unrealized result at {money(technical.close)}</span><strong>{money(holdingPnl.amount)} · {percent(holdingPnl.percent)}</strong><small>Paper calculation before brokerage, fees, taxes, dividends, and corporate actions.</small></div>}
+                {enteredStop != null && <div className={`stock-drawdown-result ${personalStopReached ? "loss" : "gain"}`}><span>Your exit-price check</span><strong>{personalStopReached ? "Your chosen price was touched; review your exit rule" : "Your chosen price was not touched on this saved day"}</strong><small>Low {money(recentFacts.latest.low)} · close {money(recentFacts.latest.close)}. If not touched, that alone does not prove the business thesis is intact. Daily bars cannot confirm an actual fill; a gap may change the exit price.</small></div>}
+                {!enteredStop && <p className="stock-drawdown-note">If you have not chosen an exit condition, this guide cannot define a sell point for your existing holding. Set one that matches your own timeframe and plan.</p>}
+              </section>
+
+              <section className="stock-drawdown-card">
+                <span className="bt-eyebrow">POSSIBLE FRESH ENTRY OR RE-ENTRY</span>
+                <h3>Only size a plan with limits you choose</h3>
+                <p>The rule status is <strong>{setup.status.replaceAll("_", " ")}</strong>. Enter your maximum planned loss and your maximum amount to allocate; no risk percentage is assumed.</p>
+                <div className="stock-drawdown-inputs">
+                  <label>Maximum planned loss (₹)<input type="number" min="0" step="1" value={maxLossBudget} onChange={(event) => setMaxLossBudget(event.target.value)} placeholder="Enter your limit" inputMode="decimal" /></label>
+                  <label>Maximum amount to allocate (₹)<input type="number" min="0" step="1" value={allocationCap} onChange={(event) => setAllocationCap(event.target.value)} placeholder="Enter your limit" inputMode="decimal" /></label>
+                </div>
+                {setup.status === "stale_data"
+                  ? <p className="stock-drawdown-note">The saved setup is stale. Refresh NSE history before using its levels or calculating a fresh-entry size.</p>
+                  : plannedSize && plannedSize.shares > 0
+                  ? <div className="stock-drawdown-result"><span>Hypothetical whole-share size at the reference levels</span><strong>{plannedSize.shares.toLocaleString("en-IN")} shares · {money(plannedSize.positionValue)}</strong><small>{money(plannedSize.riskPerShare)} modeled risk per share · {money(plannedSize.modeledLoss)} modeled loss at the stop</small></div>
+                  : enteredMaxLoss != null && enteredAllocation != null && setup.entry_trigger != null && setup.stop_loss != null
+                    ? <p className="stock-drawdown-note">The inputs cannot produce a safe whole-share count. Check that the stop is below the entry and that the limits are valid.</p>
+                    : <p className="stock-drawdown-note">Enter positive rupee limits in both fields to calculate whole shares. This calculator uses the reference entry and stop below; it does not recommend an amount.</p>}
+                <p className="stock-drawdown-note">This is a fresh rule-based setup, not an averaging-down calculator. A lower price alone does not meet the breakout rule. Gaps, slippage, taxes, and fees can make actual losses larger than the calculation.</p>
+              </section>
+            </div>
+            <p className="stock-drawdown-boundary"><Info size={14} aria-hidden="true" /><span>A sharp fall can come from news, but local price and volume bars cannot verify the cause or whether a business thesis has changed. Check official company filings separately. Raw prices are not adjusted for splits or bonus issues, so corporate actions can distort these comparisons. This guide explains scenarios; it does not tell you personally to hold, sell, or buy. <a href="https://investor.sebi.gov.in/securities-risks_trade_derivatives.html" target="_blank" rel="noreferrer">Read SEBI&apos;s guide to investment risks</a>.</span></p>
+          </section>}
+
           <section className="stock-research-plan bt-panel">
-            <div className="stock-research-section-heading"><div><span className="bt-eyebrow">CONDITIONAL PRICE LEVELS</span><h2>If this rule triggers</h2><p>These are reference prices from saved daily candles. They are not a current quote, order, or known fill.</p></div><span className={`stock-research-pill ${setup.status}`}><span />{setup.status.replaceAll("_", " ")}</span></div>
+            <div className="stock-research-section-heading"><div><span className="bt-eyebrow">CONDITIONAL PRICE LEVELS</span><h2>Possible re-entry, if this rule triggers</h2><p>Check the rule status first. These are reference prices from saved daily candles, not a current quote, order, or known fill.</p></div><span className={`stock-research-pill ${setup.status}`}><span />{setup.status.replaceAll("_", " ")}</span></div>
             <div className="stock-research-levels">
               <div><span>Entry trigger</span><strong>{money(setup.entry_trigger)}</strong><small>Prior 20-session high; the rule also checks daily close and volume</small></div>
               <div className="risk-level"><span>Stop level</span><strong>{money(setup.stop_loss)}</strong><small>{money(setup.risk_per_share)} price risk per share below the trigger</small></div>
