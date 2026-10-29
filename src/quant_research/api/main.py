@@ -39,7 +39,17 @@ def create_app(
         allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["*"],
     )
-    app.include_router(create_api_router(container.research, container.hypotheses, container.nse_importer, container.market_cache, container.nifty500_catalogue, container.artifacts, container.ml_research, container.fii_dii_importer))
+    app.include_router(create_api_router(
+        container.research,
+        container.hypotheses,
+        container.nse_importer,
+        container.market_cache,
+        container.nifty500_catalogue,
+        container.artifacts,
+        container.ml_research,
+        container.fii_dii_importer,
+        tapetide_history_importer=container.tapetide_fii_dii_importer,
+    ))
     return app
 
 

@@ -728,6 +728,30 @@ class SqliteMarketCache:
             for record in records
         ]
 
+    def store_fii_dii_history_rows(self, rows: list[FiiDiiRow]) -> int:
+        """Upsert Tapetide's historical series without touching NSE snapshots."""
+        with self._connect() as connection:
+            connection.executemany(
+                """
+                INSERT INTO fii_dii_history_rows
+                    (trading_day, participant, scope, segment, buy_value, sell_value, net_value, source)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(trading_day, participant, scope, segment) DO UPDATE SET
+                    buy_value = excluded.buy_value,
+                    sell_value = excluded.sell_value,
+                    net_value = excluded.net_value,
+                    source = excluded.source
+                """,
+                [
+                    (
+                        row.trading_day.isoformat(), row.participant, row.scope, row.segment,
+                        row.buy_value, row.sell_value, row.net_value, row.source,
+                    )
+                    for row in rows
+                ],
+            )
+        return len(rows)
+
     def fii_dii_history_coverage(self) -> tuple[date | None, date | None, int]:
         with self._connect() as connection:
             row = connection.execute(

@@ -11,7 +11,7 @@ from quant_research.llm.ollama import OllamaClient
 from quant_research.repositories.artifacts import SqliteArtifactStore
 from quant_research.repositories.backtests import SqliteBacktestRepository
 from quant_research.repositories.market_cache import SqliteMarketCache
-from quant_research.services.fii_dii import NseFiiDiiImporter
+from quant_research.services.fii_dii import NseFiiDiiImporter, TapetideFiiDiiHistoryImporter
 from quant_research.services.hypotheses import HypothesisService, JsonLlmClient
 from quant_research.services.ml_research import MlResearchService
 from quant_research.services.nifty500_catalogue import Nifty500CatalogueImporter
@@ -28,6 +28,7 @@ class ApplicationContainer:
     market_cache: SqliteMarketCache
     nse_importer: NseBhavcopyImporter
     fii_dii_importer: NseFiiDiiImporter
+    tapetide_fii_dii_importer: TapetideFiiDiiHistoryImporter
     nifty500_catalogue: Nifty500CatalogueImporter
     artifacts: SqliteArtifactStore
     ml_research: MlResearchService
@@ -56,6 +57,7 @@ def create_container(
             archive_path=settings.nse_archive_path / "fii_dii",
             index_importer=NseIndexArchiveImporter(market_cache, archive_path=settings.nse_archive_path / "indices"),
         ),
+        tapetide_fii_dii_importer=TapetideFiiDiiHistoryImporter(market_cache, settings.tapetide_api_token),
         nifty500_catalogue=Nifty500CatalogueImporter(market_cache),
         artifacts=artifacts,
         ml_research=MlResearchService(configured_provider, artifacts),

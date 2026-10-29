@@ -40,13 +40,16 @@ NSE_ARCHIVE_PATH=data/nse_archives
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=qwen3:4b
 OLLAMA_TIMEOUT_SECONDS=25
+TAPETIDE_API_TOKEN=
 ```
 
-No environment secret is required for the local NSE workflow.
+No environment secret is required for the local NSE workflow. `TAPETIDE_API_TOKEN` is optional and is used only when explicitly syncing historical FII/DII data.
 
 ## FII/DII history
 
-`GET /api/v1/insights/fii-dii?...&source=tapetide` reads previously saved third-party history from SQLite. Page loads and date-range changes do not call the provider. Tapetide rows stay separate from official NSE data in `fii_dii_history_rows` and `fii_dii_rows`; the UI reports the dates actually available locally.
+`GET /api/v1/insights/fii-dii?...&source=tapetide` reads previously saved third-party history from SQLite. Page loads and date-range changes do not call the provider. Tapetide rows stay separate from official NSE data in `fii_dii_history_rows` and `fii_dii_rows`.
+
+`POST /api/v1/insights/fii-dii/import` with `source: "tapetide"` explicitly syncs the selected date range as a background job. The importer follows the provider's cursor pages, saves completed rows to SQLite, and can be polled through the existing import-status route. History is documented from 2014-01-01; longer requests are clamped to that date. Keep the token in the backend `.env`, never in frontend configuration. Provider quotas and terms apply.
 
 ## Historical NSE importer
 

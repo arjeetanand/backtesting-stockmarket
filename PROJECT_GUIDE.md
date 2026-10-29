@@ -46,7 +46,7 @@ This is an independent Backtrack heuristic: a qualifying daily close must break 
 
 ## FII/DII history
 
-On **FII / DII Insights**, the **Tapetide history · saved locally** view reads `fii_dii_history_rows` from the local SQLite cache when the page opens. It does not download the same rows again. The 30D/3M/6M/1Y controls filter the dates already stored and show their actual coverage; they do not imply that a full year is available. Official NSE latest-session rows remain in the separate `fii_dii_rows` table.
+On **FII / DII Insights**, the **Tapetide history · saved locally** view reads `fii_dii_history_rows` from SQLite when the page opens. Choose **30D, 3M, 6M, 1Y, 5Y, 10Y, 20Y, or All**, then select **Sync** to fetch that period and keep it locally for the next visit. Viewing a range alone does not call the provider. Sync needs `TAPETIDE_API_TOKEN` in the backend `.env` and a backend restart. The provider documents daily cash-market history from **January 2014**; therefore a 20Y selection can only show available sessions since 2014. Progress reports pages and rows saved; incomplete participant rows are skipped rather than changed to zero. Official NSE latest-session rows remain separate in `fii_dii_rows`.
 
 ## Manage stock data
 

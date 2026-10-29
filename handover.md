@@ -599,3 +599,16 @@ Next owner/action:
 - Implementation commit: `f9e8580` (`Show saved FII DII history from SQLite`). PR [#23](https://github.com/arjeetanand/backtesting-stockmarket/pull/23) was squash-merged into `main` as `cecb19313013a3369a35b97f0b217c2e7eb998c4`; GitGuardian passed.
 - Run the existing app with `./run.sh` (UI port `4003`, API port `8001`); preserve any active import processes.
 - Remaining limit: the local cache contains 61 sessions, not a complete year. The exact 390px mobile viewport was not available; the browser returned 487px with no page-level horizontal overflow.
+
+## 25. FII/DII selectable historical refresh
+
+- Date: 2026-10-29.
+- Branch: `codex/fii-dii-long-range-sync-20261029`, based on `main` at `c0321ba`.
+- Add explicit 30D/3M/6M/1Y/5Y/10Y/20Y/All range selection and on-demand Tapetide history refresh. Page loads and range changes remain local SQLite reads.
+- Sync uses Tapetide's documented `/v1/market/institutional-flows` date-range API with cursor pagination. It validates returned rows, skips incomplete gross-value participant records instead of converting nulls to zero, gathers every page before a transactionally upsert into `fii_dii_history_rows`, and never writes Tapetide data into NSE's latest-snapshot table.
+- Tapetide documents this daily cash-market series from 2014-01-01. Requests before then are clamped for sync; the 20Y selection explicitly reports that data can only be shown from 2014 onward. Provider quota applies. Configure `TAPETIDE_API_TOKEN` in the backend `.env` and restart Backtrack before using the sync button.
+- Verification: full Ruff and pytest passed; the FII/DII unit tests passed; the changed route, service, config, schema, container, and app modules passed targeted mypy; frontend ESLint, all 20 Vitest tests, webpack production build, and `git diff --check` passed. Full mypy reports 13 existing issues in `market_cache.py`, `pattern_finder.py`, `breakout_scanner.py`, and `ml_research.py`, unrelated to this change. The default `uv run` setup could not download missing dependencies under restricted network access; checks used the existing project's installed Python environment.
+- Browser validation could not start the isolated preview because loopback binds on 6003/8002 returned `EPERM`; existing `4003`/`5003` and `8001` processes were preserved. No provider call was made; no Tapetide token is configured in this environment.
+- Checklist: `docs/FII_DII_HISTORY_CHECKLIST.md`.
+- Run with `./run.sh` (UI `4003`, API `8001`). The currently running checkout was not restarted.
+- Remaining: after adding a Tapetide token to the backend `.env`, restart Backtrack and sync the chosen range; browser visual review is still pending because the sandbox denied the isolated preview ports.

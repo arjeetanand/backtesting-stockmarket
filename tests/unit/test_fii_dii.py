@@ -2,11 +2,14 @@ import sqlite3
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+import pytest
+from fastapi import BackgroundTasks, HTTPException
+
 from quant_research.api.routes.api import _fii_dii_response, create_api_router
 from quant_research.api.schemas import FiiDiiImportRequest
 from quant_research.repositories.backtests import InMemoryBacktestRepository
 from quant_research.repositories.market_cache import FiiDiiRow, IndexClose, SqliteMarketCache
-from quant_research.services.fii_dii import NseFiiDiiImporter
+from quant_research.services.fii_dii import NseFiiDiiImporter, TapetideFiiDiiHistoryImporter
 from quant_research.services.hypotheses import HypothesisService
 from quant_research.services.nse_indices import NseIndexArchiveImporter
 from quant_research.services.research import ResearchService
@@ -146,3 +149,174 @@ def test_one_year_tapetide_view_reads_saved_rows_and_explains_partial_coverage(t
     assert response.coverage_note is not None
     assert "missing earlier dates are not available locally" in response.coverage_note
     assert len(cache.get_fii_dii_rows(latest_saved_day, latest_saved_day)) == 1
+
+
+def test_tapetide_sync_clamps_to_source_start_pages_and_saves_only_tapetide_rows(tmp_path: Path) -> None:
+    cache = SqliteMarketCache(tmp_path / "market.sqlite3")
+    cache.store_fii_dii_snapshot(
+        "nse", datetime.now(UTC), "nse", "{}",
+        [FiiDiiRow(date(2014, 1, 2), "FII", "combined", "equity", 9, 5, 4, "nse")],
+    )
+    importer = TapetideFiiDiiHistoryImporter(cache, "test-token")
+    calls: list[tuple[date, date, str | None]] = []
+    pages = [
+        {
+            "data": [{
+                "date": "2014-01-02", "fii_buy_cr": 120.0, "fii_sell_cr": 100.0, "fii_net_cr": None,
+                "dii_buy_cr": None, "dii_sell_cr": None, "dii_net_cr": None,
+            }],
+            "meta": {"has_more": True, "next_cursor": "page-two"},
+        },
+        {
+            "data": [{
+                "date": "2014-01-03", "fii_buy_cr": 110.0, "fii_sell_cr": 90.0, "fii_net_cr": 20.0,
+                "dii_buy_cr": 210.0, "dii_sell_cr": 190.0, "dii_net_cr": 20.0,
+            }],
+            "meta": {"has_more": False, "next_cursor": None},
+        },
+    ]
+
+    def download(start: date, end: date, cursor: str | None) -> dict[str, object]:
+        calls.append((start, end, cursor))
+        return pages[len(calls) - 1]
+
+    importer._download_page = download  # type: ignore[method-assign]
+    progress: list[str] = []
+    result = importer.sync(date(2006, 1, 1), date(2014, 1, 3), progress.append)
+
+    saved = cache.get_fii_dii_history_rows(date(2014, 1, 1), date(2014, 1, 3))
+    assert calls == [
+        (date(2014, 1, 1), date(2014, 1, 3), None),
+        (date(2014, 1, 1), date(2014, 1, 3), "page-two"),
+    ]
+    assert result == {
+        "stored_rows": 3,
+        "pages_fetched": 2,
+        "skipped_records": 1,
+        "available_start": date(2014, 1, 2),
+        "available_end": date(2014, 1, 3),
+    }
+    assert [(row.trading_day, row.participant, row.net_value) for row in saved] == [
+        (date(2014, 1, 2), "FII", 20.0),
+        (date(2014, 1, 3), "DII", 20.0),
+        (date(2014, 1, 3), "FII", 20.0),
+    ]
+    assert all(row.scope == "tapetide" and row.source == importer.endpoint for row in saved)
+    assert len(cache.get_fii_dii_rows(date(2014, 1, 2), date(2014, 1, 3))) == 1
+    assert len(progress) == 2
+
+
+def test_tapetide_sync_rejects_repeated_cursor_without_partial_sqlite_write(tmp_path: Path) -> None:
+    cache = SqliteMarketCache(tmp_path / "market.sqlite3")
+    importer = TapetideFiiDiiHistoryImporter(cache, "test-token")
+
+    def download(start: date, end: date, cursor: str | None) -> dict[str, object]:
+        return {
+            "data": [{
+                "date": "2014-01-02", "fii_buy_cr": 120.0, "fii_sell_cr": 100.0, "fii_net_cr": 20.0,
+                "dii_buy_cr": 210.0, "dii_sell_cr": 190.0, "dii_net_cr": 20.0,
+            }],
+            "meta": {"has_more": True, "next_cursor": "repeat"},
+        }
+
+    importer._download_page = download  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError, match="pagination did not advance"):
+        importer.sync(date(2014, 1, 1), date(2014, 1, 3))
+
+    assert cache.get_fii_dii_history_rows(date(2014, 1, 1), date(2014, 1, 3)) == []
+
+
+def test_tapetide_sync_requires_token_before_creating_import_job(tmp_path: Path) -> None:
+    cache = SqliteMarketCache(tmp_path / "market.sqlite3")
+    router = create_api_router(
+        ResearchService(None, InMemoryBacktestRepository()),
+        HypothesisService(StubLlm()),
+        market_cache=cache,
+        tapetide_history_importer=TapetideFiiDiiHistoryImporter(cache, None),
+    )
+    endpoint = next(route.endpoint for route in router.routes if route.path.endswith("/insights/fii-dii/import"))
+
+    with pytest.raises(HTTPException) as error:
+        endpoint(
+            FiiDiiImportRequest(start=date(2025, 1, 1), end=date(2025, 12, 31), source="tapetide"),
+            BackgroundTasks(),
+        )
+
+    assert error.value.status_code == 503
+    assert "TAPETIDE_API_TOKEN" in str(error.value.detail)
+
+
+def test_tapetide_sync_runs_as_background_job_and_reports_saved_coverage(tmp_path: Path) -> None:
+    cache = SqliteMarketCache(tmp_path / "market.sqlite3")
+
+    class StubHistoryImporter:
+        configured = True
+
+        def sync(self, start: date, end: date, progress=None) -> dict[str, object]:
+            assert start == date(2025, 1, 1)
+            assert end == date(2025, 12, 31)
+            assert progress is not None
+            progress("Downloaded Tapetide history page 1.")
+            return {
+                "stored_rows": 2,
+                "pages_fetched": 1,
+                "skipped_records": 0,
+                "available_start": date(2025, 1, 2),
+                "available_end": date(2025, 12, 30),
+            }
+
+    router = create_api_router(
+        ResearchService(None, InMemoryBacktestRepository()),
+        HypothesisService(StubLlm()),
+        market_cache=cache,
+        tapetide_history_importer=StubHistoryImporter(),  # type: ignore[arg-type]
+    )
+    start_endpoint = next(route.endpoint for route in router.routes if route.path.endswith("/insights/fii-dii/import"))
+    status_endpoint = next(route.endpoint for route in router.routes if "/insights/fii-dii/import/{job_id}" in route.path)
+    background_tasks = BackgroundTasks()
+    job = start_endpoint(
+        FiiDiiImportRequest(start=date(2025, 1, 1), end=date(2025, 12, 31), source="tapetide"),
+        background_tasks,
+    )
+
+    assert job.source == "tapetide"
+    assert job.status == "queued"
+    scheduled = background_tasks.tasks[0]
+    scheduled.func(*scheduled.args, **scheduled.kwargs)
+    status = status_endpoint(job.job_id)
+
+    assert status.status == "complete"
+    assert status.pages_fetched == 1
+    assert status.available_start == date(2025, 1, 2)
+    assert "2 rows saved to SQLite" in status.message
+
+
+def test_tapetide_job_reports_sqlite_failure_instead_of_staying_running(tmp_path: Path) -> None:
+    cache = SqliteMarketCache(tmp_path / "market.sqlite3")
+
+    class FailingHistoryImporter:
+        configured = True
+
+        def sync(self, start: date, end: date, progress=None) -> dict[str, object]:
+            raise sqlite3.OperationalError("disk is locked")
+
+    router = create_api_router(
+        ResearchService(None, InMemoryBacktestRepository()),
+        HypothesisService(StubLlm()),
+        market_cache=cache,
+        tapetide_history_importer=FailingHistoryImporter(),  # type: ignore[arg-type]
+    )
+    start_endpoint = next(route.endpoint for route in router.routes if route.path.endswith("/insights/fii-dii/import"))
+    status_endpoint = next(route.endpoint for route in router.routes if "/insights/fii-dii/import/{job_id}" in route.path)
+    background_tasks = BackgroundTasks()
+    job = start_endpoint(
+        FiiDiiImportRequest(start=date(2025, 1, 1), end=date(2025, 12, 31), source="tapetide"),
+        background_tasks,
+    )
+    scheduled = background_tasks.tasks[0]
+    scheduled.func(*scheduled.args, **scheduled.kwargs)
+
+    status = status_endpoint(job.job_id)
+    assert status.status == "failed"
+    assert "Check the configured cache and retry" in status.message
+    assert "disk is locked" not in status.message
