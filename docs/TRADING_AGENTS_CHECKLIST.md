@@ -13,7 +13,7 @@
 - [x] Webpack production build passed and generated all 24 routes.
 - [x] Targeted mypy passed for changed API/service/repository modules. Full-source mypy retains 13 existing errors in four unrelated files.
 - [x] Installed upstream v0.7.1 (c4544913) in isolated `.venv`; upstream factories/client checked offline with a fake LLM.
-- [x] Browser showed the refreshed workflow explanation, Review with AI control, and empty saved-history state after a local stock analysis.
+- [x] Browser showed the refreshed workflow explanation, Review with AI control, empty saved-history state, and refreshed YESBANK date (2026-11-16; 5,265 sessions).
 - [x] Narrow layout reviewed; requested 390px override reported actual 542px, so exact phone/device check remains unverified.
 - [x] Live NSE sync on the isolated task cache: 10 archive days saved through 2026-11-16; 1 weekday archive was unavailable. YESBANK's latest cached bar is 2026-11-16.
 - [ ] Live OpenAI review: not run; no API key configured and no billed request made.

@@ -749,6 +749,10 @@ Next owner/action:
   latest cached bar is also 2026-11-16. The local cache remains in this checkout's
   ignored data directory and was not staged. **Review with AI** was not clicked,
   so no paid OpenAI request was made.
+- Restarted this checkout through its ownership-checking `./run.sh` on UI/API
+  ports 4003/8001, then reran the local YESBANK analysis in the browser. It now
+  displays data through 2026-11-16 across 5,265 saved sessions; the saved AI
+  review history is empty as expected because no AI review was made.
 - Implementation commit: `f9af72c` (`Refresh NSE data before AI research
   reviews`) on branch `codex/tradingagents-codex-20261117`, targeting PR #26
   against `main`.
