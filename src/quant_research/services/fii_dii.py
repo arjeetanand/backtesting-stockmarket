@@ -242,6 +242,20 @@ class TapetideFiiDiiHistoryImporter:
     """Download Tapetide's documented daily cash-flow history into SQLite."""
 
     endpoint = "https://api.tapetide.com/v1/market/institutional-flows"
+    api_error_messages = {
+        "authentication_required": "Tapetide request is missing a valid token. Check TAPETIDE_API_TOKEN in .env.",
+        "invalid_token": "Tapetide rejected the configured token. Check TAPETIDE_API_TOKEN in .env.",
+        "invalid_request": "Tapetide rejected the history request parameters; check its current API documentation.",
+        "not_found": "Tapetide could not find the requested history; check the requested date range.",
+        "route_not_found": "Tapetide did not recognize the history endpoint; check its current API documentation.",
+        "method_not_allowed": "Tapetide rejected the history request method.",
+        "rate_limited": "Tapetide's request rate limit was reached. Try again later.",
+        "quota_exhausted": "Tapetide's request quota is exhausted. Retry after it resets.",
+        "upstream_unavailable": "Tapetide's data source is temporarily unavailable. Try again later.",
+        "service_unavailable": "Tapetide is temporarily unavailable. Try again later.",
+        "tool_error": "Tapetide could not build the requested history. Try again later.",
+        "internal_error": "Tapetide is temporarily unavailable. Try again later.",
+    }
 
     def __init__(self, cache: SqliteMarketCache, token: str | None, timeout_seconds: float = 30.0) -> None:
         self._cache = cache
@@ -257,6 +271,7 @@ class TapetideFiiDiiHistoryImporter:
         start: date,
         end: date,
         progress: Callable[[str], None] | None = None,
+        include_days: set[date] | None = None,
     ) -> dict[str, object]:
         if start > end:
             raise FiiDiiImportError("start must be on or before end.")
@@ -277,8 +292,27 @@ class TapetideFiiDiiHistoryImporter:
             payload = self._download_page(requested_start, end, cursor)
             records = payload.get("data")
             meta = payload.get("meta")
-            if not isinstance(records, list) or not isinstance(meta, dict) or not isinstance(meta.get("has_more"), bool):
-                raise FiiDiiImportError("Tapetide returned an unexpected history response.")
+            invalid_fields = []
+            if not isinstance(records, list):
+                invalid_fields.append("data must be an array")
+            if not isinstance(meta, dict):
+                invalid_fields.append("meta must be an object")
+            elif not isinstance(meta.get("has_more"), bool):
+                invalid_fields.append("meta.has_more must be a boolean")
+            if invalid_fields:
+                error = payload.get("error")
+                code = error.get("code") if isinstance(error, dict) else None
+                if isinstance(code, str) and code in self.api_error_messages:
+                    raise FiiDiiImportError(self.api_error_messages[code])
+                if isinstance(code, str) and code.isascii() and code.replace("_", "").isalnum() and len(code) <= 64:
+                    details = f"API error code {code}; "
+                else:
+                    details = ""
+                raise FiiDiiImportError(
+                    f"Tapetide returned an unexpected history response ({details}{'; '.join(invalid_fields)})."
+                )
+            records = cast(list[object], records)
+            meta = cast(dict[str, object], meta)
             pages_fetched += 1
             for record in records:
                 if not isinstance(record, dict):
@@ -289,6 +323,8 @@ class TapetideFiiDiiHistoryImporter:
                     raise FiiDiiImportError("Tapetide returned a daily-flow row without a valid ISO date.") from exc
                 if not requested_start <= trading_day <= end:
                     raise FiiDiiImportError("Tapetide returned a date outside the requested history range.")
+                if include_days is not None and trading_day not in include_days:
+                    continue
                 for participant, buy_key, sell_key, net_key in (
                     ("FII", "fii_buy_cr", "fii_sell_cr", "fii_net_cr"),
                     ("DII", "dii_buy_cr", "dii_sell_cr", "dii_net_cr"),
@@ -343,40 +379,29 @@ class TapetideFiiDiiHistoryImporter:
         """Fill only known NSE archive dates missing a complete Tapetide pair."""
         requested_start = max(start, TAPETIDE_HISTORY_START)
         missing_days = self._cache.missing_fii_dii_history_days(requested_start, end)
-        stored_rows = 0
-        pages_fetched = 0
-        skipped_records = 0
+        if not missing_days:
+            return {
+                "checked_days": 0,
+                "stored_rows": 0,
+                "pages_fetched": 0,
+                "skipped_records": 0,
+                "empty_days": 0,
+                "incomplete_days": 0,
+                "available_start": None,
+                "available_end": None,
+            }
+
+        if progress:
+            progress(f"Checking Tapetide history for {len(missing_days)} missing NSE sessions.")
+        result = self.sync(missing_days[0], missing_days[-1], progress, include_days=set(missing_days))
+        saved_by_day: dict[date, set[str]] = {}
+        for row in self._cache.get_fii_dii_history_rows(missing_days[0], missing_days[-1]):
+            if row.scope == "tapetide" and row.segment == "equity" and row.participant in {"FII", "DII"}:
+                saved_by_day.setdefault(row.trading_day, set()).add(row.participant)
         empty_days = 0
         incomplete_days = 0
-        available_days: set[date] = set()
-
         for trading_day in missing_days:
-            if progress:
-                progress(f"Checking Tapetide history for {trading_day}.")
-            sync_progress: Callable[[str], None] | None = None
-            if progress:
-                def report_progress(stage: str, day: date = trading_day) -> None:
-                    progress(f"{day}: {stage}")
-
-                sync_progress = report_progress
-            result = self.sync(
-                trading_day,
-                trading_day,
-                progress=sync_progress,
-            )
-            stored_rows += cast(int, result["stored_rows"])
-            pages_fetched += cast(int, result["pages_fetched"])
-            skipped_records += cast(int, result["skipped_records"])
-            if isinstance(result["available_start"], date):
-                available_days.add(result["available_start"])
-            if isinstance(result["available_end"], date):
-                available_days.add(result["available_end"])
-
-            saved_participants = {
-                row.participant
-                for row in self._cache.get_fii_dii_history_rows(trading_day, trading_day)
-                if row.scope == "tapetide" and row.segment == "equity"
-            }
+            saved_participants = saved_by_day.get(trading_day, set())
             if {"FII", "DII"}.issubset(saved_participants):
                 self._cache.mark_fii_dii_history_day_checked(trading_day, "saved")
             elif not saved_participants:
@@ -387,13 +412,13 @@ class TapetideFiiDiiHistoryImporter:
 
         return {
             "checked_days": len(missing_days),
-            "stored_rows": stored_rows,
-            "pages_fetched": pages_fetched,
-            "skipped_records": skipped_records,
+            "stored_rows": cast(int, result["stored_rows"]),
+            "pages_fetched": cast(int, result["pages_fetched"]),
+            "skipped_records": cast(int, result["skipped_records"]),
             "empty_days": empty_days,
             "incomplete_days": incomplete_days,
-            "available_start": min(available_days) if available_days else None,
-            "available_end": max(available_days) if available_days else None,
+            "available_start": result["available_start"],
+            "available_end": result["available_end"],
         }
 
     def _download_page(self, start: date, end: date, cursor: str | None) -> dict[str, object]:
@@ -408,7 +433,15 @@ class TapetideFiiDiiHistoryImporter:
             with urlopen(request, timeout=self._timeout_seconds) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
-            if exc.code in {401, 403}:
+            try:
+                error_payload = json.loads(exc.read().decode("utf-8"))
+                error = error_payload.get("error") if isinstance(error_payload, dict) else None
+                code = error.get("code") if isinstance(error, dict) else None
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                code = None
+            if isinstance(code, str) and code in self.api_error_messages:
+                message = self.api_error_messages[code]
+            elif exc.code in {401, 403}:
                 message = "Tapetide rejected the configured token. Check TAPETIDE_API_TOKEN in .env."
             elif exc.code == 429:
                 message = "Tapetide's request limit was reached. Try syncing again later."
@@ -420,7 +453,9 @@ class TapetideFiiDiiHistoryImporter:
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise FiiDiiImportError("Tapetide returned unreadable FII/DII history.") from exc
         if not isinstance(payload, dict):
-            raise FiiDiiImportError("Tapetide returned an unexpected history response.")
+            raise FiiDiiImportError(
+                f"Tapetide returned an unexpected history response (expected an object, received {type(payload).__name__})."
+            )
         return payload
 
     @staticmethod

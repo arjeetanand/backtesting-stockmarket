@@ -97,7 +97,7 @@ def test_decode_rejects_mismatched_type_and_oversized_base64() -> None:
 
 def test_preview_image_ocr_is_local_and_pixel_limited(monkeypatch: pytest.MonkeyPatch) -> None:
     image = _png()
-    monkeypatch.setattr(portfolio, "_run_ocr", lambda _image: "Symbol       Quantity       Avg Price\nRELIANCE     2              1234.50")
+    monkeypatch.setattr(portfolio, "_run_ocr", lambda _image: "Symbol Quantity Average Price\nRELIANCE 2 1234.50")
     preview = portfolio.preview_portfolio_file("image", image)
     assert preview["holdings"][0]["symbol"] == "RELIANCE"
     assert preview["holdings"][0]["quantity"] == "2"
@@ -119,6 +119,34 @@ def test_pdf_page_limit_checked_before_text_extraction(monkeypatch: pytest.Monke
         portfolio.preview_portfolio_file("pdf", b"%PDF-1.4 synthetic")
     assert exc_info.value.status_code == 413
     assert len(calls) == 1
+
+
+def test_pdf_ocr_reads_a_bounded_temporary_render(monkeypatch: pytest.MonkeyPatch) -> None:
+    tools = {"pdfinfo": "/tools/pdfinfo", "pdftotext": None, "pdftoppm": "/tools/pdftoppm", "tesseract": "/tools/tesseract"}
+    monkeypatch.setattr(portfolio.shutil, "which", lambda name: tools.get(name))
+    rendered_paths: list[Path] = []
+
+    def fake_run(command: list[str], _payload: bytes, binary: bool = False, env: dict[str, str] | None = None) -> str | bytes:
+        if command[0] == "/tools/pdfinfo":
+            return "Pages:          1\nEncrypted:       no\n"
+        assert env is not None
+        assert Path(env["XDG_CACHE_HOME"]).is_dir()
+        rendered = Path(command[-1]).with_suffix(".png")
+        rendered.write_bytes(_png())
+        rendered_paths.append(rendered)
+        return b"" if binary else ""
+
+    monkeypatch.setattr(portfolio, "_run_tool", fake_run)
+    monkeypatch.setattr(portfolio, "_run_ocr", lambda _image: "Symbol       Quantity       Avg Price\nRELIANCE     2              1234.50")
+
+    preview = portfolio.preview_portfolio_file("pdf", b"%PDF-1.4 synthetic")
+
+    assert preview["holdings"] == [{
+        "symbol": "RELIANCE", "quantity": "2", "average_price": "1234.5", "source_row": "2",
+    }]
+    assert preview["warnings"] == []
+    assert len(rendered_paths) == 1
+    assert not rendered_paths[0].exists()
 
 
 def test_local_parser_process_output_is_bounded() -> None:

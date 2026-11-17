@@ -1,6 +1,8 @@
 import sqlite3
 from datetime import UTC, date, datetime, timedelta
+from io import BytesIO
 from pathlib import Path
+from urllib.error import HTTPError
 
 import pytest
 from fastapi import BackgroundTasks, HTTPException
@@ -10,7 +12,7 @@ from quant_research.api.schemas import FiiDiiImportRequest
 from quant_research.domain.data.models import OHLCVBar
 from quant_research.repositories.backtests import InMemoryBacktestRepository
 from quant_research.repositories.market_cache import FiiDiiRow, IndexClose, SqliteMarketCache
-from quant_research.services.fii_dii import NseFiiDiiImporter, TapetideFiiDiiHistoryImporter
+from quant_research.services.fii_dii import FiiDiiImportError, NseFiiDiiImporter, TapetideFiiDiiHistoryImporter
 from quant_research.services.hypotheses import HypothesisService
 from quant_research.services.nse_indices import NseIndexArchiveImporter
 from quant_research.services.research import ResearchService
@@ -131,11 +133,13 @@ def test_tapetide_global_sync_fetches_only_missing_official_sessions_once(tmp_pa
     cache = SqliteMarketCache(tmp_path / "market.sqlite3")
     saved_day = date(2025, 1, 2)
     gap_day = date(2025, 1, 3)
-    empty_day = date(2025, 1, 6)
-    for trading_day in (saved_day, gap_day, empty_day):
+    completed_day = date(2025, 1, 6)
+    empty_day = date(2025, 1, 7)
+    for trading_day in (saved_day, gap_day, completed_day, empty_day):
         cache.record_nse_archive(trading_day, None, "nse", 1)
     cache.store_fii_dii_history_rows([
-        FiiDiiRow(saved_day, participant, "tapetide", "equity", 10, 8, 2, "tapetide")
+        FiiDiiRow(trading_day, participant, "tapetide", "equity", buy, sell, buy - sell, "tapetide")
+        for trading_day, buy, sell in ((saved_day, 10, 8), (completed_day, 30, 28))
         for participant in ("FII", "DII")
     ])
     importer = TapetideFiiDiiHistoryImporter(cache, "test-token")
@@ -144,21 +148,27 @@ def test_tapetide_global_sync_fetches_only_missing_official_sessions_once(tmp_pa
     def download(start: date, end: date, cursor: str | None) -> dict[str, object]:
         assert cursor is None
         calls.append((start, end))
-        records = [] if start == empty_day else [{
-            "date": gap_day.isoformat(), "fii_buy_cr": 100, "fii_sell_cr": 80, "fii_net_cr": 20,
-            "dii_buy_cr": 90, "dii_sell_cr": 70, "dii_net_cr": 20,
-        }]
+        records = [
+            {
+                "date": gap_day.isoformat(), "fii_buy_cr": 100, "fii_sell_cr": 80, "fii_net_cr": 20,
+                "dii_buy_cr": 90, "dii_sell_cr": 70, "dii_net_cr": 20,
+            },
+            {
+                "date": completed_day.isoformat(), "fii_buy_cr": 999, "fii_sell_cr": 1, "fii_net_cr": 998,
+                "dii_buy_cr": 999, "dii_sell_cr": 1, "dii_net_cr": 998,
+            },
+        ]
         return {"data": records, "meta": {"has_more": False, "next_cursor": None}}
 
     importer._download_page = download  # type: ignore[method-assign]
     result = importer.sync_missing_nse_sessions(saved_day, empty_day)
     again = importer.sync_missing_nse_sessions(saved_day, empty_day)
 
-    assert calls == [(gap_day, gap_day), (empty_day, empty_day)]
+    assert calls == [(gap_day, empty_day)]
     assert result == {
         "checked_days": 2,
         "stored_rows": 2,
-        "pages_fetched": 2,
+        "pages_fetched": 1,
         "skipped_records": 0,
         "empty_days": 1,
         "incomplete_days": 0,
@@ -166,11 +176,73 @@ def test_tapetide_global_sync_fetches_only_missing_official_sessions_once(tmp_pa
         "available_end": gap_day,
     }
     assert again["checked_days"] == 0
+    assert len(calls) == 1
     assert cache.missing_fii_dii_history_days(saved_day, empty_day) == []
+    preserved = cache.get_fii_dii_history_rows(completed_day, completed_day)
+    assert [(row.participant, row.buy_value) for row in preserved] == [("DII", 30), ("FII", 30)]
     cache.store_fii_dii_history_rows([
         FiiDiiRow(empty_day, "FII", "tapetide", "equity", 10, 8, 2, "tapetide")
     ])
     assert cache.missing_fii_dii_history_days(saved_day, empty_day) == [empty_day]
+
+
+def test_tapetide_global_sync_keeps_partial_days_retryable(tmp_path: Path) -> None:
+    cache = SqliteMarketCache(tmp_path / "market.sqlite3")
+    partial_day = date(2025, 1, 3)
+    cache.record_nse_archive(partial_day, None, "nse", 1)
+    importer = TapetideFiiDiiHistoryImporter(cache, "test-token")
+
+    def download(start: date, end: date, cursor: str | None) -> dict[str, object]:
+        assert (start, end, cursor) == (partial_day, partial_day, None)
+        return {
+            "data": [{
+                "date": partial_day.isoformat(), "fii_buy_cr": 100, "fii_sell_cr": 80, "fii_net_cr": 20,
+                "dii_buy_cr": None, "dii_sell_cr": None, "dii_net_cr": None,
+            }],
+            "meta": {"has_more": False, "next_cursor": None},
+        }
+
+    importer._download_page = download  # type: ignore[method-assign]
+    result = importer.sync_missing_nse_sessions(partial_day, partial_day)
+
+    assert result["incomplete_days"] == 1
+    assert result["empty_days"] == 0
+    assert cache.missing_fii_dii_history_days(partial_day, partial_day) == [partial_day]
+
+
+def test_tapetide_sync_reports_invalid_response_shape_without_echoing_values(tmp_path: Path) -> None:
+    cache = SqliteMarketCache(tmp_path / "market.sqlite3")
+    importer = TapetideFiiDiiHistoryImporter(cache, "test-token")
+    importer._download_page = lambda *_args: {"error": {"code": "invalid_token", "message": "do not echo"}}  # type: ignore[method-assign]
+
+    with pytest.raises(FiiDiiImportError, match="rejected the configured token") as error:
+        importer.sync(date(2025, 1, 3), date(2025, 1, 3))
+
+    assert "do not echo" not in str(error.value)
+    assert cache.get_fii_dii_history_rows(date(2025, 1, 3), date(2025, 1, 3)) == []
+
+
+def test_tapetide_http_errors_use_documented_error_code_without_echoing_message(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = SqliteMarketCache(tmp_path / "market.sqlite3")
+    importer = TapetideFiiDiiHistoryImporter(cache, "test-token")
+
+    def fail_request(*_args, **_kwargs):
+        raise HTTPError(
+            importer.endpoint,
+            429,
+            "Too Many Requests",
+            None,
+            BytesIO(b'{"error":{"code":"quota_exhausted","message":"do not echo"}}'),
+        )
+
+    monkeypatch.setattr("quant_research.services.fii_dii.urlopen", fail_request)
+    with pytest.raises(FiiDiiImportError, match="quota is exhausted") as error:
+        importer._download_page(date(2025, 1, 3), date(2025, 1, 3), None)
+
+    assert "do not echo" not in str(error.value)
 
 
 def test_global_market_sync_reports_source_failures_without_skipping_other_sources(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

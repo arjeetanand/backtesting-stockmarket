@@ -10,7 +10,7 @@ Updated: 2026-11-17 after market close
 - [x] Removed the approved redundant worktrees. `/Users/arjeetanand/projects/stock/backtrack` is the only Backtrack worktree.
 - [x] Copied and verified the ten missing CM-UDiFF archives through 2026-11-16; Nov 10 was unavailable at source.
 - [x] Synced the 2026-11-17 official NSE archive after close. The root cache now has 5,342 symbols, 9,574,300 daily bars, and a latest session of 2026-11-17.
-- [x] Sync All Market Data saved the official NSE FII/DII report through 2026-11-17 (2 rows new or changed). A final manual recheck on 2026-11-17 found the official report current with 0 new or changed rows; Tapetide again returned an unexpected history response, and its saved history remains at 2026-10-01.
+- [x] Sync All Market Data saved the official NSE FII/DII report through 2026-11-17 (2 rows new or changed). A final manual recheck on 2026-11-17 found the official report current with 0 new or changed rows. Tapetide missing-session sync now batches one bounded date range and filters locally; one live retry from this environment could not reach Tapetide, and saved history remains at 2026-10-01.
 - [x] Uploaded the post-close archive addendum and checksum sidecar to the user's Drive folder: `Backtrack_NSE_Archives_PostClose_2026-11-17.tar.gz` and `.sha256`. Package SHA-256: `f1b0d2b8d79921092679090de45567648f11192f61de564bc6144be7b1360441`. The existing full bundle and earlier addendum remain untouched.
 
 ## End-to-end research workflow
@@ -26,13 +26,13 @@ Updated: 2026-11-17 after market close
 
 ## Verification and current limits
 
-- [x] Full backend pytest suite passed. The two optional TradingAgents package tests were skipped in the root `.venv` because `tradingagents` is not installed there.
+- [x] Full backend pytest suite passed after the PDF/OCR and Tapetide changes. The two optional TradingAgents package tests were skipped in the root `.venv` because `tradingagents` is not installed there.
 - [x] Full Ruff passed. Targeted mypy passed on the ten changed backend files; the repository-wide run still reports 13 existing typing/stub issues in other modules.
 - [x] Frontend ESLint, Vitest (24 tests), TypeScript, and webpack production build passed. Default Turbopack build could not bind its internal port in the restricted environment.
-- [x] Browser showed the portfolio empty state and successfully parsed a synthetic XLSX into an editable preview. The synthetic row was not saved to the user's database.
-- [x] App is running from the one root project on UI `http://localhost:4003` and API `http://localhost:8001`.
+- [x] Synthetic XLSX, PDF, and image holdings were shown in the browser as editable previews; PDF and image each recognized 2 rows with local Poppler/Tesseract. No preview was saved to the user's database.
+- [ ] The host listed Backtrack listeners on UI `4003` and API `8001`, but this session's browser and HTTP checks received connection refused. The runner state names the root project; it was left untouched because its process ownership could not be checked through `ps` in this environment.
 - [ ] Run a real paid OpenAI review or global brief after the owner privately configures `OPENAI_API_KEY`; no non-empty key was found and this task made no paid request.
-- [ ] Investigate Tapetide's unexpected history response before treating its third-party FII/DII history as current; the final retry failed and saved history remains at 2026-10-01.
+- [ ] Retry the Tapetide history sync when this environment can reach the provider; the latest attempt failed with `Could not reach Tapetide`, and saved history remains at 2026-10-01.
 
 NSE history is official end-of-day data, not live prices. Backtrack does not connect to a broker, place trades, guarantee returns, adjust for every corporate action, or evaluate a recommendation as a filled trade. The built-in broad scan is NIFTY 50; other NSE symbols can be searched individually. Portfolio parsing is heuristic and every detected row must be reviewed.
 

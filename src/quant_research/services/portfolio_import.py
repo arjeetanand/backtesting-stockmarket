@@ -12,6 +12,7 @@ import selectors
 import shutil
 import struct
 import subprocess
+import tempfile
 import time as monotonic_time
 import zipfile
 from datetime import UTC, datetime
@@ -562,13 +563,33 @@ def _parse_pdf(payload: bytes) -> tuple[list[dict[str, Any]], list[str]]:
         return [], ["No holdings were detected in PDF text. Install Tesseract locally to OCR PDF pages."]
     ocr_text: list[str] = []
     for page in range(1, page_count + 1):
-        image = _run_tool(
-            [renderer, "-f", str(page), "-l", str(page), "-singlefile", "-png", "-scale-to", "1600", "-", "-"],
-            payload,
-            binary=True,
-        )
-        if not isinstance(image, bytes) or not image.startswith(b"\x89PNG\r\n\x1a\n"):
-            raise PortfolioImportError("A PDF page could not be rendered for local OCR.")
+        with tempfile.TemporaryDirectory(prefix="backtrack-pdf-ocr-") as directory:
+            prefix = Path(directory) / "page"
+            cache_home = Path(directory) / "cache"
+            cache_home.mkdir()
+            environment = os.environ.copy()
+            environment["XDG_CACHE_HOME"] = str(cache_home)
+            fontconfig_file = next((
+                candidate for candidate in (
+                    Path("/etc/fonts/fonts.conf"),
+                    Path("/opt/homebrew/etc/fonts/fonts.conf"),
+                    Path("/usr/local/etc/fonts/fonts.conf"),
+                ) if candidate.is_file()
+            ), None)
+            if fontconfig_file is not None and not environment.get("FONTCONFIG_FILE"):
+                environment["FONTCONFIG_FILE"] = str(fontconfig_file)
+                environment.setdefault("FONTCONFIG_PATH", str(fontconfig_file.parent))
+            _run_tool(
+                [renderer, "-f", str(page), "-l", str(page), "-singlefile", "-png", "-scale-to", "1600", "-", str(prefix)],
+                payload,
+                env=environment,
+            )
+            rendered = prefix.with_suffix(".png")
+            if not rendered.is_file() or rendered.stat().st_size > MAX_RENDERED_IMAGE_BYTES:
+                raise PortfolioImportError("A PDF page could not be rendered safely for local OCR.")
+            image = rendered.read_bytes()
+            if not image.startswith(b"\x89PNG\r\n\x1a\n"):
+                raise PortfolioImportError("A PDF page could not be rendered for local OCR.")
         ocr_text.append(_run_ocr(image))
     holdings, warnings = _parse_text("\n".join(ocr_text))
     return holdings, warnings
@@ -605,8 +626,8 @@ def _parse_text(text: str) -> tuple[list[dict[str, Any]], list[str]]:
         average_price = _parse_number(cells.get("average_price", ""))
         if average_price is None and (total_cost := _parse_number(cells.get("total_cost", ""))) is not None and quantity:
             average_price = total_cost / quantity
-        if not symbol or quantity is None:
-            # Text extraction often collapses columns; try the common symbol, quantity, price row shape.
+        if "average_price" in cells or not symbol or quantity is None:
+            # Text extraction often collapses columns; prefer a complete common row over shifted columns.
             match = re.match(
                 r"^\s*(?:NSE:)?([A-Z][A-Z0-9&.-]{0,24})(?:-EQ)?\s+([\d,]+(?:\.\d+)?)\s+(?:₹|INR|RS\.?\s*)?([\d,]+(?:\.\d+)?)\s*$",
                 line,
@@ -641,14 +662,14 @@ def _first_token(value: str) -> str:
 
 
 @overload
-def _run_tool(command: list[str], payload: bytes, binary: Literal[False] = False) -> str: ...
+def _run_tool(command: list[str], payload: bytes, binary: Literal[False] = False, env: dict[str, str] | None = None) -> str: ...
 
 
 @overload
-def _run_tool(command: list[str], payload: bytes, binary: Literal[True]) -> bytes: ...
+def _run_tool(command: list[str], payload: bytes, binary: Literal[True], env: dict[str, str] | None = None) -> bytes: ...
 
 
-def _run_tool(command: list[str], payload: bytes, binary: bool = False) -> str | bytes:
+def _run_tool(command: list[str], payload: bytes, binary: bool = False, env: dict[str, str] | None = None) -> str | bytes:
     output_limit = MAX_RENDERED_IMAGE_BYTES if binary else MAX_TEXT_CHARS * 4
     output = bytearray()
     selector = selectors.DefaultSelector()
@@ -660,6 +681,7 @@ def _run_tool(command: list[str], payload: bytes, binary: bool = False) -> str |
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             bufsize=0,
+            env=env,
         )
     except FileNotFoundError:
         raise PortfolioImportError("A required local document tool is not installed.", 503) from None
