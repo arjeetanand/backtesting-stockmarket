@@ -718,3 +718,37 @@ Next owner/action:
   not connect, and no service was stopped or restarted.
 - Next action: run the combined checks, review PR #26, then configure your backend
   API key privately and click Review with AI to verify account/model access.
+
+### Latest-data refresh and saved review trail
+
+- Follow-up on 2026-11-17, on the same task branch and PR #26. **Review with AI**
+  now synchronizes the latest published official NSE daily archive first, rebuilds
+  the selected stock analysis from the refreshed SQLite cache, then asks the
+  TradingAgents bull/bear/research-manager flow to review that fresh result.
+- The existing NSE publication window is respected. If only part of the requested
+  archive range is available, the attempt records the sync message and real
+  `data_as_of` date. A failed sync stops before any AI request so stale bars cannot
+  be presented as freshly reviewed.
+- Every click creates a local SQLite attempt record with requested and refreshed
+  run IDs, sync status/target/latest dates and counts, data date/fingerprint,
+  model, cache status, result, and error. The page lists saved attempts per stock
+  and can reopen the analysis used by an attempt. A matching model, data hash, and
+  data age reuses the prior AI result; one in-process lock prevents concurrent
+  duplicate paid requests. Deleting linked stock-analysis history also cleans up
+  its review attempts.
+- Verification on the combined branch: backend suite **216 passed**; Ruff,
+  frontend lint, TypeScript, frontend **24 tests**, `git diff --check`, and webpack
+  production build (all 24 routes) passed. Targeted mypy passed for changed route,
+  service, and artifact repository; full-source mypy retains the existing 13
+  errors in four unrelated files. Backend emits 81 existing Pandas inplace
+  deprecation warnings.
+- Browser check on `/stock-research` confirmed the refresh explanation, review
+  button, and saved-history empty state after a local YESBANK analysis. The
+  authorized live NSE sync then saved 10 archive days through 2026-11-16 and
+  reported one unavailable weekday archive; a read-only check confirmed YESBANK's
+  latest cached bar is also 2026-11-16. The local cache remains in this checkout's
+  ignored data directory and was not staged. **Review with AI** was not clicked,
+  so no paid OpenAI request was made.
+- Follow-up source changes are in branch `codex/tradingagents-codex-20261117`,
+  targeting PR #26 against `main`; commit hash is recorded below after push.
+- Checklist: `docs/TRADING_AGENTS_CHECKLIST.md`.

@@ -18,6 +18,9 @@ class TradingAgentsReviewError(RuntimeError):
     """The provider could not finish a review."""
 
 
+REVIEW_ATTEMPT_ARTIFACT_KIND = "trading_agents_review_attempt"
+
+
 def model_name() -> str:
     return os.getenv("TRADINGAGENTS_MODEL", "gpt-6-luna").strip() or "gpt-6-luna"
 

@@ -193,9 +193,12 @@ npm --prefix frontend run build
 
 In **Stock research**, analyze a stock, then click **Review with AI**. This runs
 TradingAgents v0.7.1's bullish researcher, bearish researcher, and research manager
-against the saved NSE technical summary and historical-test metrics. It sends that
-summary to OpenAI only when clicked; API usage is billed separately. This uses the
-OpenAI API, not the Codex application or a ChatGPT subscription.
+against a newly refreshed NSE analysis. Every click checks the latest available
+official NSE daily archive, downloads only missing archive days, reruns the selected
+stock's analysis, and then requests the AI review. A sync failure stops the review;
+if NSE has not published a requested archive yet, the attempt shows the actual saved
+data date and partial-sync status. This uses the OpenAI API, not the Codex
+application or a ChatGPT subscription; API usage is billed separately.
 
 ```bash
 uv sync --extra dev --extra tradingagents
@@ -212,8 +215,11 @@ The review uses the real upstream three-agent debate, not its full trading graph
 News, sentiment, fundamentals, broker execution and external price feeds are not
 connected. No personal position inputs, charts or trade ledger are sent. AI output
 can be wrong and does not change the deterministic backtest or its validation gate.
-The saved data date remains visible; an old analysis is not current market evidence.
-Completed reviews are cached in SQLite per saved analysis, model and integration
-version. Reopening a review of that same run reuses it. A new stock analysis creates
-a new run and may incur new API charges. Individual calls time out after 30 seconds;
-the manager can fall back from structured to plain text (up to four model calls).
+The saved data date remains visible; daily NSE bars are not live quotes. Sync results,
+fresh analysis runs, successful and failed AI attempts, and review text are saved in
+the local SQLite database. The latest 20 attempts for the selected symbol appear in
+**Saved review history**, where a saved analysis can be reopened. Every click checks
+data freshness; an identical market data hash/model/data age reuses the saved AI text
+and records that reuse without another charge. Changed data may incur a new API
+charge. Individual model calls time out after 30 seconds; the manager can fall back
+from structured to plain text (up to four model calls).

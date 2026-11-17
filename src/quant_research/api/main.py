@@ -51,7 +51,7 @@ def create_app(
         container.fii_dii_importer,
         tapetide_history_importer=container.tapetide_fii_dii_importer,
     ))
-    app.include_router(create_trading_agents_router(container.artifacts))
+    app.include_router(create_trading_agents_router(container.market_cache, container.artifacts))
     return app
 
 

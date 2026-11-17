@@ -175,8 +175,12 @@ For engineering details, see [handover.md](handover.md). For setup, see [README.
 ## AI debate review
 
 After a completed Stock research analysis, **Review with AI** optionally sends its
-saved public NSE technical summary and historical metrics to OpenAI. TradingAgents'
-bull, bear and research-manager agents return a draft review; expand the cases for
-detail. The saved data date and model are shown. Configuration/errors are explicit;
-the deterministic research remains usable without this optional integration.
-See README for setup, billing, caching and limits.
+public NSE technical summary and historical metrics to OpenAI. Before every review,
+Backtrack checks the latest official NSE daily archive and reruns the selected stock's
+analysis. A sync failure blocks the AI call; partial archive availability is shown
+with the actual data date. TradingAgents' bull, bear and research-manager agents
+return a draft review; expand the saved history for details or reopen its analysis.
+Sync outcomes, analysis runs, and successful or failed review attempts are retained
+in the local SQLite store. Configuration/errors are explicit; deterministic research
+remains usable without this optional integration. See README for setup, billing,
+caching and limits.

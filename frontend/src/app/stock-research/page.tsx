@@ -343,7 +343,15 @@ export default function StockResearchPage() {
           <span className={`stock-research-pill ${result.run_status}`}><span />{result.run_status.replaceAll("_", " ")}</span>
         </section>
 
-        {result.run_status === "completed" && <TradingAgentsReview key={result.run_id} runId={result.run_id} />}
+        {result.run_status === "completed" && <TradingAgentsReview
+          key={result.run_id}
+          runId={result.run_id}
+          symbol={result.symbol}
+          onAnalysisUpdated={(analysis) => {
+            setResult(analysis);
+            void refreshHistory();
+          }}
+        />}
 
         {result.run_status === "insufficient_data" && <section className="stock-research-empty bt-panel" role="status">
           <Database size={20} aria-hidden="true" /><div><strong>No usable local history for {result.symbol}</strong><p>{result.message} Import the official NSE daily archive, then run the analysis again.</p><a className="stock-research-data-link" href="/data">Open NSE data</a></div>

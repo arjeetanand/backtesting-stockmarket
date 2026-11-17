@@ -12,6 +12,7 @@ from quant_research.repositories.market_cache import SqliteMarketCache
 from quant_research.services.hypotheses import HypothesisService
 from quant_research.services.research import ResearchService
 from quant_research.services.stock_research import ARTIFACT_KIND
+from quant_research.services.trading_agents import REVIEW_ATTEMPT_ARTIFACT_KIND
 
 
 class _StubLlm:
@@ -34,6 +35,11 @@ def saved_research(tmp_path: Path) -> tuple[APIRouter, SqliteArtifactStore, Sqli
         artifacts.save(ARTIFACT_KIND, run_id, {"run_id": run_id})
         for model in ("model-a", "model-b"):
             artifacts.save("trading_agents_review", f"{model}:{run_id}", {"source_run_id": run_id})
+            artifacts.save(REVIEW_ATTEMPT_ARTIFACT_KIND, f"{model}:{run_id}", {
+                "source_run_id": run_id,
+                "requested_run_id": run_id,
+                "symbol": "RELIANCE",
+            })
     artifacts.save("import_job", "import-1", {"status": "completed"})
     router = create_api_router(
         ResearchService(None, InMemoryBacktestRepository()), HypothesisService(_StubLlm()),
@@ -48,8 +54,9 @@ def test_clear_history_removes_ai_reviews_and_preserves_market_data(
     router, artifacts, cache = saved_research
     endpoint = next(route.endpoint for route in router.routes if route.path.endswith("/testing-history"))
     result = endpoint()
-    assert result["deleted_artifacts"] == 6
+    assert result["deleted_artifacts"] == 10
     assert artifacts.list(ARTIFACT_KIND) == artifacts.list("trading_agents_review") == []
+    assert artifacts.list(REVIEW_ATTEMPT_ARTIFACT_KIND) == []
     assert artifacts.get("import_job", "import-1") == {"status": "completed"}
     assert cache.summary().bars == 1
 
@@ -64,6 +71,9 @@ def test_delete_analysis_removes_only_its_ai_reviews(
     assert artifacts.get(ARTIFACT_KIND, "run-1") is None
     assert artifacts.get(ARTIFACT_KIND, "run-2") == {"run_id": "run-2"}
     assert artifacts.list("trading_agents_review") == [{"source_run_id": "run-2"}] * 2
+    assert artifacts.list(REVIEW_ATTEMPT_ARTIFACT_KIND) == [
+        {"source_run_id": "run-2", "requested_run_id": "run-2", "symbol": "RELIANCE"}
+    ] * 2
     assert cache.summary().bars == 1
     with pytest.raises(HTTPException) as caught:
         endpoint(ARTIFACT_KIND, "missing")

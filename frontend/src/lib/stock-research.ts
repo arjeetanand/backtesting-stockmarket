@@ -140,6 +140,40 @@ export type StockResearchHistory = {
   }>;
 };
 
+export type TradingAgentsReviewAttempt = {
+  attempt_id: string;
+  requested_run_id: string;
+  source_run_id: string | null;
+  symbol: string;
+  status: "running" | "completed" | "sync_failed" | "analysis_failed" | "analysis_incomplete" | "review_unavailable" | "review_failed";
+  attempted_at: string;
+  finished_at: string | null;
+  sync_status: "running" | "complete" | "partial" | "failed" | "not_started";
+  sync_message: string | null;
+  sync_target_day: string | null;
+  latest_trading_day: string | null;
+  synced_days: number;
+  skipped_days: number;
+  data_as_of: string | null;
+  data_hash: string | null;
+  model: string | null;
+  reviewed_at: string | null;
+  cache_hit: boolean;
+  bull_case: string | null;
+  bear_case: string | null;
+  review: string | null;
+  error: string | null;
+};
+
+export type TradingAgentsReviewHistory = {
+  symbol: string;
+  attempts: TradingAgentsReviewAttempt[];
+};
+
+export type TradingAgentsReviewResponse = TradingAgentsReviewAttempt & {
+  analysis: StockResearchResult;
+};
+
 export type StockResearchMorningScan = {
   scan_id: string;
   status: "completed";
@@ -198,4 +232,47 @@ export function scanMorningStockResearch(): Promise<StockResearchMorningScan> {
 
 export function getStockResearchHistory(): Promise<StockResearchHistory> {
   return request<StockResearchHistory>("/stock-research/runs?limit=100");
+}
+
+export function getTradingAgentsReviewHistory(
+  symbol: string,
+  signal?: AbortSignal,
+): Promise<TradingAgentsReviewHistory> {
+  return request<TradingAgentsReviewHistory>(
+    `/stock-research/trading-agents/history?symbol=${encodeURIComponent(symbol)}&limit=20`,
+    { signal },
+    15_000,
+  );
+}
+
+export function getSavedStockResearchRun(runId: string): Promise<StockResearchResult> {
+  return request<StockResearchResult>(
+    `/research/artifacts/stock_analysis_run/${encodeURIComponent(runId)}`,
+  );
+}
+
+export async function requestTradingAgentsReview(
+  runId: string,
+  signal?: AbortSignal,
+): Promise<TradingAgentsReviewResponse> {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/stock-research/trading-agents`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ run_id: runId }),
+    signal,
+  }, 240_000);
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const body = payload !== null && typeof payload === "object" ? payload as Record<string, unknown> : {};
+    const detail = body.detail;
+    const message = typeof detail === "string"
+      ? detail
+      : detail !== null && typeof detail === "object" && typeof (detail as Record<string, unknown>).message === "string"
+        ? (detail as Record<string, unknown>).message as string
+        : `Request failed (${response.status}).`;
+    const error = new Error(message) as Error & { detail?: unknown };
+    error.detail = detail;
+    throw error;
+  }
+  return payload as TradingAgentsReviewResponse;
 }

@@ -211,9 +211,17 @@ Tests use temporary SQLite databases and fake providers. They do not download ma
 ## TradingAgents review
 
 `POST /api/v1/stock-research/trading-agents` accepts `{"run_id":"saved-stock-analysis-id"}`.
-It reads the saved completed NSE analysis, then invokes the optional three-agent
-review. Response: `symbol`, `data_as_of`, `model`, `bull_case`, `bear_case`, `review`.
-404 means missing run, 422 incomplete analysis, 409 another review is running,
-503 missing backend key/dependency, 502 sanitized model-provider failure. Success
-is cached per run/model/version; failures are not cached. Install the pinned extra
-and configure server-only OPENAI_API_KEY as documented in the root README.
+It checks/syncs the latest available official NSE daily archive, rebuilds the selected
+stock's saved analysis, then invokes the optional three-agent review. A hard sync
+failure stops the AI call; an unavailable archive is recorded as a partial sync with
+the actual data date. The response includes the refreshed `analysis`, sync outcome,
+`source_run_id`, `data_hash`, cache status, review text and attempt ID.
+
+`GET /api/v1/stock-research/trading-agents/history?symbol=RELIANCE&limit=20` returns
+the symbol's latest saved attempts, including failed sync/provider attempts. Attempts
+and fresh analysis runs live in the local SQLite artifact store and are removed by the
+existing testing-history cleanup. An identical data hash, model and data age reuses
+the saved AI text after performing the latest-data check. 404 means a missing source
+run, 422 incomplete analysis, 409 another review is running, 503 missing backend
+key/dependency, and 502 sync/provider failure. Install the pinned extra and configure
+server-only OPENAI_API_KEY as documented in the root README.

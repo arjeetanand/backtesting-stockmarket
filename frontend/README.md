@@ -173,8 +173,10 @@ When changing a rendered page, verify loading, empty, error, success, desktop, a
 ## Optional AI review
 
 Stock research shows **Review with AI** after a completed analysis. The separate
-TradingAgentsReview component handles empty, loading, provider-error and success
-states; a keyed instance aborts stale client requests when the saved run changes.
-The backend owns provider configuration. Never put OPENAI_API_KEY in frontend
-environment files. Aborting a browser request does not cancel an in-flight provider
-call; retrying while it runs returns a conflict, and completed results are cached.
+TradingAgentsReview component checks the latest available NSE daily archive before
+every review, then displays the refreshed analysis date and saved sync/review history.
+The latest 20 attempts can be expanded and their saved analyses reopened. A keyed
+instance aborts stale client requests when the saved run changes. The backend owns
+provider configuration. Never put OPENAI_API_KEY in frontend environment files.
+Aborting a browser request does not cancel an in-flight provider call; retrying while
+it runs returns a conflict. An unchanged data hash/model/data age reuses saved AI text.

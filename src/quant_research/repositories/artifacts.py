@@ -88,6 +88,23 @@ class SqliteArtifactStore:
             for row in rows
         ]
 
+    def list_with_metadata_by_json_value(
+        self, kind: str, path: str, value: str, limit: int = 100,
+    ) -> builtins.list[dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT artifact_key, payload, updated_at FROM research_artifacts
+                WHERE kind = ? AND json_extract(payload, ?) = ?
+                ORDER BY updated_at DESC LIMIT ?
+                """,
+                (kind, path, value, limit),
+            ).fetchall()
+        return [
+            {**json.loads(row[1]), "_artifact_key": row[0], "_saved_at": row[2]}
+            for row in rows
+        ]
+
     def count_by_json_value(self, kind: str, path: str) -> dict[str, int]:
         with self._connect() as connection:
             rows = connection.execute(
