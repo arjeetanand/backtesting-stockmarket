@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import signal
@@ -85,7 +86,9 @@ def require_free_port(port: int) -> None:
         try:
             listener.bind(("127.0.0.1", port))
         except OSError as error:
-            raise RuntimeError(f"Port {port} is already in use; no listener was stopped.") from error
+            if error.errno == errno.EADDRINUSE:
+                raise RuntimeError(f"Port {port} is already in use; no listener was stopped.") from error
+            raise
 
 
 def group_alive(process: subprocess.Popen[bytes]) -> bool:

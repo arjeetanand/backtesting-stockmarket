@@ -27,10 +27,10 @@ Updated: 2026-11-17 after market close
 ## Verification and current limits
 
 - [x] Full backend pytest suite passed after the PDF/OCR and Tapetide changes. The two optional TradingAgents package tests were skipped in the root `.venv` because `tradingagents` is not installed there.
-- [x] Full Ruff passed. Targeted mypy passed on the ten changed backend files; the repository-wide run still reports 13 existing typing/stub issues in other modules.
+- [x] Ruff passed for the research/portfolio changes and the current launcher update; targeted mypy passed on the ten changed backend files. The repository-wide mypy run still reports 13 existing typing/stub issues in other modules.
 - [x] Frontend ESLint, Vitest (24 tests), TypeScript, and webpack production build passed. Default Turbopack build could not bind its internal port in the restricted environment.
 - [x] Synthetic XLSX, PDF, and image holdings were shown in the browser as editable previews; PDF and image each recognized 2 rows with local Poppler/Tesseract. No preview was saved to the user's database.
-- [ ] The host listed Backtrack listeners on UI `4003` and API `8001`, but this session's browser and HTTP checks received connection refused. The runner state names the root project; it was left untouched because its process ownership could not be checked through `ps` in this environment.
+- [ ] This session's browser and HTTP checks received connection refused. The safe launcher could not leave the app running because the sandbox denied process inspection and loopback binding (`EPERM`); it did not stop an unverified listener, and no Backtrack service process was visible afterward.
 - [ ] Run a real paid OpenAI review or global brief after the owner privately configures `OPENAI_API_KEY`; no non-empty key was found and this task made no paid request.
 - [ ] Retry the Tapetide history sync when this environment can reach the provider; the latest attempt failed with `Could not reach Tapetide`, and saved history remains at 2026-10-01.
 
