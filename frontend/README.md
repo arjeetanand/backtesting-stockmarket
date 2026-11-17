@@ -37,7 +37,7 @@ The home page guides the local-data → research → saved-results → compariso
 | `/` | Home and simple workflow entry points |
 | `/data` | Bulk NSE history download and local stock search |
 | `/research` | Hypothesis review, volume/momentum study, data preparation, and backtest handoff |
-| `/stock-research` | One-stock indicators, conditional levels, fixed-rule holdout, and persistent run log |
+| `/stock-research` | NIFTY 50 morning scan plus YESBANK-first drawdown guide, holder P/L/stop check, conditional re-entry sizing, and fixed-rule research |
 | `/strategy` | Build indicator/rule strategies |
 | `/strategy-import` | Import and review YouTube strategy rules |
 | `/backtests` | Saved test history |
@@ -49,7 +49,7 @@ The home page guides the local-data → research → saved-results → compariso
 | `/bias-validity` | Bias and validity checks |
 | `/market-scanner` | Multi-stock formula, historical strategy, breakout, and daily structure-zone scanning |
 | `/insights` | Local NSE index breadth, stock/sector heatmaps, and top movers |
-| `/insights/fii-dii` | Tapetide 30-day/3-month provisional history sync and official NSE latest snapshot |
+| `/insights/fii-dii` | Saved Tapetide FII/DII history with selectable sync ranges and a separate official NSE latest-session view |
 | `/watchlist` | Persisted simulated setup tracking |
 | `/ml-lab` | Chronological ML experiments |
 | `/pattern-finder` | Historical pattern detection and review |
@@ -70,7 +70,7 @@ The search starts only after text is entered and asks the backend for a small re
 
 ## Market Insights and Market Scanner workflow
 
-Market Insights is an index-aware daily view. It uses only locally cached official NSE candles, supports NIFTY 50, Sensex, Bank Nifty, and NIFTY 500, and offers 1D, 1W, 1M, and 3M periods. The Stock/Sector heatmap colors equal-sized tiles by local price return, while the breadth cards show advancing, declining, unchanged, and unavailable coverage. Missing candles stay unavailable and are never replaced with synthetic prices.
+Market Insights is an index-aware daily view. It uses only locally cached official NSE candles, supports NIFTY 50, Sensex, Bank Nifty, and NIFTY 500, and offers 1D, 1W, 1M, and 3M periods. Its status row names the latest cached session (including weekday); **Sync today's NSE data** reuses the local daily-archive sync and refreshes the selected index. Selecting a stock loads its latest daily bars and shows its last-session volume, combined volume for the last five sessions, average volume across the preceding 20 sessions, relative volume, and a five-session close/volume table. **Create paper plan** saves the existing prior-high trigger, prior-low stop, and 2R target rule to Daily Watchlist. The watchlist evaluates later daily bars only; candles cannot establish an intraday fill or which level traded first. The Stock/Sector heatmap colors equal-sized tiles by local price return, while the breadth cards show advancing, declining, unchanged, and unavailable coverage. Missing candles stay unavailable and are never replaced with synthetic prices.
 
 Market Scanner keeps formulas, saved scans, historical research, and the morning plan separate. Opening the page or changing a formula never starts a request; use **Build Morning Plan** or **Run scan** explicitly. Presets and recent-run metadata are stored in versioned browser-local storage keys.
 
@@ -82,11 +82,11 @@ The **Liquidity flow** tab ranks the latest 20 local daily candles by a close-lo
 
 The historical scanner remains available as an explicit research action. It is distinct from current-snapshot formula screening and from Market Insights returns. Daily structure-zone scans are separate again: they identify recent price areas from local daily bars and never run automatically.
 
-`/stock-research` is the single-symbol explanation and validation flow. It reads local NSE daily bars, gives reasons for SMA/RSI/MACD/ATR/volume context, and shows conditional levels from a fixed long-only breakout rule. Its final 30% holdout is not optimized; the simulation starts at ₹1,00,000, buys whole shares, and includes stated costs. A run only passes the screen with at least five years, 30 out-of-sample trades, at least 70% wins, positive net expectancy and compounded return, and cash-based profit factor above one. The route persists every valid analysis request that reaches the service to `stock_analysis_run` artifacts and shows all-time counts with a recent ledger. Historical price returns are not fundamental growth forecasts; raw prices are not adjusted for splits or bonus issues, and no live price or order is supplied.
+`/stock-research` starts with YESBANK; IRFC and the full local NSE catalogue are searchable. It reads local daily bars and explains the latest move, worst one-day move and pullback in the latest 20 sessions, relative volume, and five-session volume. Optional average-cost, share-count, and user-chosen stop inputs show paper holding P/L and whether the daily low crossed that stop; those personal inputs are not saved. For a hypothetical fresh setup, users enter their own maximum loss and allocation caps; whole-share size is the smaller of those limits, divided by the fixed rule's reference stop distance and entry value. The existing rule uses a prior 20-session breakout, a 2×ATR stop, a 2R target, a close below SMA50, and a 20-session time exit. Entry prices are conditional, and daily bars cannot confirm fills. The historical screen's final 30% holdout is not optimized; the simulation starts at ₹1,00,000, buys whole shares, and includes stated costs. The route persists each analysis request to `stock_analysis_run` and shows its ledger. Raw prices are not adjusted for splits or bonuses, news causes are unavailable, and no live price, broker order, or personal recommendation is supplied.
 
 ## Historical Market Scanner workflow
 
-Market Scanner supports date-scoped NIFTY 50/NIFTY 500/imported-universe scans through the shared strategy engine. Use the sector heatmap to compare strategy return, alpha versus buy-and-hold, or win rate; select a sector to rank its stocks by return, alpha, win rate, and drawdown. The leaderboard can be searched, ranked by a chosen metric, expanded beyond the top results, and exported as CSV. Every selected stock links into Research with the scanned strategy and dates; breakout candidates link to a historical test as well.
+The historical Market Scanner supports date-scoped scans of a configured stock group through the shared strategy engine. Use the sector heatmap to compare strategy return, alpha versus buy-and-hold, or win rate; select a sector to rank its stocks by return, alpha, win rate, and drawdown. After the scan, **Search completed results** filters by ticker, company name, or sector; it does not search outside the current results. Choose **All imported stocks** before running for the widest locally available group. The leaderboard can also be ranked by a chosen metric, expanded beyond the top results, and exported as CSV. Every selected stock links into Research with the scanned strategy and dates; breakout candidates link to a historical test as well.
 
 Pattern Finder's outcome visualization is a trigger-by-trigger bar chart, not a decorative line. Green bars reached the target during the holding window; red bars did not. The summary shows the filtered hit rate, best peak move, median exit return, and weakest peak move, while hovering a bar reveals its trigger date and peak/final outcomes.
 
@@ -131,7 +131,7 @@ The strategy catalogue is the single frontend source of truth. `STRATEGY_LIBRARY
 
 The Market Scanner uses the local scanner API and real leaderboard values only. Its sector heatmap is a treemap-style surface: tile area represents scanned-stock breadth, tile color can be switched between strategy return, strategy alpha versus buy-and-hold, and win rate, and clicking a sector opens its ranked stocks with a derived research score, return, alpha, win rate, drawdown, and a Research handoff. This follows the interaction model documented by [TradingView's heatmap guide](https://www.tradingview.com/support/solutions/43000766446-tradingview-heatmaps-from-global-trends-to-details/) while staying honest about the local data: market-cap sizing is not claimed because the cache does not provide market-cap fundamentals. The legacy detailed table remains available in source for traceability but is not the primary composition. ML Lab uses the same visual language with a narrow model-configuration rail and a wide diagnostics surface. Both routes keep explicit loading, unavailable, empty, and result states and must never show seeded prices or fabricated time series.
 
-FII/DII Insights keeps the official NSE latest snapshot separate from Tapetide's provisional cash-market history. Choose 30 days or 3 months and click **Sync**; each click makes one API request and stores raw and normalized records in the local SQLite cache. Configure a free personal Tapetide token as `TAPETIDE_API_TOKEN` in the backend `.env` file. The historical feed's upstream source is not documented, so it is attributed to Tapetide and labeled provisional. The Nifty 50 line uses locally archived official index closes only.
+FII/DII Insights reads previously saved Tapetide history from SQLite on load. Its 30D/3M/6M/1Y/5Y/10Y/20Y/All controls filter saved rows; **Sync selected range** explicitly downloads and stores that period. The global **Sync All Market Data** action checks the latest official NSE report and requests only missing Tapetide dates that are known from saved NSE archive sessions. Historical sync requires the backend `TAPETIDE_API_TOKEN`; without it, NSE sources still run and the Tapetide status is reported as skipped. The documented series starts in January 2014, so a 20Y view cannot include earlier dates. Tapetide history stays separate from the official NSE latest-session series. The Nifty 50 line uses locally archived official index closes only.
 
 Morning candidates follow one explicit handoff: **Save Plan** sends the displayed trigger, stop, and target to **Daily Watchlist**, while **Test history** opens Research with the scanner symbol, strategy, timeframe, and dates. The watchlist waits until a later daily bar reaches the trigger, then evaluates only subsequent bars; the trigger candle is left unresolved because daily OHLC cannot show which level traded first. Latest closes and paper returns are not live quotes or broker fills.
 
@@ -169,3 +169,14 @@ When changing a rendered page, verify loading, empty, error, success, desktop, a
 - Financial charts expose loading, error, unavailable timeframe, empty, and ready
   states with explicit next-step copy. Unsupported intraday timeframes remain
   unavailable for the official daily NSE path.
+
+## Optional AI review
+
+Stock research shows **Review with AI** after a completed analysis. The separate
+TradingAgentsReview component checks the latest available NSE daily archive before
+every review, then displays the refreshed analysis date and saved sync/review history.
+The latest 20 attempts can be expanded and their saved analyses reopened. A keyed
+instance aborts stale client requests when the saved run changes. The backend owns
+provider configuration. Never put OPENAI_API_KEY in frontend environment files.
+Aborting a browser request does not cancel an in-flight provider call; retrying while
+it runs returns a conflict. An unchanged data hash/model/data age reuses saved AI text.

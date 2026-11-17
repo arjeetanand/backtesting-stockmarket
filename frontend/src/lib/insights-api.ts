@@ -1,3 +1,5 @@
+import type { MarketDataBar, MarketDataResponse } from "./market-data";
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
 export type InsightUniverse = "nifty50" | "sensex" | "banknifty" | "nifty500";
@@ -44,6 +46,45 @@ export type InsightsResponse = {
   sectors: InsightSector[];
   topMovers: InsightMember[];
   message?: string;
+};
+
+export type InsightPaperPlan = {
+  dataAsOf: string;
+  entryTrigger: number;
+  stopLevel: number;
+  target2R: number;
+  riskPerShare: number;
+};
+
+export type InsightVolumeSummary = {
+  latestVolume: number | null;
+  lastFiveVolume: number;
+  lastFiveSessions: number;
+  priorTwentyAverage: number | null;
+  relativeVolume: number | null;
+};
+
+export type MarketSyncSourceResult = {
+  status: "complete" | "partial" | "failed" | "skipped";
+  message: string;
+  checked_days?: number;
+  stored_rows?: number;
+  synced_days?: number;
+  skipped_days?: number;
+  latest_trading_day?: string | null;
+  through?: string;
+};
+
+export type MarketSyncResult = {
+  status?: "complete" | "partial";
+  latest_trading_day?: string | null;
+  message?: string;
+  synced_days?: number;
+  sources?: {
+    nse_daily?: MarketSyncSourceResult;
+    nse_fii_dii?: MarketSyncSourceResult;
+    tapetide_history?: MarketSyncSourceResult;
+  };
 };
 
 type UnknownRecord = Record<string, unknown>;
@@ -199,6 +240,75 @@ export async function getInsights(universe: InsightUniverse, period: InsightPeri
   const params = new URLSearchParams({ period: period.toLowerCase() });
   const payload = await jsonRequest<unknown>(`${API_BASE_URL}/insights/${encodeURIComponent(universe)}?${params.toString()}`);
   return normalizeInsightsPayload(payload, universe, period);
+}
+
+export async function getInsightStockHistory(symbol: string, dataAsOf: string): Promise<MarketDataResponse> {
+  const endDate = new Date(`${dataAsOf.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(endDate.getTime())) throw new Error("The selected stock has no valid NSE data date.");
+  const startDate = new Date(endDate);
+  startDate.setUTCDate(startDate.getUTCDate() - 60);
+  const params = new URLSearchParams({
+    symbol,
+    timeframe: "1day",
+    start: `${startDate.toISOString().slice(0, 10)}T00:00:00`,
+    end: `${dataAsOf.slice(0, 10)}T23:59:59`,
+  });
+  return jsonRequest<MarketDataResponse>(`${API_BASE_URL}/market-data?${params.toString()}`);
+}
+
+export async function syncTodayMarketData(): Promise<MarketSyncResult> {
+  return jsonRequest<MarketSyncResult>(`${API_BASE_URL}/data/sync-today`, { method: "POST" }, 300_000);
+}
+
+export function summarizeInsightVolume(bars: MarketDataBar[]): InsightVolumeSummary {
+  const latest = bars.at(-1);
+  const lastFive = bars.slice(-5);
+  const priorTwenty = bars.slice(-21, -1);
+  const priorTwentyAverage = priorTwenty.length === 20
+    ? priorTwenty.reduce((total, bar) => total + bar.volume, 0) / 20
+    : null;
+
+  return {
+    latestVolume: latest?.volume ?? null,
+    lastFiveVolume: lastFive.reduce((total, bar) => total + bar.volume, 0),
+    lastFiveSessions: lastFive.length,
+    priorTwentyAverage,
+    relativeVolume: priorTwentyAverage && latest ? latest.volume / priorTwentyAverage : null,
+  };
+}
+
+export function buildInsightPaperPlan(bar: MarketDataBar | undefined): InsightPaperPlan | null {
+  if (!bar) return null;
+  const entryTrigger = Math.round(bar.high * 100) / 100;
+  const stopLevel = Math.round(bar.low * 100) / 100;
+  const riskPerShare = Math.round((entryTrigger - stopLevel) * 100) / 100;
+  if (riskPerShare <= 0) return null;
+  return {
+    dataAsOf: bar.timestamp.slice(0, 10),
+    entryTrigger,
+    stopLevel,
+    target2R: Math.round((entryTrigger + 2 * riskPerShare) * 100) / 100,
+    riskPerShare,
+  };
+}
+
+export async function saveInsightPaperPlan(input: {
+  symbol: string;
+  companyName: string;
+  plan: InsightPaperPlan;
+}): Promise<void> {
+  await jsonRequest(`${API_BASE_URL}/watchlist/add`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      symbol: input.symbol,
+      company_name: input.companyName,
+      setup_type: "Insights breakout paper plan",
+      entry_price: input.plan.entryTrigger,
+      target_price: input.plan.target2R,
+      stop_loss_price: input.plan.stopLevel,
+    }),
+  });
 }
 
 export function isInsightUniverse(value: string): value is InsightUniverse {

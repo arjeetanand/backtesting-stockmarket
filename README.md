@@ -43,7 +43,7 @@ Open the application at `http://localhost:4003`. API documentation is at `http:/
 curl http://127.0.0.1:8001/api/v1/health
 ```
 
-The launcher uses web port `4003` and API port `8001`; the matching UI test slots are `5003` and `6003`. Press `Ctrl+C` to stop both services. Running `./run.sh` again gracefully restarts only the Backtrack processes it started and fails closed if either port belongs to another app. The frontend shows explicit unavailable/error states when the backend is stopped; it does not use mock or fabricated prices.
+The launcher uses web port `4003` and API port `8001`; the matching UI test slots are `5003` and `6003`. Press `Ctrl+C` to stop both services. Running `./run.sh` again gracefully restarts only the Backtrack processes it started and fails closed if either port belongs to another app. Use **Sync All Market Data** to refresh the latest completed NSE daily archive, check the official latest-session FII/DII report, and fill known missing Tapetide history sessions. The result reports each source separately; cached NSE archives and complete Tapetide sessions are skipped. Historical Tapetide sync needs `TAPETIDE_API_TOKEN`; without it, the rest still runs and the result identifies that source as skipped. The frontend shows explicit unavailable/error states when the backend is stopped; it does not use mock or fabricated prices.
 
 For a temporary UI instance that shares the same API, run
 `./scripts/dev-frontend.sh 5003 8001` or `./scripts/dev-frontend.sh 6003 8001` while that
@@ -78,6 +78,9 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 - [frontend/README.md](frontend/README.md) — Next.js UI, routes, local agents, styling, and frontend development.
 - [DESIGN.md](DESIGN.md) — shared palette, typography, layout, and component guidance.
 - [docs/UI_THEME_CHECKLIST.md](docs/UI_THEME_CHECKLIST.md) — theme implementation and delivery checklist.
+- [docs/MARKET_SCANNER_CLARITY_CHECKLIST.md](docs/MARKET_SCANNER_CLARITY_CHECKLIST.md) — scanner wording, search scope, and verification record.
+- [docs/CTA_SELECT_CHECKLIST.md](docs/CTA_SELECT_CHECKLIST.md) — CTA state, custom choice menus, and UI verification record.
+- [docs/BRANCH_MERGE_CHECKLIST.md](docs/BRANCH_MERGE_CHECKLIST.md) — branch audit, integration scope, and remaining remote checks.
 - [handover.md](handover.md) — engineering ownership, persistence contract, architecture, and handoff notes.
 - [TESTING.md](TESTING.md) — automated tests, UI smoke checks, data checks, and release checklist.
 - [docs/STRUCTURE_ZONE_SCAN_CHECKLIST.md](docs/STRUCTURE_ZONE_SCAN_CHECKLIST.md) — scope and delivery checklist for the local daily structure-zone scan.
@@ -91,10 +94,11 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 | `/` | Guided path from local NSE data to research, saved results, and comparison |
 | `/data` | Bulk NSE history download and local stock search |
 | `/research` | Describe an idea, review a proposal, prepare data, and run a backtest |
-| `/stock-research` | Run a gated NIFTY 50 morning scan or explain one symbol's indicators, conditional plan, historical test, candles, and persistent run ledger |
+| `/stock-research` | Run a gated NIFTY 50 scan or review one stock's recent moves, volume, drawdown, holding risk, and conditional re-entry levels |
 | `/strategy` | Build indicator and rule-based strategies |
 | `/strategy-import` | Extract reviewable rules from a YouTube URL or transcript |
 | `/backtests` | Reopen saved historical tests |
+| `/watchlist` | Track saved historical setups against the latest imported daily bars |
 | `/replay` | Step through historical candles with simulated orders |
 | `/time-machine` | Sample daily-bar scenarios from local NSE history |
 | `/comparison` | Compare saved tests |
@@ -105,9 +109,11 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 | `/pattern-finder` | Detect repeatable historical price patterns and test them locally |
 | `/options` | Educational options payoff and breakeven calculator |
 | `/analytics` | Performance and trade-quality views |
-| `/insights` | Local NSE index breadth, stock/sector heatmaps, and top movers |
-| `/insights/fii-dii` | Provisional Tapetide 30-day/3-month history sync or the official NSE latest snapshot |
+| `/insights` | Local NSE index breadth, stock/sector heatmaps, recent stock volumes, conditional paper plans, and top movers |
+| `/insights/fii-dii` | Saved Tapetide FII/DII history with one-click 30D/3M/6M/1Y/5Y/10Y/20Y/All sync, plus a separate official NSE latest-session view |
 | `/settings` | Local data, Ollama, and application status |
+
+On **Market Scanner**, choose a stock group and rule before scanning. The search box filters a completed historical result list by ticker, company, or sector; choose **All imported stocks** before scanning for the widest locally available group. To search the local NSE catalogue and check whether a symbol has saved history, use **NSE data**. Neither search provides live exchange prices.
 
 See [PROJECT_GUIDE.md](PROJECT_GUIDE.md) for the complete user guide.
 
@@ -127,6 +133,8 @@ are documented in [DESIGN.md](DESIGN.md); the theme keeps the existing local,
 historical-only research boundary. Six original transparent PNG illustrations sit beside
 the workflow or first-use state they explain. They keep their full aspect ratio and stay
 static; route headers remain compact so the page title and task are easy to find.
+Editable choices use a shared keyboard-accessible menu, while settings with only one
+available value appear as read-only information.
 
 ## Research workflow
 
@@ -156,7 +164,7 @@ ollama serve
 ollama pull qwen3:4b
 ```
 
-Configure `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, and `OLLAMA_TIMEOUT_SECONDS` in `.env`. For the optional FII/DII historical sync, add a free personal Tapetide API token as `TAPETIDE_API_TOKEN`; it stays in the backend environment and is never sent to the browser. If Ollama is unavailable, Research returns an explicitly labelled deterministic fallback proposal; it never pretends that a model ran.
+Configure `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, and `OLLAMA_TIMEOUT_SECONDS` in `.env`. If Ollama is unavailable, Research returns an explicitly labelled deterministic fallback proposal; it never pretends that a model ran.
 
 ## Verification
 
@@ -174,9 +182,44 @@ npm --prefix frontend run build
 - Daily structure zones are an independent Backtrack OHLCV heuristic. They are confirmed range breaks with a nearby opposite candle, not evidence of institutional activity, and they do not use intraday data.
 - Market flow ranks the close-location value of the latest 20 saved daily candles, weighted by traded value, and marks candidate daily price zones for a selected symbol. It cannot identify buyers or sellers, measure bid/ask depth, or provide live order blocks.
 - The current research chart and strategy engine support the local `1day` NSE path; other timeframes remain explicit unavailable/configuration states until normalized data exists.
-- FII/DII Insights keeps the official NSE latest snapshot separate from Tapetide's provisional 30-day or 3-month history API. Historical sync is user-triggered and makes one request per sync; raw snapshots and rows are stored locally. A free Tapetide personal token is required. The feed's exact upstream source is not documented, and redistribution is not enabled.
+- FII/DII Insights reads previously saved Tapetide rows from SQLite and can sync a selected period on demand with `TAPETIDE_API_TOKEN`. Global sync checks only official NSE archive dates missing a complete Tapetide FII/DII pair and remembers successful empty checks. Tapetide documents this daily cash-market series from January 2014, so a 20Y selection can show at most that available history. Tapetide rows remain separate from the official NSE latest-session report; NSE does not provide historical date-range downloads.
 - Replay and backtesting are simulations, not trading execution.
 - Normalized backtest bars currently cover supported EQ/BE/ETF rows; raw rows are retained for future work.
 - Options calculations are educational and do not model the complete derivatives lifecycle.
 - YouTube extraction is a reviewable draft and never executes automatically.
 - The application is designed for local single-user research, not production multi-user deployment.
+
+## Optional TradingAgents review (OpenAI)
+
+In **Stock research**, analyze a stock, then click **Review with AI**. This runs
+TradingAgents v0.7.1's bullish researcher, bearish researcher, and research manager
+against a newly refreshed NSE analysis. Every click checks the latest available
+official NSE daily archive, downloads only missing archive days, reruns the selected
+stock's analysis, and then requests the AI review. A sync failure stops the review;
+if NSE has not published a requested archive yet, the attempt shows the actual saved
+data date and partial-sync status. This uses the OpenAI API, not the Codex
+application or a ChatGPT subscription; API usage is billed separately.
+
+```bash
+uv sync --extra dev --extra tradingagents
+# Set OPENAI_API_KEY in the repository-root .env (never NEXT_PUBLIC_*).
+# Optional: TRADINGAGENTS_MODEL=gpt-6-luna (requires access in your API account).
+./run.sh
+```
+
+Open `http://localhost:4003/stock-research` (API `8001`; UI test slots `5003`,
+`6003`). The existing launcher keeps these stable ports and restarts only its own
+instance. Missing dependencies/key or provider failures appear as explicit errors.
+
+The review uses the real upstream three-agent debate, not its full trading graph.
+News, sentiment, fundamentals, broker execution and external price feeds are not
+connected. No personal position inputs, charts or trade ledger are sent. AI output
+can be wrong and does not change the deterministic backtest or its validation gate.
+The saved data date remains visible; daily NSE bars are not live quotes. Sync results,
+fresh analysis runs, successful and failed AI attempts, and review text are saved in
+the local SQLite database. The latest 20 attempts for the selected symbol appear in
+**Saved review history**, where a saved analysis can be reopened. Every click checks
+data freshness; an identical market data hash/model/data age reuses the saved AI text
+and records that reuse without another charge. Changed data may incur a new API
+charge. Individual model calls time out after 30 seconds; the manager can fall back
+from structured to plain text (up to four model calls).

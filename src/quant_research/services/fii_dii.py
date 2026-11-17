@@ -6,8 +6,9 @@ import json
 import math
 import os
 from collections.abc import Callable
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import cast
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -18,6 +19,9 @@ from quant_research.services.nse_indices import NseIndexArchiveImporter
 
 class FiiDiiImportError(RuntimeError):
     """Raised when the official NSE report cannot be downloaded or parsed."""
+
+
+TAPETIDE_HISTORY_START = date(2014, 1, 1)
 
 
 class NseFiiDiiImporter:
@@ -57,6 +61,7 @@ class NseFiiDiiImporter:
         payloads: list[tuple[str, object]] = [(self.report_url, payload)] if filtered else []
 
         fetched_at = datetime.now(UTC)
+        snapshot_stamp = fetched_at.strftime("%Y%m%dT%H%M%S%f")
         stored = 0
         all_days: set[date] = set()
         for archive_index, (source_url, payload) in enumerate(payloads):
@@ -65,17 +70,44 @@ class NseFiiDiiImporter:
             filtered = [row for row in rows if start <= row.trading_day <= end]
             if not filtered:
                 continue
+            changed_days: set[date] = set()
+            changed_rows: list[FiiDiiRow] = []
+            for trading_day in {row.trading_day for row in filtered}:
+                day_rows = [row for row in filtered if row.trading_day == trading_day]
+                first = day_rows[0]
+                existing_rows = self._cache.get_fii_dii_rows(
+                    trading_day,
+                    trading_day,
+                    scope=first.scope,
+                    segment=first.segment,
+                )
+                existing = {
+                    row.participant: (row.buy_value, row.sell_value, row.net_value)
+                    for row in existing_rows
+                }
+                incoming = {
+                    row.participant: (row.buy_value, row.sell_value, row.net_value)
+                    for row in day_rows
+                }
+                if incoming != existing:
+                    changed_days.add(trading_day)
+                    changed_rows.extend(
+                        row
+                        for row in day_rows
+                        if existing.get(row.participant) != (row.buy_value, row.sell_value, row.net_value)
+                    )
             archive_suffix = f"_{archive_index}" if len(payloads) > 1 else ""
-            snapshot_id = f"fii_dii_{fetched_at.strftime('%Y%m%dT%H%M%S')}_{os.getpid()}{archive_suffix}"
-            archive_file = self._archive_path / f"fii_dii_snapshot_{fetched_at.strftime('%Y%m%dT%H%M%S')}{archive_suffix}.json"
-            archive_file.write_text(payload_text, encoding="utf-8")
-            stored += self._cache.store_fii_dii_snapshot(
-                snapshot_id=snapshot_id,
-                fetched_at=fetched_at,
-                source_url=source_url,
-                payload=payload_text,
-                rows=filtered,
-            )
+            if changed_days:
+                snapshot_id = f"fii_dii_{snapshot_stamp}_{os.getpid()}{archive_suffix}"
+                archive_file = self._archive_path / f"fii_dii_snapshot_{snapshot_stamp}{archive_suffix}.json"
+                archive_file.write_text(payload_text, encoding="utf-8")
+                stored += self._cache.store_fii_dii_snapshot(
+                    snapshot_id=snapshot_id,
+                    fetched_at=fetched_at,
+                    source_url=source_url,
+                    payload=payload_text,
+                    rows=changed_rows,
+                )
             all_days.update(row.trading_day for row in filtered)
 
         if all_days:
@@ -206,127 +238,198 @@ class NseFiiDiiImporter:
             return None
 
 
-class TapetideFiiDiiImporter:
-    """Fetch provisional 30- or 90-day FII/DII cash-flow history on demand."""
+class TapetideFiiDiiHistoryImporter:
+    """Download Tapetide's documented daily cash-flow history into SQLite."""
 
-    report_url = "https://api.tapetide.com/v1/market/institutional-flows"
-    source_url = "https://tapetide.com/fii-dii-data"
+    endpoint = "https://api.tapetide.com/v1/market/institutional-flows"
 
-    def __init__(self, cache: SqliteMarketCache, token: str | None = None, timeout_seconds: float = 25.0) -> None:
+    def __init__(self, cache: SqliteMarketCache, token: str | None, timeout_seconds: float = 30.0) -> None:
         self._cache = cache
-        self._token = (token or os.getenv("TAPETIDE_API_TOKEN") or "").strip()
+        self._token = token.strip() if token else ""
         self._timeout_seconds = timeout_seconds
 
     @property
     def configured(self) -> bool:
         return bool(self._token)
 
-    def import_history(self, range_days: int) -> tuple[int, date | None, date | None]:
-        if range_days not in {30, 90}:
-            raise FiiDiiImportError("Historical sync supports only 30 or 90 days.")
+    def sync(
+        self,
+        start: date,
+        end: date,
+        progress: Callable[[str], None] | None = None,
+    ) -> dict[str, object]:
+        if start > end:
+            raise FiiDiiImportError("start must be on or before end.")
+        if end > date.today():
+            raise FiiDiiImportError("End date cannot be in the future.")
         if not self.configured:
-            raise FiiDiiImportError("Add a free Tapetide personal API token as TAPETIDE_API_TOKEN in .env to sync history.")
+            raise FiiDiiImportError("Add TAPETIDE_API_TOKEN to the project .env file, then restart Backtrack.")
+        requested_start = max(start, TAPETIDE_HISTORY_START)
+        if requested_start > end:
+            raise FiiDiiImportError("Tapetide's documented FII/DII cash-flow history starts on 2014-01-01.")
 
-        end = date.today()
-        start = end - timedelta(days=range_days - 1)
-        payload = self._download_report(start, end)
-        rows = self._rows_from_payload(payload, start, end)
-        fetched_at = datetime.now(UTC)
-        snapshot_id = f"fii_dii_tapetide_{fetched_at.strftime('%Y%m%dT%H%M%S%f')}_{os.getpid()}"
-        stored = self._cache.store_fii_dii_history_snapshot(
-            snapshot_id=snapshot_id,
-            fetched_at=fetched_at,
-            source_url=self.source_url,
-            payload=json.dumps(payload, ensure_ascii=False, sort_keys=True),
-            rows=rows,
-        )
-        days = sorted({row.trading_day for row in rows})
-        return stored, days[0], days[-1]
+        rows: dict[tuple[date, str], FiiDiiRow] = {}
+        skipped_records = 0
+        pages_fetched = 0
+        cursor: str | None = None
+        seen_cursors: set[str] = set()
+        while True:
+            payload = self._download_page(requested_start, end, cursor)
+            records = payload.get("data")
+            meta = payload.get("meta")
+            if not isinstance(records, list) or not isinstance(meta, dict) or not isinstance(meta.get("has_more"), bool):
+                raise FiiDiiImportError("Tapetide returned an unexpected history response.")
+            pages_fetched += 1
+            for record in records:
+                if not isinstance(record, dict):
+                    raise FiiDiiImportError("Tapetide returned an invalid daily-flow row.")
+                try:
+                    trading_day = date.fromisoformat(str(record["date"]))
+                except (KeyError, ValueError) as exc:
+                    raise FiiDiiImportError("Tapetide returned a daily-flow row without a valid ISO date.") from exc
+                if not requested_start <= trading_day <= end:
+                    raise FiiDiiImportError("Tapetide returned a date outside the requested history range.")
+                for participant, buy_key, sell_key, net_key in (
+                    ("FII", "fii_buy_cr", "fii_sell_cr", "fii_net_cr"),
+                    ("DII", "dii_buy_cr", "dii_sell_cr", "dii_net_cr"),
+                ):
+                    buy = self._number(record.get(buy_key))
+                    sell = self._number(record.get(sell_key))
+                    if buy is None or sell is None:
+                        skipped_records += 1
+                        continue
+                    net = self._number(record.get(net_key))
+                    row = FiiDiiRow(
+                        trading_day=trading_day,
+                        participant=participant,
+                        scope="tapetide",
+                        segment="equity",
+                        buy_value=buy,
+                        sell_value=sell,
+                        net_value=net if net is not None else round(buy - sell, 2),
+                        source=self.endpoint,
+                    )
+                    key = (trading_day, participant)
+                    if key in rows and rows[key] != row:
+                        raise FiiDiiImportError(f"Tapetide returned conflicting duplicate rows for {trading_day}.")
+                    rows[key] = row
+            if progress:
+                progress(f"Downloaded Tapetide history page {pages_fetched}.")
+            if not meta["has_more"]:
+                break
+            next_cursor = meta.get("next_cursor")
+            if not isinstance(next_cursor, str) or not next_cursor or next_cursor in seen_cursors or pages_fetched >= 100:
+                raise FiiDiiImportError("Tapetide history pagination did not advance safely.")
+            seen_cursors.add(next_cursor)
+            cursor = next_cursor
 
-    def _download_report(self, start: date, end: date) -> object:
-        query = urlencode({"from": start.isoformat(), "to": end.isoformat(), "order": "asc", "limit": 1000})
+        normalized_rows = list(rows.values())
+        stored_rows = self._cache.store_fii_dii_history_rows(normalized_rows)
+        available_days = [row.trading_day for row in normalized_rows]
+        return {
+            "stored_rows": stored_rows,
+            "pages_fetched": pages_fetched,
+            "skipped_records": skipped_records,
+            "available_start": min(available_days) if available_days else None,
+            "available_end": max(available_days) if available_days else None,
+        }
+
+    def sync_missing_nse_sessions(
+        self,
+        start: date,
+        end: date,
+        progress: Callable[[str], None] | None = None,
+    ) -> dict[str, object]:
+        """Fill only known NSE archive dates missing a complete Tapetide pair."""
+        requested_start = max(start, TAPETIDE_HISTORY_START)
+        missing_days = self._cache.missing_fii_dii_history_days(requested_start, end)
+        stored_rows = 0
+        pages_fetched = 0
+        skipped_records = 0
+        empty_days = 0
+        incomplete_days = 0
+        available_days: set[date] = set()
+
+        for trading_day in missing_days:
+            if progress:
+                progress(f"Checking Tapetide history for {trading_day}.")
+            sync_progress: Callable[[str], None] | None = None
+            if progress:
+                def report_progress(stage: str, day: date = trading_day) -> None:
+                    progress(f"{day}: {stage}")
+
+                sync_progress = report_progress
+            result = self.sync(
+                trading_day,
+                trading_day,
+                progress=sync_progress,
+            )
+            stored_rows += cast(int, result["stored_rows"])
+            pages_fetched += cast(int, result["pages_fetched"])
+            skipped_records += cast(int, result["skipped_records"])
+            if isinstance(result["available_start"], date):
+                available_days.add(result["available_start"])
+            if isinstance(result["available_end"], date):
+                available_days.add(result["available_end"])
+
+            saved_participants = {
+                row.participant
+                for row in self._cache.get_fii_dii_history_rows(trading_day, trading_day)
+                if row.scope == "tapetide" and row.segment == "equity"
+            }
+            if {"FII", "DII"}.issubset(saved_participants):
+                self._cache.mark_fii_dii_history_day_checked(trading_day, "saved")
+            elif not saved_participants:
+                self._cache.mark_fii_dii_history_day_checked(trading_day, "empty")
+                empty_days += 1
+            else:
+                incomplete_days += 1
+
+        return {
+            "checked_days": len(missing_days),
+            "stored_rows": stored_rows,
+            "pages_fetched": pages_fetched,
+            "skipped_records": skipped_records,
+            "empty_days": empty_days,
+            "incomplete_days": incomplete_days,
+            "available_start": min(available_days) if available_days else None,
+            "available_end": max(available_days) if available_days else None,
+        }
+
+    def _download_page(self, start: date, end: date, cursor: str | None) -> dict[str, object]:
+        query = {"from": start.isoformat(), "to": end.isoformat(), "order": "asc", "limit": "1000"}
+        if cursor:
+            query["cursor"] = cursor
         request = Request(
-            f"{self.report_url}?{query}",
+            f"{self.endpoint}?{urlencode(query)}",
             headers={"Authorization": f"Bearer {self._token}", "Accept": "application/json"},
         )
         try:
             with urlopen(request, timeout=self._timeout_seconds) as response:
-                return json.loads(response.read().decode("utf-8"))
+                payload = json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
             if exc.code in {401, 403}:
-                raise FiiDiiImportError("Tapetide rejected the API token. Check TAPETIDE_API_TOKEN in .env.") from exc
-            if exc.code == 429:
-                raise FiiDiiImportError("Tapetide's free API request limit was reached. Try again after the daily reset.") from exc
-            raise FiiDiiImportError(f"Tapetide FII/DII API returned HTTP {exc.code}.") from exc
+                message = "Tapetide rejected the configured token. Check TAPETIDE_API_TOKEN in .env."
+            elif exc.code == 429:
+                message = "Tapetide's request limit was reached. Try syncing again later."
+            else:
+                message = f"Tapetide history returned HTTP {exc.code}. Try again later."
+            raise FiiDiiImportError(message) from exc
         except (URLError, TimeoutError) as exc:
-            raise FiiDiiImportError("Could not reach Tapetide's FII/DII API.") from exc
+            raise FiiDiiImportError("Could not reach Tapetide. Check the internet connection and try again.") from exc
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise FiiDiiImportError("Tapetide returned an unreadable FII/DII response.") from exc
-
-    @classmethod
-    def _rows_from_payload(cls, payload: object, start: date, end: date) -> list[FiiDiiRow]:
-        if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
-            raise FiiDiiImportError("Tapetide returned an unsupported FII/DII response format.")
-        meta = payload.get("meta")
-        if not isinstance(meta, dict):
-            raise FiiDiiImportError("Tapetide returned an unsupported FII/DII response format.")
-        if meta.get("has_more") is True:
-            raise FiiDiiImportError("Tapetide returned a paged result; no data was saved. Please retry later.")
-        if meta.get("has_more") is not False:
-            raise FiiDiiImportError("Tapetide did not confirm that the result was complete; no data was saved.")
-
-        records = payload["data"]
-        rows: list[FiiDiiRow] = []
-        seen_days: set[date] = set()
-        for record in records:
-            if not isinstance(record, dict):
-                raise FiiDiiImportError("Tapetide returned an invalid FII/DII row.")
-            raw_day = record.get("date")
-            try:
-                trading_day = date.fromisoformat(str(raw_day))
-            except ValueError as exc:
-                raise FiiDiiImportError("Tapetide returned a row with an invalid trading date.") from exc
-            if not start <= trading_day <= end:
-                continue
-            if trading_day in seen_days:
-                raise FiiDiiImportError("Tapetide returned duplicate trading dates; no data was saved.")
-            seen_days.add(trading_day)
-
-            for participant, prefix in (("FII", "fii"), ("DII", "dii")):
-                buy = cls._number(record.get(f"{prefix}_buy_cr"))
-                sell = cls._number(record.get(f"{prefix}_sell_cr"))
-                net = cls._number(record.get(f"{prefix}_net_cr"))
-                if buy is None or sell is None:
-                    raise FiiDiiImportError(f"Tapetide is missing {participant} buy/sell values for {trading_day}.")
-                derived_net = round(buy - sell, 2)
-                if net is None:
-                    net = derived_net
-                elif abs(net - derived_net) > 0.02:
-                    raise FiiDiiImportError(f"Tapetide's {participant} net value does not match buy minus sell for {trading_day}.")
-                rows.append(FiiDiiRow(
-                    trading_day=trading_day,
-                    participant=participant,
-                    scope="tapetide",
-                    segment="equity",
-                    buy_value=buy,
-                    sell_value=sell,
-                    net_value=net,
-                    source=cls.source_url,
-                ))
-        if not rows:
-            raise FiiDiiImportError("Tapetide returned no complete trading sessions for the selected range.")
-        return rows
+            raise FiiDiiImportError("Tapetide returned unreadable FII/DII history.") from exc
+        if not isinstance(payload, dict):
+            raise FiiDiiImportError("Tapetide returned an unexpected history response.")
+        return payload
 
     @staticmethod
     def _number(value: object) -> float | None:
         if value is None:
             return None
-        if isinstance(value, bool) or not isinstance(value, (int, float, str)):
-            raise FiiDiiImportError("Tapetide returned a non-numeric FII/DII value.")
-        try:
-            number = float(value)
-        except (TypeError, ValueError):
-            raise FiiDiiImportError("Tapetide returned a non-numeric FII/DII value.") from None
-        if not math.isfinite(number):
-            raise FiiDiiImportError("Tapetide returned a non-finite FII/DII value.")
-        return number
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise FiiDiiImportError("Tapetide returned a non-numeric FII/DII amount.")
+        result = float(value)
+        if not math.isfinite(result):
+            raise FiiDiiImportError("Tapetide returned a non-finite FII/DII amount.")
+        return result

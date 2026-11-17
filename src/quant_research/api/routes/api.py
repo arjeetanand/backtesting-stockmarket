@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import sqlite3
 from dataclasses import asdict
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -20,8 +21,6 @@ from quant_research.api.schemas import (
     CustomBacktestRequest,
     DataInventoryItem,
     FiiDiiChartPoint,
-    FiiDiiHistorySyncRequest,
-    FiiDiiHistorySyncResponse,
     FiiDiiImportJobResponse,
     FiiDiiImportRequest,
     FiiDiiImportStatusResponse,
@@ -88,7 +87,12 @@ from quant_research.domain.validity.auditor import audit_validity
 from quant_research.llm.ollama import OllamaError
 from quant_research.repositories.artifacts import SqliteArtifactStore
 from quant_research.repositories.market_cache import SqliteMarketCache
-from quant_research.services.fii_dii import FiiDiiImportError, NseFiiDiiImporter, TapetideFiiDiiImporter
+from quant_research.services.fii_dii import (
+    TAPETIDE_HISTORY_START,
+    FiiDiiImportError,
+    NseFiiDiiImporter,
+    TapetideFiiDiiHistoryImporter,
+)
 from quant_research.services.hypotheses import HypothesisAnalysis, HypothesisCommand, HypothesisService
 from quant_research.services.market_insights import run_current_screener
 from quant_research.services.market_scanner import SECTOR_MAP
@@ -109,6 +113,7 @@ from quant_research.services.research import (
 from quant_research.services.stock_research import ARTIFACT_KIND as STOCK_RESEARCH_ARTIFACT_KIND
 from quant_research.services.stock_research import StockResearchService
 from quant_research.services.time_machine import run_time_machine
+from quant_research.services.trading_agents import REVIEW_ATTEMPT_ARTIFACT_KIND
 from quant_research.services.volume_momentum import analyze_volume_momentum
 from quant_research.services.youtube_strategy import extract_strategy
 
@@ -254,13 +259,13 @@ def _fii_dii_response(
     scope: str,
     segment: str,
     source: str = "nse",
-    sync_available: bool = False,
+    tapetide_sync_available: bool = False,
 ) -> FiiDiiResponse:
     if source == "tapetide":
         rows = cache.get_fii_dii_history_rows(start, end)
         coverage_start, coverage_end, coverage_days = cache.fii_dii_history_coverage()
         response_scope, response_segment = "tapetide", "equity"
-        source_url = TapetideFiiDiiImporter.source_url
+        source_url = "https://tapetide.com/fii-dii-data"
     else:
         rows = cache.get_fii_dii_rows(start, end, scope, segment)
         coverage_start, coverage_end, coverage_days = cache.fii_dii_coverage(scope, segment)
@@ -283,12 +288,17 @@ def _fii_dii_response(
 
     latest_day = max(by_day) if by_day else None
     coverage_note = None
-    if source == "tapetide" and not rows and coverage_start is None:
-        coverage_note = "No Tapetide history is stored locally yet. Sync the selected 30-day or 3-month range to add it."
+    if source == "tapetide" and start < TAPETIDE_HISTORY_START:
+        coverage_note = "Tapetide's documented daily cash-market history begins on 2014-01-01. A 20-year selection can show only the available history from that date onward."
+    elif source == "tapetide" and not rows and coverage_start is None:
+        coverage_note = "No Tapetide history is stored in the local SQLite cache yet."
     elif source == "tapetide" and not rows:
-        coverage_note = "No locally cached Tapetide sessions fall in this selected date range. Sync it to add the range."
+        coverage_note = "No locally saved Tapetide sessions fall in this selected date range."
     elif source == "tapetide" and rows and coverage_start and coverage_start > start:
-        coverage_note = "Only locally cached Tapetide sessions are shown. Sync the selected range to fill older dates."
+        coverage_note = (
+            f"Showing {coverage_days} Tapetide sessions saved locally from {coverage_start} through {coverage_end}. "
+            "The selected view is limited to dates already in SQLite; missing earlier dates are not available locally."
+        )
     elif source == "nse" and rows and coverage_start and coverage_start > start:
         coverage_note = (
             "Only the locally archived NSE sessions are shown. NSE's public FII/DII report currently exposes the latest session; "
@@ -340,7 +350,7 @@ def _fii_dii_response(
         coverage_days=coverage_days,
         coverage_note=coverage_note,
         source_url=source_url,
-        sync_available=sync_available if source == "tapetide" else False,
+        tapetide_sync_available=tapetide_sync_available,
     )
 
 
@@ -354,7 +364,7 @@ def create_api_router(
     ml_research: MlResearchService | None = None,
     fii_dii_importer: NseFiiDiiImporter | None = None,
     screener_runner: ScreenerRunner | None = None,
-    tapetide_fii_dii_importer: TapetideFiiDiiImporter | None = None,
+    tapetide_history_importer: TapetideFiiDiiHistoryImporter | None = None,
 ) -> APIRouter:
     """Build routes bound to one fully configured application service."""
     router = APIRouter(prefix="/api/v1")
@@ -445,6 +455,48 @@ def create_api_router(
             })
         except FiiDiiImportError as exc:
             save_fii_dii_job(job_id, {**(get_fii_dii_job(job_id) or {}), "status": "failed", "stage": "Import failed", "message": str(exc)})
+
+    def run_tapetide_fii_dii_import(job_id: str, payload: FiiDiiImportRequest) -> None:
+        if tapetide_history_importer is None:
+            save_fii_dii_job(job_id, {"status": "failed", "source": "tapetide", "message": "Tapetide history sync is not configured."})
+            return
+        try:
+            def progress(stage: str) -> None:
+                save_fii_dii_job(job_id, {
+                    **(get_fii_dii_job(job_id) or {}),
+                    "status": "running",
+                    "stage": stage,
+                    "message": stage,
+                })
+
+            save_fii_dii_job(job_id, {**(get_fii_dii_job(job_id) or {}), "status": "running", "stage": "Preparing history sync", "message": "Requesting Tapetide daily FII/DII history."})
+            result = tapetide_history_importer.sync(payload.start, payload.end, progress=progress)
+            stored = cast(int, result["stored_rows"])
+            pages = cast(int, result["pages_fetched"])
+            skipped = cast(int, result["skipped_records"])
+            message = f"Tapetide sync complete: {stored} rows saved to SQLite across {pages} pages."
+            if result["available_start"] and result["available_end"]:
+                message += f" Coverage saved: {result['available_start']} through {result['available_end']}."
+            if skipped:
+                message += f" {skipped} incomplete participant rows were skipped because gross buy or sell was unavailable."
+            save_fii_dii_job(job_id, {
+                **(get_fii_dii_job(job_id) or {}),
+                "status": "complete",
+                "stage": "Complete",
+                "message": message,
+                **result,
+            })
+        except FiiDiiImportError as exc:
+            save_fii_dii_job(job_id, {**(get_fii_dii_job(job_id) or {}), "status": "failed", "stage": "Sync failed", "message": str(exc)})
+        except sqlite3.Error:
+            # Keep the in-memory job status actionable even if SQLite cannot
+            # persist the error record that would normally survive a restart.
+            fii_dii_jobs[job_id] = {
+                **(get_fii_dii_job(job_id) or {}),
+                "status": "failed",
+                "stage": "Sync failed",
+                "message": "Could not save Tapetide history or sync status to SQLite. Check the configured cache and retry.",
+            }
 
     def market_frame(symbol: str, timeframe: str, start: datetime, end: datetime) -> pd.DataFrame:
         return pd.DataFrame([bar.model_dump() for bar in market_bars(symbol, timeframe, start, end)]).rename(
@@ -782,40 +834,23 @@ def create_api_router(
             scope,
             segment,
             source,
-            sync_available=bool(tapetide_fii_dii_importer and tapetide_fii_dii_importer.configured),
-        )
-
-    @router.post("/insights/fii-dii/history/sync", response_model=FiiDiiHistorySyncResponse, tags=["insights"])
-    def sync_fii_dii_history(payload: FiiDiiHistorySyncRequest) -> FiiDiiHistorySyncResponse:
-        if market_cache is None:
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="The local market cache is not configured.")
-        if tapetide_fii_dii_importer is None:
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Tapetide FII/DII sync is not configured.")
-        try:
-            stored, available_start, available_end = tapetide_fii_dii_importer.import_history(payload.range_days)
-        except FiiDiiImportError as exc:
-            code = status.HTTP_503_SERVICE_UNAVAILABLE if not tapetide_fii_dii_importer.configured else status.HTTP_502_BAD_GATEWAY
-            raise HTTPException(status_code=code, detail=str(exc)) from exc
-        if available_start is None or available_end is None:
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Tapetide returned no importable FII/DII history.")
-        return FiiDiiHistorySyncResponse(
-            range_days=payload.range_days,
-            stored_rows=stored,
-            available_start=available_start,
-            available_end=available_end,
-            source_url=TapetideFiiDiiImporter.source_url,
+            tapetide_sync_available=bool(tapetide_history_importer and tapetide_history_importer.configured),
         )
 
     @router.post("/insights/fii-dii/import", response_model=FiiDiiImportJobResponse, status_code=status.HTTP_202_ACCEPTED, tags=["insights"])
     def start_fii_dii_import(payload: FiiDiiImportRequest, background_tasks: BackgroundTasks) -> FiiDiiImportJobResponse:
         if payload.start > payload.end:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="start must be on or before end.")
-        if fii_dii_importer is None:
+        if payload.source == "nse" and fii_dii_importer is None:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="The official NSE FII/DII importer is not configured.")
+        if payload.source == "tapetide" and (tapetide_history_importer is None or not tapetide_history_importer.configured):
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Add TAPETIDE_API_TOKEN to the project .env file, then restart Backtrack to sync historical Tapetide rows.")
         job_id = f"fii_dii_{uuid4().hex[:10]}"
-        save_fii_dii_job(job_id, {"status": "queued", "scope": payload.scope, "message": "Official NSE FII/DII import has been queued."})
-        background_tasks.add_task(run_fii_dii_import, job_id, payload)
-        return FiiDiiImportJobResponse(job_id=job_id, status="queued", scope=payload.scope, source_start=payload.start, source_end=payload.end)
+        message = "Official NSE FII/DII import has been queued." if payload.source == "nse" else "Tapetide historical FII/DII sync has been queued."
+        save_fii_dii_job(job_id, {"status": "queued", "scope": payload.scope, "source": payload.source, "message": message})
+        task = run_tapetide_fii_dii_import if payload.source == "tapetide" else run_fii_dii_import
+        background_tasks.add_task(task, job_id, payload)
+        return FiiDiiImportJobResponse(job_id=job_id, status="queued", scope=payload.scope, source_start=payload.start, source_end=payload.end, source=payload.source)
 
     @router.get("/insights/fii-dii/import/{job_id}", response_model=FiiDiiImportStatusResponse, tags=["insights"])
     def fii_dii_import_status(job_id: str) -> FiiDiiImportStatusResponse:
@@ -1118,7 +1153,10 @@ def create_api_router(
     def clear_testing_history() -> dict[str, object]:
         """Delete saved tests and analysis artifacts without deleting market data."""
         deleted_runs = research.clear_backtests()
-        deleted_artifacts = artifacts.clear_kinds(("custom_backtest", "hypothesis", "robustness", "youtube_strategy", "replay_session", STOCK_RESEARCH_ARTIFACT_KIND)) if artifacts is not None else 0
+        deleted_artifacts = artifacts.clear_kinds((
+            "custom_backtest", "hypothesis", "robustness", "youtube_strategy", "replay_session",
+            STOCK_RESEARCH_ARTIFACT_KIND, "trading_agents_review", REVIEW_ATTEMPT_ARTIFACT_KIND,
+        )) if artifacts is not None else 0
         return {
             "deleted_runs": deleted_runs,
             "deleted_artifacts": deleted_artifacts,
@@ -1172,6 +1210,10 @@ def create_api_router(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved testing artifact was not found.")
         if not artifacts.delete(kind, artifact_key):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved testing artifact was not found.")
+        if kind == STOCK_RESEARCH_ARTIFACT_KIND:
+            artifacts.delete_by_json_value("trading_agents_review", "$.source_run_id", artifact_key)
+            artifacts.delete_by_json_value(REVIEW_ATTEMPT_ARTIFACT_KIND, "$.source_run_id", artifact_key)
+            artifacts.delete_by_json_value(REVIEW_ATTEMPT_ARTIFACT_KIND, "$.requested_run_id", artifact_key)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     # ── Market Replay Engine Routes ──────────────────────────────
@@ -1420,16 +1462,124 @@ def create_api_router(
 
     @router.post("/data/sync-today", tags=["data"])
     def sync_today_market_data() -> dict[str, Any]:
-        """One-click sync missing trading day archives up to today's session."""
-        from quant_research.services.daily_sync import DailySyncService
+        """Refresh official NSE bars, the latest NSE flow report, and missing Tapetide history."""
+        from quant_research.services.daily_sync import INDIA_TZ, DailySyncService
 
         if market_cache is None:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Market cache repository not available.")
+
+        today = datetime.now(UTC).astimezone(INDIA_TZ).date()
+        sources: dict[str, dict[str, Any]] = {}
+        daily_result: dict[str, Any] = {}
         try:
-            service = DailySyncService(market_cache)
-            return service.sync_latest()
+            daily_result = DailySyncService(market_cache).sync_latest()
+            sources["nse_daily"] = {
+                "status": daily_result.get("status", "complete"),
+                "message": daily_result.get("message", "NSE daily sync finished."),
+                "synced_days": daily_result.get("synced_days", 0),
+                "skipped_days": daily_result.get("skipped_days", 0),
+                "latest_trading_day": daily_result.get("latest_trading_day"),
+            }
         except Exception as exc:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+            sources["nse_daily"] = {"status": "failed", "message": str(exc)}
+
+        if fii_dii_importer is None:
+            sources["nse_fii_dii"] = {
+                "status": "skipped",
+                "message": "The official NSE FII/DII importer is not configured.",
+            }
+        else:
+            try:
+                stored, available_start, available_end = fii_dii_importer.import_reports(
+                    TAPETIDE_HISTORY_START,
+                    today,
+                    scope="combined",
+                )
+                if available_end is None:
+                    sources["nse_fii_dii"] = {
+                        "status": "partial",
+                        "message": "The official NSE endpoint returned no FII/DII rows for the latest-session check.",
+                        "stored_rows": stored,
+                    }
+                else:
+                    message = (
+                        f"Latest official report is {available_end}; "
+                        f"{stored} new or changed rows saved."
+                    )
+                    if available_start != available_end:
+                        message += f" Report dates: {available_start} through {available_end}."
+                    sources["nse_fii_dii"] = {
+                        "status": "complete",
+                        "message": message,
+                        "stored_rows": stored,
+                        "latest_trading_day": available_end.isoformat(),
+                    }
+            except Exception as exc:
+                sources["nse_fii_dii"] = {"status": "failed", "message": str(exc)}
+
+        if tapetide_history_importer is None or not tapetide_history_importer.configured:
+            sources["tapetide_history"] = {
+                "status": "skipped",
+                "message": "Historical Tapetide sync is not configured. Add TAPETIDE_API_TOKEN and restart Backtrack.",
+            }
+        else:
+            try:
+                latest_session = market_cache.summary().latest
+                target_day = latest_session.date() if latest_session else None
+                if target_day is None:
+                    sources["tapetide_history"] = {
+                        "status": "partial",
+                        "message": "No saved NSE session is available to bound the historical sync.",
+                    }
+                else:
+                    result = tapetide_history_importer.sync_missing_nse_sessions(
+                        TAPETIDE_HISTORY_START,
+                        target_day,
+                    )
+                    checked = cast(int, result["checked_days"])
+                    stored_rows = cast(int, result["stored_rows"])
+                    pages_fetched = cast(int, result["pages_fetched"])
+                    skipped_records = cast(int, result["skipped_records"])
+                    empty_days = cast(int, result["empty_days"])
+                    incomplete_days = cast(int, result["incomplete_days"])
+                    message = (
+                        f"Tapetide history checked through {target_day}: "
+                        f"{checked} missing NSE session(s) checked, "
+                        f"{stored_rows} rows saved across {pages_fetched} page(s)."
+                    )
+                    if checked == 0:
+                        message = f"No missing official NSE archive sessions were found through {target_day}; no Tapetide dates were requested."
+                    if empty_days:
+                        message += f" No Tapetide rows were available for {empty_days} checked session(s); those dates will be skipped on later global syncs."
+                    if incomplete_days:
+                        message += f" {incomplete_days} session(s) still lack a complete FII/DII pair and can be retried."
+                    if skipped_records:
+                        message += f" {skipped_records} incomplete provider row(s) were skipped."
+                    sources["tapetide_history"] = {
+                        "status": "partial" if empty_days or incomplete_days else "complete",
+                        "message": message,
+                        **result,
+                        "through": target_day.isoformat(),
+                    }
+            except Exception as exc:
+                sources["tapetide_history"] = {"status": "failed", "message": str(exc)}
+
+        overall_status = "complete" if all(source["status"] == "complete" for source in sources.values()) else "partial"
+        source_messages = [
+            f"{label}: {source['message']}"
+            for label, source in (
+                ("NSE daily", sources["nse_daily"]),
+                ("Official NSE FII/DII", sources["nse_fii_dii"]),
+                ("Tapetide history", sources["tapetide_history"]),
+            )
+        ]
+        return {
+            "status": overall_status,
+            "latest_trading_day": daily_result.get("latest_trading_day"),
+            "synced_days": daily_result.get("synced_days", 0),
+            "sources": sources,
+            "message": f"Market data sync {overall_status}.\n" + "\n".join(source_messages),
+        }
 
     @router.post("/watchlist/add", tags=["watchlist"])
     def add_watchlist_item(payload: WatchlistAddRequest) -> dict[str, Any]:

@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from quant_research.api.config import Settings
 from quant_research.api.container import create_container
 from quant_research.api.routes.api import create_api_router
+from quant_research.api.routes.trading_agents import create_trading_agents_router
 from quant_research.data_providers.base import MarketDataProvider
 from quant_research.services.hypotheses import JsonLlmClient
 
@@ -48,8 +49,9 @@ def create_app(
         container.artifacts,
         container.ml_research,
         container.fii_dii_importer,
-        tapetide_fii_dii_importer=container.tapetide_fii_dii_importer,
+        tapetide_history_importer=container.tapetide_fii_dii_importer,
     ))
+    app.include_router(create_trading_agents_router(container.market_cache, container.artifacts))
     return app
 
 

@@ -34,5 +34,5 @@ class Settings:
             ollama_timeout_seconds=min(60.0, max(5.0, ollama_timeout)),
             market_cache_path=Path(os.getenv("MARKET_CACHE_PATH", "data/market_cache.sqlite3")),
             nse_archive_path=Path(os.getenv("NSE_ARCHIVE_PATH", "data/nse_archives")),
-            tapetide_api_token=os.getenv("TAPETIDE_API_TOKEN") or None,
+            tapetide_api_token=os.getenv("TAPETIDE_API_TOKEN", "").strip() or None,
         )

@@ -40,15 +40,16 @@ NSE_ARCHIVE_PATH=data/nse_archives
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=qwen3:4b
 OLLAMA_TIMEOUT_SECONDS=25
-# Optional; enables the free Tapetide historical FII/DII sync.
 TAPETIDE_API_TOKEN=
 ```
 
-No token is required for the official NSE workflow. A personal Tapetide token is optional for the separate FII/DII history sync; keep it in `.env` and out of source control.
+No environment secret is required for the local NSE workflow. `TAPETIDE_API_TOKEN` is optional and is used only when explicitly syncing historical FII/DII data.
 
 ## FII/DII history
 
-`POST /api/v1/insights/fii-dii/history/sync` makes one Tapetide API request for exactly 30 or 90 inclusive calendar days. It stores provisional provider rows separately from official NSE snapshots and does not run automatically. `GET /api/v1/insights/fii-dii?...&source=tapetide` reads only that local history. Tapetide reports a free-plan quota of 50 successful requests per IST day; the free API token is required.
+`GET /api/v1/insights/fii-dii?...&source=tapetide` reads previously saved third-party history from SQLite. Page loads and date-range changes do not call the provider. Tapetide rows stay separate from official NSE data in `fii_dii_history_rows` and `fii_dii_rows`.
+
+`POST /api/v1/insights/fii-dii/import` with `source: "tapetide"` explicitly syncs the selected date range as a background job. The importer follows the provider's cursor pages, saves completed rows to SQLite, and can be polled through the existing import-status route. History is documented from 2014-01-01; longer requests are clamped to that date. Keep the token in the backend `.env`, never in frontend configuration. Provider quotas and terms apply.
 
 ## Historical NSE importer
 
@@ -83,8 +84,6 @@ The default database is `data/market_cache.sqlite3`.
 | `nse_bhavcopy_rows` | Every imported raw row as JSON |
 | `backtest_runs` | Persisted backtest results and cache keys |
 | `research_artifacts` | Hypotheses, custom results, robustness, YouTube, imports, and replay artifacts |
-| `fii_dii_rows` / `fii_dii_history_rows` | Separate official NSE snapshots and Tapetide provisional history rows |
-| `fii_dii_snapshots` | Raw FII/DII provider responses for audit and refresh history |
 
 SQLite, archives, and generated runtime data are ignored by Git. They must not be committed.
 
@@ -132,7 +131,7 @@ All routes are prefixed with `/api/v1`.
 - `POST /market-flow/scan` — rank positive/negative 20-session daily close-pressure estimates across all local NSE symbols, NIFTY 50, or NIFTY 500; accepts an optional selected symbol for zone inspection.
 - `POST /market-flow/symbol` — inspect one locally cached symbol for recent daily price-action zones.
 - `POST /ml/experiments` and `GET /ml/experiments` — run and list chronological, past-only ML research experiments.
-- `POST /data/sync-today` — import the current missing NSE archive day when available.
+- `POST /data/sync-today` — independently sync latest official NSE daily bars, the latest NSE FII/DII report, and only missing Tapetide history sessions; response includes a per-source status and message.
 - `POST /watchlist/add`, `GET /watchlist`, and `DELETE /watchlist/{item_id}` — persist, evaluate, and remove simulated setup bookmarks.
 
 Watchlist status is evaluated only against local daily bars on or after the setup's
@@ -208,3 +207,21 @@ uv run pytest -q tests/unit/test_data_inventory_api.py tests/unit/test_nse_impor
 ```
 
 Tests use temporary SQLite databases and fake providers. They do not download market data.
+
+## TradingAgents review
+
+`POST /api/v1/stock-research/trading-agents` accepts `{"run_id":"saved-stock-analysis-id"}`.
+It checks/syncs the latest available official NSE daily archive, rebuilds the selected
+stock's saved analysis, then invokes the optional three-agent review. A hard sync
+failure stops the AI call; an unavailable archive is recorded as a partial sync with
+the actual data date. The response includes the refreshed `analysis`, sync outcome,
+`source_run_id`, `data_hash`, cache status, review text and attempt ID.
+
+`GET /api/v1/stock-research/trading-agents/history?symbol=RELIANCE&limit=20` returns
+the symbol's latest saved attempts, including failed sync/provider attempts. Attempts
+and fresh analysis runs live in the local SQLite artifact store and are removed by the
+existing testing-history cleanup. An identical data hash, model and data age reuses
+the saved AI text after performing the latest-data check. 404 means a missing source
+run, 422 incomplete analysis, 409 another review is running, 503 missing backend
+key/dependency, and 502 sync/provider failure. Install the pinned extra and configure
+server-only OPENAI_API_KEY as documented in the root README.

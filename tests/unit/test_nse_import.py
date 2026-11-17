@@ -74,13 +74,24 @@ def test_nse_importer_skips_a_day_already_recorded_for_the_requested_symbols(tmp
 def test_nse_importer_remembers_unavailable_archive_days(tmp_path: Path, monkeypatch) -> None:
     cache = SqliteMarketCache(tmp_path / "market.sqlite3")
     importer = NseBhavcopyImporter(cache)
-    monkeypatch.setattr(importer, "_download_day", lambda _: None)
+    downloads: list[date] = []
+
+    def unavailable(trading_day: date) -> None:
+        downloads.append(trading_day)
+        return None
+
+    monkeypatch.setattr(importer, "_download_day", unavailable)
 
     first = importer.import_daily_universe(["RELIANCE"], date(2020, 1, 2), date(2020, 1, 2))
     second = importer.import_daily_universe(["RELIANCE"], date(2020, 1, 2), date(2020, 1, 2))
+    retried = importer.import_daily_universe(
+        ["RELIANCE"], date(2020, 1, 2), date(2020, 1, 2), retry_unavailable=True
+    )
 
     assert first.skipped_days == 1
     assert second.skipped_days == 1
+    assert retried.skipped_days == 1
+    assert downloads == [date(2020, 1, 2), date(2020, 1, 2)]
     assert cache.is_nse_day_unavailable(date(2020, 1, 2))
 
 

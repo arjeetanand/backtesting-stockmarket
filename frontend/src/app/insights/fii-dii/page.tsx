@@ -23,14 +23,15 @@ import {
   YAxis,
 } from "recharts";
 import TopBar from "@/components/layout/TopBar";
+import SelectMenu from "@/components/ui/SelectMenu";
 import {
   getFiiDiiData,
   getFiiDiiImportStatus,
   startFiiDiiImport,
-  syncTapetideFiiDiiHistory,
   type FiiDiiChartPoint,
   type FiiDiiResponse,
   type FiiDiiRow,
+  type FiiDiiImportStatus,
   type FiiDiiSource,
   type FiiDiiScope,
   type FiiDiiSegment,
@@ -47,20 +48,34 @@ const SEGMENTS: Array<{ value: FiiDiiSegment; label: string }> = [
   { value: "stock_option", label: "Stock Options" },
 ];
 
-const RANGES = [
-  { value: 30, label: "Last 30 Days" },
-  { value: 90, label: "Last 3 Months" },
-  { value: 180, label: "Last 6 Months" },
-  { value: 365, label: "Last 1 Year" },
+type HistoryRange = "30d" | "3m" | "6m" | "1y" | "5y" | "10y" | "20y" | "all";
+
+const HISTORY_START = "2014-01-01";
+const RANGES: Array<{ value: HistoryRange; label: string; short: string }> = [
+  { value: "30d", label: "Last 30 Days", short: "30D" },
+  { value: "3m", label: "Last 3 Months", short: "3M" },
+  { value: "6m", label: "Last 6 Months", short: "6M" },
+  { value: "1y", label: "Last 1 Year", short: "1Y" },
+  { value: "5y", label: "Last 5 Years", short: "5Y" },
+  { value: "10y", label: "Last 10 Years", short: "10Y" },
+  { value: "20y", label: "Last 20 Years", short: "20Y" },
+  { value: "all", label: "All Available", short: "All" },
 ];
 
 function localIsoDate(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-function isoDaysAgo(days: number): string {
+function rangeStart(range: HistoryRange): string {
+  if (range === "all") return HISTORY_START;
   const date = new Date();
-  date.setDate(date.getDate() - (days - 1));
+  if (range === "30d" || range === "3m" || range === "6m") {
+    const days = range === "30d" ? 30 : range === "3m" ? 90 : 180;
+    date.setDate(date.getDate() - (days - 1));
+  } else {
+    const years = range === "1y" ? 1 : range === "5y" ? 5 : range === "10y" ? 10 : 20;
+    date.setFullYear(date.getFullYear() - years);
+  }
   return localIsoDate(date);
 }
 
@@ -166,18 +181,16 @@ export default function FiiDiiPage() {
   const [segment, setSegment] = useState<FiiDiiSegment>("equity");
   const [participant, setParticipant] = useState<Participant>("both");
   const [granularity, setGranularity] = useState<Granularity>("daily");
-  const [rangeDays, setRangeDays] = useState(90);
+  const [range, setRange] = useState<HistoryRange>("1y");
   const [data, setData] = useState<FiiDiiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [job, setJob] = useState<{ job_id: string; status: string; message: string } | null>(null);
-  const [historySyncing, setHistorySyncing] = useState(false);
-  const [historyMessage, setHistoryMessage] = useState<string | null>(null);
+  const [job, setJob] = useState<FiiDiiImportStatus | null>(null);
   const autoImportKey = useRef("");
   const requestId = useRef(0);
 
-  const start = isoDaysAgo(rangeDays);
-  const rangeLabel = RANGES.find((item) => item.value === rangeDays)?.label ?? "Selected range";
+  const start = rangeStart(range);
+  const rangeLabel = RANGES.find((item) => item.value === range)?.label ?? "Selected range";
   const importing = job?.status === "queued" || job?.status === "running";
 
   const loadData = useCallback(async (triggerImport = false) => {
@@ -211,7 +224,7 @@ export default function FiiDiiPage() {
   }, [loadData]);
 
   useEffect(() => {
-    if (source !== "nse" || !job || !importing) return;
+    if (!job || !importing) return;
     const timer = window.setInterval(async () => {
       try {
         const next = await getFiiDiiImportStatus(job.job_id);
@@ -235,25 +248,10 @@ export default function FiiDiiPage() {
   const manualImport = async () => {
     setError(null);
     try {
-      const nextJob = await startFiiDiiImport(start, today, scope);
-      setJob({ ...nextJob, status: "queued", message: "Official NSE import queued." });
+      const nextJob = await startFiiDiiImport(start, today, scope, source);
+      setJob({ ...nextJob, status: "queued", message: source === "tapetide" ? "Tapetide history sync queued." : "Official NSE import queued." });
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not start the official NSE import.");
-    }
-  };
-
-  const syncHistory = async () => {
-    setError(null);
-    setHistoryMessage(null);
-    setHistorySyncing(true);
-    try {
-      const result = await syncTapetideFiiDiiHistory(rangeDays as 30 | 90);
-      setHistoryMessage(`Synced ${result.stored_rows / 2} daily sessions from ${shortDate(result.available_start)} to ${shortDate(result.available_end)}.`);
-      await loadData(false);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not sync Tapetide FII/DII history.");
-    } finally {
-      setHistorySyncing(false);
+      setError(requestError instanceof Error ? requestError.message : `Could not start the ${source === "tapetide" ? "Tapetide history sync" : "official NSE import"}.`);
     }
   };
 
@@ -265,31 +263,26 @@ export default function FiiDiiPage() {
           <div>
             <div className="bt-kicker"><span className="live-dot" /> MARKET INSIGHTS</div>
             <h1>FII / DII Data</h1>
-            <p>{source === "tapetide" ? "Sync 30 days or 3 months of provisional daily cash-market flows." : "Track institutional cash-market flows against the historical NSE session."}</p>
+            <p>{source === "tapetide" ? "Choose a period, sync it once, then explore the saved history from SQLite." : "Track the official NSE latest-session report and its locally archived history."}</p>
           </div>
           <div className="bt-heading-actions">
             <span className="data-source"><BarChart3 size={14} /> {source === "tapetide" ? "Tapetide history" : "Official NSE report"}</span>
-            {source === "tapetide" ? (
-              <button type="button" className="bt-secondary" onClick={() => void syncHistory()} disabled={!data?.sync_available || historySyncing}><RefreshCw size={14} className={historySyncing ? "spin" : ""} /> {historySyncing ? "Syncing…" : `Sync ${rangeDays === 30 ? "30D" : "3M"}`}</button>
-            ) : (
+            {source === "nse" && (
               <button type="button" className="bt-secondary" onClick={() => void manualImport()} disabled={importing}><RefreshCw size={14} className={importing ? "spin" : ""} /> {importing ? "Importing…" : "Refresh NSE data"}</button>
             )}
           </div>
         </section>
 
         <section className="fii-segment-tabs" aria-label="FII/DII data source">
-          <button type="button" aria-pressed={source === "tapetide"} className={source === "tapetide" ? "is-active" : ""} disabled={historySyncing} onClick={() => { if (source !== "tapetide") setRangeDays(90); setSource("tapetide"); setHistoryMessage(null); }}>Free historical API</button>
-          <button type="button" aria-pressed={source === "nse"} className={source === "nse" ? "is-active" : ""} disabled={historySyncing} onClick={() => { setSource("nse"); setHistoryMessage(null); }}>Official NSE latest snapshot</button>
+          <button type="button" aria-pressed={source === "tapetide"} className={source === "tapetide" ? "is-active" : ""} onClick={() => setSource("tapetide")}>Tapetide history · saved locally</button>
+          <button type="button" aria-pressed={source === "nse"} className={source === "nse" ? "is-active" : ""} onClick={() => setSource("nse")}>Official NSE latest snapshot</button>
         </section>
 
         {source === "tapetide" ? (
-          <section className="fii-source-note"><Info size={15} /><span><strong>Provisional third-party data.</strong> Tapetide provides daily FII/DII cash-market figures; the API describes them as provisional and does not document its upstream source.</span><a href={data?.source_url ?? "https://tapetide.com/fii-dii-data"} target="_blank" rel="noreferrer">Tapetide source ↗</a></section>
+          <section className="fii-source-note"><Info size={15} /><span><strong>Provisional third-party data.</strong> Sync a period when you want to refresh it; saved rows load from SQLite on later visits. Tapetide documents daily cash-market history from January 2014.</span><a href={data?.source_url ?? "https://tapetide.com/fii-dii-data"} target="_blank" rel="noreferrer">Tapetide source ↗</a></section>
         ) : (
           <section className="fii-source-note"><Info size={15} /><span><strong>Provisional institutional activity.</strong> FII/FPI and DII values are reported by NSE and may change after custodial confirmation. This page is for research, not trading instructions.</span><a href={data?.source_url ?? "https://www.nseindia.com/reports/fii-dii/"} target="_blank" rel="noreferrer">NSE source ↗</a></section>
         )}
-
-        {source === "tapetide" && !data?.sync_available && <section className="fii-source-note fii-coverage-note"><AlertCircle size={15} /><span>To enable sync, add <code>TAPETIDE_API_TOKEN</code> to the backend <code>.env</code> file, restart the API, and reload this page. A free personal token is available from Tapetide.</span><a href="https://tapetide.com/settings/tokens" target="_blank" rel="noreferrer">Get token ↗</a></section>}
-        {historyMessage && <section className="fii-source-note" role="status"><CheckCircle2 size={15} /><span>{historyMessage}</span></section>}
 
         {data?.coverage_note && <section className="fii-source-note fii-coverage-note"><AlertCircle size={15} /><span>{data.coverage_note}</span></section>}
 
@@ -305,9 +298,9 @@ export default function FiiDiiPage() {
 
         <section className="fii-controls-row">
           <label className="fii-select-label">Participant
-            <select value={participant} onChange={(event) => setParticipant(event.target.value as Participant)}>
+            <SelectMenu aria-label="Participant" value={participant} onChange={(event) => setParticipant(event.target.value as Participant)}>
               <option value="both">Both FII &amp; DII</option><option value="FII">FII / FPI only</option><option value="DII">DII only</option>
-            </select>
+            </SelectMenu>
           </label>
           {source === "nse" && <label className="fii-select-label">Scope
             <select value={scope} onChange={(event) => setScope(event.target.value as FiiDiiScope)}>
@@ -315,17 +308,28 @@ export default function FiiDiiPage() {
             </select>
           </label>}
           <div className="fii-control-group" aria-label="Chart granularity">{(["daily", "weekly", "monthly"] as Granularity[]).map((item) => <button type="button" key={item} className={granularity === item ? "is-active" : ""} onClick={() => setGranularity(item)}>{item[0].toUpperCase() + item.slice(1)}</button>)}</div>
-          <div className="fii-range-control" aria-label="Date range">{RANGES.filter((item) => source === "nse" || item.value === 30 || item.value === 90).map((item) => <button type="button" key={item.value} className={rangeDays === item.value ? "is-active" : ""} disabled={historySyncing} onClick={() => { setRangeDays(item.value); setHistoryMessage(null); }}>{item.value === 30 ? "30D" : item.value === 90 ? "3M" : item.value === 180 ? "6M" : "1Y"}</button>)}</div>
+          <div className="fii-range-control" aria-label="Date range">{RANGES.map((item) => <button type="button" key={item.value} aria-pressed={range === item.value} disabled={importing} className={range === item.value ? "is-active" : ""} onClick={() => { setJob(null); setRange(item.value); }}>{item.short}</button>)}</div>
           <span className="fii-range-label"><CalendarRange size={14} /> {rangeLabel}</span>
+          {source === "tapetide" && <div className="fii-sync-action">
+            <button type="button" className="bt-primary" onClick={() => void manualImport()} disabled={!data?.tapetide_sync_available || importing || loading}>
+              <RefreshCw size={14} className={importing ? "spin" : ""} /> {importing ? "Syncing…" : `Sync ${rangeLabel}`}
+            </button>
+            {data && !data.tapetide_sync_available && <small>Add TAPETIDE_API_TOKEN to the project .env and restart Backtrack to enable sync.</small>}
+          </div>}
         </section>
 
-        {error && <div className="fii-state fii-error" role="alert"><AlertCircle size={18} /><div><strong>FII/DII data needs attention</strong><p>{error}</p></div><button type="button" className="bt-secondary" onClick={() => source === "tapetide" ? void syncHistory() : void loadData(false)}>Retry</button></div>}
+        {job?.source === source && <section className={`fii-job-status ${job.status === "failed" ? "is-error" : ""}`} role={job.status === "failed" ? "alert" : "status"}>
+          <RefreshCw size={15} className={importing ? "spin" : ""} />
+          <div><strong>{job.status === "complete" ? "Sync complete" : job.status === "failed" ? "Sync failed" : "Sync in progress"}</strong><p>{job.message}</p></div>
+        </section>}
+
+        {error && <div className="fii-state fii-error" role="alert"><AlertCircle size={18} /><div><strong>FII/DII data needs attention</strong><p>{error}</p></div><button type="button" className="bt-secondary" onClick={() => void loadData(false)}>Retry</button></div>}
 
         <section className="bt-panel fii-chart-panel">
-          <div className="fii-panel-heading"><div><div className="bt-kicker"><BarChart3 size={13} /> FLOW MAP</div><h2>Institutional activity</h2><p>{data?.coverage_start && data?.coverage_end ? `${shortDate(data.coverage_start)} → ${shortDate(data.coverage_end)} · values in ₹ crore` : source === "tapetide" ? "Sync the selected Tapetide date range to populate the chart." : "Import official NSE rows to populate the chart."}</p></div><div className="fii-chart-legend"><span><i className="fii-legend-fii" />FII</span><span><i className="fii-legend-dii" />DII</span><span><i className="fii-legend-index" />Nifty 50</span></div></div>
+          <div className="fii-panel-heading"><div><div className="bt-kicker"><BarChart3 size={13} /> FLOW MAP</div><h2>Institutional activity</h2><p>{data?.coverage_start && data?.coverage_end ? `${shortDate(data.coverage_start)} → ${shortDate(data.coverage_end)} · values in ₹ crore` : source === "tapetide" ? "No saved Tapetide dates are available for this range." : "Import official NSE rows to populate the chart."}</p></div><div className="fii-chart-legend"><span><i className="fii-legend-fii" />FII</span><span><i className="fii-legend-dii" />DII</span><span><i className="fii-legend-index" />Nifty 50</span></div></div>
           <div className="fii-chart-wrap">
             {loading && <div className="fii-state"><RefreshCw size={19} className="spin" /><span>Reading local {source === "tapetide" ? "Tapetide" : "NSE"} insight data…</span></div>}
-            {!loading && !ready && <div className="fii-state"><DatabaseIcon /><div><strong>No local FII/DII rows yet</strong><p>{source === "tapetide" ? "Sync the selected 30-day or 3-month range to save Tapetide’s provisional daily history locally." : "Backtrack will archive the official NSE report locally when you refresh the data."}</p></div>{source === "tapetide" ? <button type="button" className="bt-primary" onClick={() => void syncHistory()} disabled={!data?.sync_available || historySyncing}>{historySyncing ? "Syncing…" : `Sync ${rangeDays === 30 ? "30 days" : "3 months"}`}</button> : <button type="button" className="bt-primary" onClick={() => void manualImport()} disabled={importing}>{importing ? "Importing…" : "Import official data"}</button>}</div>}
+            {!loading && !ready && <div className="fii-state"><DatabaseIcon /><div><strong>No local FII/DII rows in this range</strong><p>{source === "tapetide" ? "No saved Tapetide history matches this range." : "Backtrack will archive the official NSE report locally when you refresh the data."}</p></div>{source === "nse" && <button type="button" className="bt-primary" onClick={() => void manualImport()} disabled={importing}>{importing ? "Importing…" : "Import official data"}</button>}</div>}
             {!loading && ready && <ResponsiveContainer width="100%" height={355}><ComposedChart data={chart} margin={{ top: 12, right: 18, left: 0, bottom: 2 }}><CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} /><XAxis dataKey="label" minTickGap={24} tick={{ fill: "#64748b", fontFamily: "var(--font-jetbrains)", fontSize: 10 }} tickLine={false} axisLine={{ stroke: "#cbd5e1" }} /><YAxis yAxisId="flow" orientation="left" tickFormatter={(value) => `${value < 0 ? "−" : ""}${Math.abs(value / 1000).toFixed(1)}k`} tick={{ fill: "#64748b", fontFamily: "var(--font-jetbrains)", fontSize: 10 }} tickLine={false} axisLine={false} /><YAxis yAxisId="index" orientation="right" tickFormatter={(value) => value.toLocaleString("en-IN")} tick={{ fill: "#64748b", fontFamily: "var(--font-jetbrains)", fontSize: 10 }} tickLine={false} axisLine={false} /><Tooltip content={<FlowTooltip />} cursor={{ fill: "rgba(79,70,224,.04)" }} /><Legend content={() => null} /><Bar yAxisId="flow" dataKey="fii_net" name="FII" fill="#f59b3d" barSize={16} radius={[3, 3, 0, 0]} /><Bar yAxisId="flow" dataKey="dii_net" name="DII" fill="#5d4df5" barSize={16} radius={[3, 3, 0, 0]} /><Line yAxisId="index" type="monotone" dataKey="nifty50" name="Nifty 50" stroke="#1479ff" strokeWidth={2.25} dot={false} connectNulls={false} activeDot={{ r: 4, stroke: "#fff", strokeWidth: 2 }} /></ComposedChart></ResponsiveContainer>}
           </div>
           {ready && !data?.nifty50.length && <div className="fii-index-note"><Info size={13} /> Nifty 50 archives were not available for this range, so the line is shown only when official index closes are locally stored.</div>}
@@ -333,10 +337,10 @@ export default function FiiDiiPage() {
 
         <section className="bt-panel fii-table-panel">
           <div className="fii-panel-heading"><div><div className="bt-kicker"><Table2 size={13} /> DAILY LEDGER</div><h2>Cash activity by session</h2><p>All values are ₹ crore. Net cash equals buy value minus sell value.</p></div><button type="button" className="bt-secondary" onClick={() => exportRows(tableRows)} disabled={!tableRows.length}><Download size={14} /> Export CSV</button></div>
-          {tableRows.length ? <div className="fii-table-scroll"><table><thead><tr><th>Date</th><th>FII Buy Cash (Cr)</th><th>FII Sell Cash (Cr)</th><th>FII Net Cash (Cr)</th><th>DII Buy Cash (Cr)</th><th>DII Sell Cash (Cr)</th><th>DII Net Cash (Cr)</th></tr></thead><tbody>{tableRows.map((row) => <tr key={row.date}><td>{shortDate(row.date)} <small>{new Date(`${row.date}T00:00:00Z`).getUTCFullYear()}</small></td><td>{formatTableNumber(row.fii?.buy_value)}</td><td>{formatTableNumber(row.fii?.sell_value)}</td><td className={netClass(row.fii?.net_value)}>{formatCr(row.fii?.net_value)}</td><td>{formatTableNumber(row.dii?.buy_value)}</td><td>{formatTableNumber(row.dii?.sell_value)}</td><td className={netClass(row.dii?.net_value)}>{formatCr(row.dii?.net_value)}</td></tr>)}</tbody></table></div> : <div className="fii-empty-table">{source === "tapetide" ? "Sync a range to see the Tapetide daily activity ledger." : "Import data to see the daily institutional activity ledger."}</div>}
+          {tableRows.length ? <div className="fii-table-scroll"><table><thead><tr><th>Date</th><th>FII Buy Cash (Cr)</th><th>FII Sell Cash (Cr)</th><th>FII Net Cash (Cr)</th><th>DII Buy Cash (Cr)</th><th>DII Sell Cash (Cr)</th><th>DII Net Cash (Cr)</th></tr></thead><tbody>{tableRows.map((row) => <tr key={row.date}><td>{shortDate(row.date)} <small>{new Date(`${row.date}T00:00:00Z`).getUTCFullYear()}</small></td><td>{formatTableNumber(row.fii?.buy_value)}</td><td>{formatTableNumber(row.fii?.sell_value)}</td><td className={netClass(row.fii?.net_value)}>{formatCr(row.fii?.net_value)}</td><td>{formatTableNumber(row.dii?.buy_value)}</td><td>{formatTableNumber(row.dii?.sell_value)}</td><td className={netClass(row.dii?.net_value)}>{formatCr(row.dii?.net_value)}</td></tr>)}</tbody></table></div> : <div className="fii-empty-table">{source === "tapetide" ? "No saved Tapetide sessions match this range." : "Import data to see the daily institutional activity ledger."}</div>}
         </section>
 
-        <footer className="fii-footer"><span><CheckCircle2 size={14} /> Local archive coverage: {data?.coverage_days ?? 0} sessions</span><span>Source: {source === "tapetide" ? "Tapetide API · provisional cash-market flow" : `official NSE FII/FPI-DII report · ${scope === "combined" ? "NSE + BSE + MSEI" : "NSE only"}`}</span></footer>
+        <footer className="fii-footer"><span><CheckCircle2 size={14} /> Saved locally: {data?.coverage_days ?? 0} sessions</span><span>Source: {source === "tapetide" ? "Tapetide API · provisional cash-market flow" : `official NSE FII/FPI-DII report · ${scope === "combined" ? "NSE + BSE + MSEI" : "NSE only"}`}</span></footer>
       </div>
     </div>
   );

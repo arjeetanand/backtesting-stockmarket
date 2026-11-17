@@ -317,7 +317,7 @@ API schemas live in `src/quant_research/api/schemas.py`; route behavior lives in
 
 `POST /scenario-simulator/run` reads only locally cached `1day` candles. It re-samples 10,000 repeatable daily OHLC bars with replacement from the lookback window, applies a fixed percentage stop and R-multiple target, and compares them with rolling historical outcomes whose full holding window ends no later than the latest cached candle. It does not select historical entries for similarity. When one daily candle reaches both levels it counts the stop first. The endpoint never fetches data, predicts prices, or submits orders; it returns `422` with the required history count when the cache is too short.
 
-`GET /insights/fii-dii` returns rows from the explicitly selected source. `source=nse` reads official latest-session rows; `source=tapetide` reads the locally saved provisional history. Each response includes daily/weekly/monthly summaries, chart points, available official Nifty 50 closes, and source coverage. `POST /insights/fii-dii/import` and `GET /insights/fii-dii/import/{job_id}` retain the NSE snapshot workflow. `POST /insights/fii-dii/history/sync` makes one user-triggered Tapetide request for 30 or 90 inclusive calendar days. Raw payloads stay in `fii_dii_snapshots`; official rows and third-party history remain separate in `fii_dii_rows` and `fii_dii_history_rows`. NSE's public FII/DII endpoint is latest-session only; date-range selections do not create historical rows.
+`GET /insights/fii-dii` returns rows from the explicitly selected source. `source=nse` reads official latest-session rows; `source=tapetide` reads the locally saved history. Each response includes daily/weekly/monthly summaries, chart points, available official Nifty 50 closes, and source coverage. `POST /insights/fii-dii/import` and `GET /insights/fii-dii/import/{job_id}` retain the NSE snapshot workflow. Official rows and third-party history remain separate in `fii_dii_rows` and `fii_dii_history_rows`. NSE's public FII/DII endpoint is latest-session only; date-range selections do not create historical rows.
 
 `GET /screeners/catalog` and `GET /screeners/universes` expose the checked-in JSON formula and index-membership catalogues. `POST /screeners/run` performs an explicit current-snapshot formula evaluation, `POST /structure-zones/scan` scans a selected configured universe using local daily bars, and `GET /insights/{universe}?period=1d|1w|1m|3m` returns local daily breadth, selected-index constituents, sector aggregates, top movers, data freshness, and coverage/missing-symbol metadata. Formula definitions live in `src/quant_research/config/scanner_catalog.json`; index membership lives in `src/quant_research/config/index_universes.json`. Scanner presets and recent-run metadata are browser-local and do not require a SQLite migration. The structure-zone scan is read-only and does not add a database table.
 
@@ -592,5 +592,194 @@ Next owner/action:
 - Branch: `codex/fii-dii-sqlite-history-20261029`.
 - Connect the FII/DII page to the Tapetide history already stored in SQLite, keep it separate from the official NSE snapshot, and show the actual local coverage for longer display ranges.
 - Database inspection before the UI fix found 122 Tapetide rows across 61 sessions from 2026-07-31 to 2026-10-28. The active API page was using only `fii_dii_rows`, which contains four NSE rows over two sessions; that is why the previously loaded history was not visible.
-- Sync remains user-triggered and limited to 30 or 90 calendar days. Selecting 6M/1Y displays cached rows within that window and explicitly reports when local history does not cover the full period.
-- Verification and commit details: pending.
+- Page load and date-range changes read the saved rows only; they do not call Tapetide again. Selecting 6M/1Y displays the saved rows in that period and reports when local history does not cover the full range.
+- Verification: the existing configured cache path resolves to `data/market_cache.sqlite3`. The live local page at `http://127.0.0.1:5003/insights/fii-dii` loaded 61 sessions in the 1Y view with the partial-coverage note; switching to 3M filtered the same saved rows and made no provider request. Ruff, full pytest, frontend ESLint, 20 Vitest tests, the webpack production build, and `git diff --check` passed. Full mypy reports 13 pre-existing issues across `market_cache.py`, `pattern_finder.py`, `breakout_scanner.py`, and `ml_research.py`.
+- Browser checks: desktop rendered the chart, summary cards, and ledger with no console errors. A requested 390px viewport was provided as 487px; the document had no horizontal overflow at 487px and the wide ledger scrolled inside its table container. The active 4003/5003 and 8001 processes were not restarted.
+- No provider request was made during validation. The isolated 6003/8002 preview could not bind ports under the sandbox, so the existing 5003/8001 local app was used for browser validation.
+- Implementation commit: `f9e8580` (`Show saved FII DII history from SQLite`). PR [#23](https://github.com/arjeetanand/backtesting-stockmarket/pull/23) was squash-merged into `main` as `cecb19313013a3369a35b97f0b217c2e7eb998c4`; GitGuardian passed.
+- Run the existing app with `./run.sh` (UI port `4003`, API port `8001`); preserve any active import processes.
+- Remaining limit: the local cache contains 61 sessions, not a complete year. The exact 390px mobile viewport was not available; the browser returned 487px with no page-level horizontal overflow.
+
+## 25. FII/DII selectable historical refresh
+
+- Date: 2026-10-29.
+- Branch: `codex/fii-dii-long-range-sync-20261029`, based on `main` at `c0321ba`.
+- Implementation commit: `54f6efd` (`Add long-range FII DII history sync`).
+- PR: [#25](https://github.com/arjeetanand/backtesting-stockmarket/pull/25).
+- Add explicit 30D/3M/6M/1Y/5Y/10Y/20Y/All range selection and on-demand Tapetide history refresh. Page loads and range changes remain local SQLite reads.
+- Sync uses Tapetide's documented `/v1/market/institutional-flows` date-range API with cursor pagination. It validates returned rows, skips incomplete gross-value participant records instead of converting nulls to zero, gathers every page before a transactionally upsert into `fii_dii_history_rows`, and never writes Tapetide data into NSE's latest-snapshot table.
+- Tapetide documents this daily cash-market series from 2014-01-01. Requests before then are clamped for sync; the 20Y selection explicitly reports that data can only be shown from 2014 onward. Provider quota applies. Configure `TAPETIDE_API_TOKEN` in the backend `.env` and restart Backtrack before using the sync button.
+- Verification: full Ruff and pytest passed; the FII/DII unit tests passed; the changed route, service, config, schema, container, and app modules passed targeted mypy; frontend ESLint, all 20 Vitest tests, webpack production build, and `git diff --check` passed. Full mypy reports 13 existing issues in `market_cache.py`, `pattern_finder.py`, `breakout_scanner.py`, and `ml_research.py`, unrelated to this change. The default `uv run` setup could not download missing dependencies under restricted network access; checks used the existing project's installed Python environment.
+- Browser validation could not start the isolated preview because loopback binds on 6003/8002 returned `EPERM`; existing `4003`/`5003` and `8001` processes were preserved. No provider call was made; no Tapetide token is configured in this environment.
+- Checklist: `docs/FII_DII_HISTORY_CHECKLIST.md`.
+- Run with `./run.sh` (UI `4003`, API `8001`). The currently running checkout was not restarted.
+- Remaining: after adding a Tapetide token to the backend `.env`, restart Backtrack and sync the chosen range; browser visual review is still pending because the sandbox denied the isolated preview ports.
+
+## 26. Market Insights stock details
+
+- Date: 2026-10-29.
+- Source branch: `codex/market-insights-detail-implementation-20261029`, included by `codex/drawdown-response-guide-20261029`.
+- Show the cached NSE session date, allow a user-triggered daily sync, and show the selected stock's latest volume, five-session volume, prior-20-session average, relative volume, and five dated closes/volumes.
+- The **Create paper plan** action uses the existing conditional prior-high entry, prior-low stop, and 2R target workflow. It does not submit broker orders.
+- The source branch recorded frontend lint, Vitest, and webpack build as passing; browser checks were blocked by the isolated preview's `listen EPERM`, so the API result and rendered stock detail were not verified in-browser.
+- Checklist: `docs/MARKET_INSIGHTS_DETAILS_CHECKLIST.md`.
+
+## 27. Beginner stock drawdown guide
+
+- Date: 2026-10-29.
+- Source branch: `codex/drawdown-response-guide-20261029`.
+- `/stock-research` starts with YESBANK, offers IRFC as a quick example, and explains recent price movement, daily volume, drawdown, average cost, conditional exits, and re-entry levels using saved NSE daily data.
+- Personal cost/share inputs remain in page state. A user-entered stop is checked against daily lows. The position-size illustration requires user-entered loss and allocation limits and uses whole shares.
+- Local daily bars cannot identify a news cause or confirm fills; gaps, fees, and slippage can exceed the paper illustration. The page is not a personalized buy/hold/sell recommendation and has no broker-order connection.
+- The source branch recorded frontend lint, Vitest, and webpack build as passing; its isolated browser preview was blocked by `listen EPERM`.
+- Checklist: `docs/STOCK_RESEARCH_CHECKLIST.md`.
+
+## 28. Branch integration audit
+
+- Date: 2026-10-29. Integration branch: `codex/merge-unmerged-branches-20261029`, based on refreshed `origin/main` at `74e742e`.
+- Integrated `codex/cta-select-clarity-20261029` and `codex/drawdown-response-guide-20261029`; the latter also includes `codex/market-insights-detail-implementation-20261029`.
+- Merge commits: `1318896` (scanner clarity and choice controls) and `3490504` (Market Insights and drawdown guide). Local `main` was fast-forwarded from `6cb2c92` to `3490504`.
+- Historical feature branches represented in `origin/main` were not merged a second time. The FII/DII SQLite worktree had staged and unstaged edits; those edits were preserved and excluded.
+- Combined verification: frontend `npm run lint`, `npm run build -- --webpack` (TypeScript passed; all 24 routes generated), and `git diff --check` passed. The initial build found a duplicate `runStructureZoneScan` wrapper from the branch merge; the duplicate was removed before the successful rerun. Vitest and Python suites were not rerun.
+- GitHub fetch succeeded, but `gh pr list` could not reach `api.github.com`; current PR and CI status could not be confirmed. No remote push was performed.
+- Existing UI ports `4003`, `5003`, and `6003` remain stopped as requested; browser review was not performed.
+- Checklist: `docs/BRANCH_MERGE_CHECKLIST.md`.
+
+## 29. YESBANK stale daily history
+
+- Date: 2026-10-29. Task branch: `codex/yesbank-current-data-20261029`, based on local `main` at `16d8ada`. Implementation commit: `db7c6a2` (local, not pushed).
+- Read-only cache inspection found 5,254 YESBANK daily bars from 2005-07-12 through 2026-10-27. The shared cache refreshed on 2026-10-29, but archive dates 2026-10-28 and 2026-10-29 were marked unavailable after attempts at 13:45 IST and 09:25 IST, respectively.
+- Root cause: `NseBhavcopyImporter` permanently skipped a date after one 404, and daily sync used the UTC date, which could request an unfinished NSE session. The cache refresh timestamp therefore looked current while the stock candle date was old.
+- Fix: daily sync now uses Asia/Kolkata, avoids requesting today's archive until 18:00 IST on trading days, retries unavailable dates in its bounded missing-day range, and reports the latest date actually saved. General historical imports retain their no-repeat behavior unless explicitly asked to retry.
+- Runtime finding: at initial inspection, ports 5003 and 8001 were running from the older `codex/fii-dii-long-range-sync-20261029` checkout; its stock-research source defaulted to RELIANCE. The integrated local `main` page defaults to YESBANK and includes the drawdown guide. The API used the shared `backtrack/data/market_cache.sqlite3`. A final read-only port check found 4003, 5003, 6003, and 8001 stopped. No process or market-data database was changed by this task.
+- Verification: focused daily-sync and NSE-import tests passed (10 tests); Ruff passed; frontend ESLint passed; webpack production build passed with all 24 routes. Targeted mypy reports four errors in the unchanged `repositories/market_cache.py`. Browser verification was unavailable because browser discovery returned `transport closed`; no live NSE request was made.
+- Checklist: `docs/STOCK_RESEARCH_CHECKLIST.md`.
+- The task branch has not been pushed or merged. After approval, merge it into `main`, then run the latest integrated checkout when the user wants the local UI back; no server was restarted because the prior request was to stop ports 4003, 5003, and 6003.
+
+## 30. One-click all-source market sync
+
+- Date: 2026-10-29. Task branch: `codex/global-market-sync-20261029`, based on `codex/yesbank-current-data-20261029` at `624c671`.
+- Rename the shared top-bar/Market Insights action to **Sync All Market Data**. It reports separate NSE daily, official NSE FII/DII, and Tapetide history outcomes; each source continues when another source fails.
+- NSE daily archives retain the Asia/Kolkata publication window, skipped-archive retry, and cached-date skip behavior. The official NSE FII/DII endpoint is checked once per click, but unchanged rows no longer create repeated SQLite snapshots or archive files; changed report values are still saved.
+- Tapetide global sync uses official available NSE archive dates as the session list and requests only dates without both saved FII and DII rows. A successfully checked empty date is remembered locally, while incomplete participant pairs remain retryable. Tapetide history remains separate from official NSE rows.
+- Read-only cache inspection found 3,154 Tapetide dates through 2026-10-28 and 17 known available NSE archive sessions without a complete Tapetide pair. The shared runtime database was not modified. The existing local Tapetide configuration contains a token value; its validity was not checked.
+- Verification: full backend pytest suite passed; Ruff passed; frontend ESLint, 24 Vitest tests, webpack production build (TypeScript passed; 24 routes generated), and `git diff --check` passed. Full mypy still reports the same 13 errors in `_lru_cache` inference (`market_cache.py`), `pattern_finder.py`, and missing `ta` stubs in `breakout_scanner.py`/`ml_research.py`; no new errors remain in changed route/importer modules.
+- Browser-rendered interaction, live NSE, and live Tapetide checks were not run. The previously requested local ports remain stopped; no live provider requests were made.
+- Checklist: `docs/FII_DII_HISTORY_CHECKLIST.md`.
+- Implementation commit: `c667d64` (`Add one-click all-source market sync`). Run with `./run.sh` (UI `4003`, API `8001`) after the branch is approved and integrated.
+- Next: review this branch and approve merge to `main`; no push, merge, or server restart has occurred.
+
+## 2026-11-17 optional TradingAgents/OpenAI review
+
+- Task checkout: `/Users/arjeetanand/projects/stock/backtrack-tradingagents-codex-20261117`.
+  Branch `codex/tradingagents-codex-20261117`; TradingAgents implementation
+  commits `e0a37bd` and `a96cecb`; consolidated head `dcd8e6a`.
+- Published to `origin` and opened PR [#26](https://github.com/arjeetanand/backtesting-stockmarket/pull/26)
+  against `main`. GitHub reports it mergeable; GitGuardian passed. The PR is
+  open and has not been merged.
+- Consolidation includes the CTA/select, drawdown/Market Insights, YESBANK daily
+  sync, and global market-sync commits. Long-range FII/DII implementation was
+  already present on `main` through PR #25; the local committed branch is now
+  included in history while the newer global-sync changes remain in the tree.
+  Removed only the three approved clean feature worktrees; their branch refs
+  remain. The original FII/DII checkout and its staged/unstaged edits were
+  preserved.
+- Inventory: optional pinned TradingAgents v0.7.1 dependency/lockfile; real bull,
+  bear and research-manager service; saved-analysis API; optional Stock research
+  panel; review caching and cleanup; 18 focused service/API/cleanup tests; guides
+  and docs/TRADING_AGENTS_CHECKLIST.md. Existing executable run.sh retained.
+- Setup: `uv sync --extra dev --extra tradingagents`; configure OPENAI_API_KEY in
+  root .env, optional TRADINGAGENTS_MODEL (default gpt-6-luna), then `./run.sh`.
+  UI http://127.0.0.1:4003/stock-research; API http://127.0.0.1:8001/docs;
+  UI test slots 5003/6003. Key is absent; no live/billed OpenAI request was made.
+- Verification: 208 backend tests pass in isolated optional-dependency .venv;
+  24 frontend tests pass; Ruff, frontend lint and production build pass. New
+  service/route focused Mypy passes; full Mypy retains 13 existing errors in four
+  unrelated files. Pandas 3.1.1 emits 81 existing inplace-deprecation warnings.
+- Consolidation verification: `git diff --check origin/main...HEAD` passed. The
+  combined app checks were not rerun after the market-sync merges; PR #26 currently
+  reports one completed check, GitGuardian, as passed.
+- Installed upstream factories and OpenAI client were exercised offline using a
+  fake LLM. Browser checked completed real-NSE analysis, missing-key feedback,
+  cached-success rendering and expandable cases. Temporary success fixtures were
+  visibly labelled and removed afterward. Requested 390px viewport override
+  reported actual 542px; narrow layout was reviewed, exact phone/device unverified.
+- Runtime data: copied only 5,255 existing real YESBANK daily bars into this task's
+  ignored SQLite database for UI verification. Source database was opened read-only;
+  it and all existing checkouts/environments remain unchanged. No full data copy.
+- Boundaries: three-agent debate over saved NSE metrics, not the full upstream
+  graph. No news/fundamentals/external price tools or broker execution. Summary
+  sent only on click; API billing applies. Calls use 30s timeout/no SDK retries;
+  structured-manager fallback can mean four calls. The duplicate-request lock is
+  process-local, consistent with this single-user/single-worker local launcher.
+- Runtime: the Codex browser rendered `/stock-research` with the saved YESBANK
+  analysis and missing-API-key message. No billed OpenAI request was made. Saved
+  runner state identifies this checkout on ports 4003/8001; shell HTTP probes did
+  not connect, and no service was stopped or restarted.
+- Next action: run the combined checks, review PR #26, then configure your backend
+  API key privately and click Review with AI to verify account/model access.
+
+### Latest-data refresh and saved review trail
+
+- Follow-up on 2026-11-17, on the same task branch and PR #26. **Review with AI**
+  now synchronizes the latest published official NSE daily archive first, rebuilds
+  the selected stock analysis from the refreshed SQLite cache, then asks the
+  TradingAgents bull/bear/research-manager flow to review that fresh result.
+- The existing NSE publication window is respected. If only part of the requested
+  archive range is available, the attempt records the sync message and real
+  `data_as_of` date. A failed sync stops before any AI request so stale bars cannot
+  be presented as freshly reviewed.
+- Every click creates a local SQLite attempt record with requested and refreshed
+  run IDs, sync status/target/latest dates and counts, data date/fingerprint,
+  model, cache status, result, and error. The page lists saved attempts per stock
+  and can reopen the analysis used by an attempt. A matching model, data hash, and
+  data age reuses the prior AI result; one in-process lock prevents concurrent
+  duplicate paid requests. Deleting linked stock-analysis history also cleans up
+  its review attempts.
+- Verification on the combined branch: backend suite **216 passed**; Ruff,
+  frontend lint, TypeScript, frontend **24 tests**, `git diff --check`, and webpack
+  production build (all 24 routes) passed. Targeted mypy passed for changed route,
+  service, and artifact repository; full-source mypy retains the existing 13
+  errors in four unrelated files. Backend emits 81 existing Pandas inplace
+  deprecation warnings.
+- Browser check on `/stock-research` confirmed the refresh explanation, review
+  button, and saved-history empty state after a local YESBANK analysis. The
+  authorized live NSE sync then saved 10 archive days through 2026-11-16 and
+  reported one unavailable weekday archive; a read-only check confirmed YESBANK's
+  latest cached bar is also 2026-11-16. The local cache remains in this checkout's
+  ignored data directory and was not staged. **Review with AI** was not clicked,
+  so no paid OpenAI request was made.
+- Restarted this checkout through its ownership-checking `./run.sh` on UI/API
+  ports 4003/8001, then reran the local YESBANK analysis in the browser. It now
+  displays data through 2026-11-16 across 5,265 saved sessions; the saved AI
+  review history is empty as expected because no AI review was made.
+- Implementation commit: `f9af72c` (`Refresh NSE data before AI research
+  reviews`) on branch `codex/tradingagents-codex-20261117`, targeting PR #26
+  against `main`.
+- Checklist: `docs/TRADING_AGENTS_CHECKLIST.md`.
+
+## 2026-11-17 Backtrack worktree consolidation
+
+- Removed four clean linked worktrees after user approval:
+  `backtrack-yesbank-current-data-20261029` (35 MB),
+  `backtrack-fii-dii-worktree` (142 MB),
+  `backtrack-global-market-sync-20261029` (293 MB), and
+  `backtrack-merge-unmerged-20261029` (261 MB). Their commit tips are reachable
+  from the TradingAgents branch `44a447b`; local branch refs remain in the shared
+  Git repository and each worktree can be recreated.
+- Cleanup removed about 731 MB of checkout/build caches. The two ignored SQLite
+  files were schema-only with no rows; generated Next/Python caches can be rebuilt.
+  The FII/DII worktree's `frontend/node_modules` was only a symlink to the kept
+  root checkout's dependencies.
+- Preserved `/Users/arjeetanand/projects/stock/backtrack`: it owns the shared Git
+  metadata, `.env`, 9,002,102,784-byte market cache, and NSE archives. Its local
+  FII/DII work remains untouched (17 staged files, 7 unstaged modifications, no
+  untracked files). Do not bulk-apply that older change set without reviewing its
+  overlap with the long-range implementation already in PR #26.
+- Kept this active worktree on `codex/tradingagents-codex-20261117`; the application
+  remains available on ports 4003/8001 and PR #26 remains open against `main`.
+  One stale, already-prunable worktree registration for `/private/tmp/backtrack-order-flow`
+  was outside the requested folders and left untouched.
+- Next: after PR #26 is merged and the original FII/DII edits are deliberately
+  resolved, consolidate the active checkout into the root folder if one folder is
+  still desired.

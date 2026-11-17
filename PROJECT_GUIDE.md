@@ -17,11 +17,11 @@ Backtrack is a local, research-only Indian-market backtesting application. It us
 | --- | --- | --- |
 | Home | Start the unified research flow | Follow the linked NSE data → research → saved result steps, then open optional tools; recent tests come from the local API |
 | New research | Turn an idea into historical evidence | Compare daily relative volume and next-session outcomes, review a draft rule, confirm the assumptions, ensure local NSE history, then explicitly run the simulation |
-| Stock research | Prepare a simple NIFTY 50 check or explain one stock | Scan the built-in NSE constituent snapshot, show only a fresh trigger with a passed held-out screen, or search a local symbol for ranges, indicators, levels, candles, trade counts, and the run log |
+| Stock research | Scan NIFTY 50 setups or understand one stock's recent fall | Run the morning scan, or start with YESBANK, choose IRFC/search the local NSE catalogue, inspect 20-session price and volume facts, enter optional holding details and a stop you chose, then review conditional re-entry levels and size a hypothetical entry from your own loss and allocation limits |
 | Build rules | Create a rule strategy | Configure indicators, entries, exits, risk, fees, and slippage |
 | Use a YouTube strategy | Bring in an online idea | Extract a reviewable draft from a URL, captions, or pasted transcript; human review is required |
 | NSE data | Download and search history | Bulk NSE archive import with quick/custom date windows and local catalogue search; a completed import links to research |
-| Market Insights | Review the selected index | Switch NIFTY 50, Sensex, Bank Nifty, or NIFTY 500; inspect 1D/1W/1M/3M breadth, stock/sector heatmaps, and top movers from local daily candles |
+| Market Insights | Review the selected index or stock | See the latest cached session day, sync official NSE archives through today, inspect 1D/1W/1M/3M breadth and heatmaps, then click a stock for recent volume and a saveable prior-high/low 2R paper plan |
 | Market Scanner | Review local market scans | Run formula and historical scans, review morning-plan levels, and inspect daily structure-zone and pressure-proxy views |
 | My tests | Reopen prior tests | Read persisted backtest results and details from SQLite |
 | Compare tests | Compare alternatives | Compare account change, return vs variation, largest fall, and trades with a profit; expand each result to inspect dated trade fills and P&L |
@@ -33,8 +33,14 @@ Backtrack is a local, research-only Indian-market backtesting application. It us
 | Time Machine | Compare a plan with sampled scenarios | Sample 10,000 seeded daily-bar paths from local NSE history and compare with fixed-rule historical outcomes |
 | Learn | Understand options basics | Calculate educational call/put payoff, max loss, and breakeven |
 | Analytics | Inspect performance | Review trade quality and available run analytics |
-| FII / DII Insights | Inspect institutional activity | View locally saved provisional Tapetide history or the separate official NSE latest-session snapshot, with daily/weekly/monthly flows and clear coverage |
+| FII / DII Insights | Inspect institutional activity | View saved Tapetide history from SQLite or the separate official NSE latest-session report, with daily/weekly/monthly flows and actual date coverage |
 | Settings | Inspect local configuration | View API, local cache, Ollama, and provider status |
+
+### Stock drawdown and re-entry guide
+
+On **Stock research**, choose **Analyze stock** to read the saved daily history through its displayed date. The guide shows the latest-session move, worst session in the last 20 sessions, pullback from that window's highest close, latest-day volume versus the prior 20-session average, and total volume across the last five sessions. It cannot identify a news cause; check official company filings separately.
+
+For an existing position, average cost and whole shares produce a paper unrealized P/L at the latest saved close. An optional stop price checks whether the latest daily low reached it; this does not confirm an order fill. These inputs are not saved. For a fresh hypothetical setup, enter a maximum rupee loss and an allocation cap. The calculator floors whole shares to fit both. The re-entry trigger, 2×ATR stop, 1R/2R targets, and exits follow the existing fixed long-only breakout rule. A non-triggered or stale status means the rule has not provided a fresh entry condition. None of these calculations is a personal buy, hold, or sell instruction.
 
 ### Daily structure zones
 
@@ -46,7 +52,9 @@ This is an independent Backtrack heuristic: a qualifying daily close must break 
 
 ## FII/DII history
 
-On **FII / DII Insights**, the **Free historical API** view reads Tapetide rows already saved in the local SQLite cache, so reopening the page does not download them again. A user-triggered sync can request 30 or 90 calendar days; 6-month and 1-year selections are views of whatever history is already saved, and the page shows its actual date coverage. These figures are provisional third-party data whose upstream source is not documented. The **Official NSE latest snapshot** remains a separate series and does not provide date-range history.
+On **FII / DII Insights**, the **Tapetide history · saved locally** view reads `fii_dii_history_rows` from SQLite when the page opens. Choose **30D, 3M, 6M, 1Y, 5Y, 10Y, 20Y, or All**, then select **Sync** to fetch that period and keep it locally for the next visit. Viewing a range alone does not call the provider. Sync needs `TAPETIDE_API_TOKEN` in the backend `.env` and a backend restart. The provider documents daily cash-market history from **January 2014**; therefore a 20Y selection can only show available sessions since 2014. Progress reports pages and rows saved; incomplete participant rows are skipped rather than changed to zero. Official NSE latest-session rows remain separate in `fii_dii_rows`.
+
+The global **Sync All Market Data** action also checks the latest official NSE FII/DII report and uses Tapetide only for official NSE archive sessions without a complete saved FII/DII pair. It does not download the full Tapetide history on every click. Dates with no Tapetide rows are recorded as checked, so they are not repeatedly requested; sessions with incomplete participant pairs remain eligible for retry. Each source reports its own success, partial, skipped, or failed status.
 
 ## Manage stock data
 
@@ -63,6 +71,8 @@ The date selector supports:
 - **Custom start and end dates**
 
 The importer checks the SQLite database and `data/nse_archives/<year>/` before downloading. A single NSE trading-day archive contains the daily file for all supported stocks, so a successful day is loaded in bulk. There is no starter universe, custom-symbol import mode, or per-stock download button.
+
+Use **Sync All Market Data** in the top bar to fetch the newest completed daily archive, check NSE's latest official FII/DII report, and fill missing Tapetide history sessions. Before 18:00 IST the daily-bar sync stops at the previous calendar day; after that it can request today's archive on trading days. If NSE has not published an archive yet, a later sync retries dates in the missing-day range and reports the last date actually saved. Stock research shows its own `data_as_of` date; it never presents a live quote.
 
 ### Search local data
 
@@ -161,3 +171,16 @@ tests/                                     # automated tests
 ```
 
 For engineering details, see [handover.md](handover.md). For setup, see [README.md](README.md). For backend/frontend details, see [backend/README.md](backend/README.md) and [frontend/README.md](frontend/README.md).
+
+## AI debate review
+
+After a completed Stock research analysis, **Review with AI** optionally sends its
+public NSE technical summary and historical metrics to OpenAI. Before every review,
+Backtrack checks the latest official NSE daily archive and reruns the selected stock's
+analysis. A sync failure blocks the AI call; partial archive availability is shown
+with the actual data date. TradingAgents' bull, bear and research-manager agents
+return a draft review; expand the saved history for details or reopen its analysis.
+Sync outcomes, analysis runs, and successful or failed review attempts are retained
+in the local SQLite store. Configuration/errors are explicit; deterministic research
+remains usable without this optional integration. See README for setup, billing,
+caching and limits.

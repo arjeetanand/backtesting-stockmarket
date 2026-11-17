@@ -227,6 +227,15 @@ class SqliteMarketCache:
             )
             connection.execute(
                 """
+                CREATE TABLE IF NOT EXISTS fii_dii_history_sync_days (
+                    trading_day TEXT PRIMARY KEY,
+                    result TEXT NOT NULL CHECK (result IN ('saved', 'empty')),
+                    checked_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS nifty50_closes (
                     trading_day TEXT PRIMARY KEY,
                     close REAL NOT NULL,
@@ -708,27 +717,29 @@ class SqliteMarketCache:
             for record in records
         ]
 
-    def store_fii_dii_history_snapshot(
-        self,
-        snapshot_id: str,
-        fetched_at: datetime,
-        source_url: str,
-        payload: str,
-        rows: list[FiiDiiRow],
-    ) -> int:
-        """Persist provider history separately so it cannot replace NSE snapshots."""
+    def get_fii_dii_history_rows(self, start: date, end: date) -> list[FiiDiiRow]:
         with self._connect() as connection:
-            connection.execute(
+            records = connection.execute(
                 """
-                INSERT INTO fii_dii_snapshots (snapshot_id, fetched_at, source_url, payload)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(snapshot_id) DO UPDATE SET
-                    fetched_at = excluded.fetched_at,
-                    source_url = excluded.source_url,
-                    payload = excluded.payload
+                SELECT trading_day, participant, scope, segment, buy_value, sell_value, net_value, source
+                FROM fii_dii_history_rows
+                WHERE trading_day >= ? AND trading_day <= ?
+                ORDER BY trading_day ASC, participant ASC
                 """,
-                (snapshot_id, fetched_at.isoformat(), source_url, payload),
+                (start.isoformat(), end.isoformat()),
+            ).fetchall()
+        return [
+            FiiDiiRow(
+                trading_day=date.fromisoformat(str(record[0])), participant=str(record[1]), scope=str(record[2]),
+                segment=str(record[3]), buy_value=float(record[4]), sell_value=float(record[5]),
+                net_value=float(record[6]), source=str(record[7]),
             )
+            for record in records
+        ]
+
+    def store_fii_dii_history_rows(self, rows: list[FiiDiiRow]) -> int:
+        """Upsert Tapetide's historical series without touching NSE snapshots."""
+        with self._connect() as connection:
             connection.executemany(
                 """
                 INSERT INTO fii_dii_history_rows
@@ -750,25 +761,54 @@ class SqliteMarketCache:
             )
         return len(rows)
 
-    def get_fii_dii_history_rows(self, start: date, end: date) -> list[FiiDiiRow]:
+    def missing_fii_dii_history_days(self, start: date, end: date) -> list[date]:
+        """Find official NSE sessions without complete Tapetide FII/DII history."""
+        if start > end:
+            return []
         with self._connect() as connection:
             records = connection.execute(
                 """
-                SELECT trading_day, participant, scope, segment, buy_value, sell_value, net_value, source
-                FROM fii_dii_history_rows
-                WHERE trading_day >= ? AND trading_day <= ?
-                ORDER BY trading_day ASC, participant ASC
+                SELECT archive.trading_day
+                FROM nse_archive_days AS archive
+                WHERE archive.status = 'available'
+                  AND archive.trading_day >= ? AND archive.trading_day <= ?
+                  AND NOT EXISTS (
+                    SELECT 1 FROM fii_dii_history_sync_days AS checked
+                    WHERE checked.trading_day = archive.trading_day AND checked.result = 'empty'
+                      AND NOT EXISTS (
+                        SELECT 1 FROM fii_dii_history_rows AS history
+                        WHERE history.trading_day = archive.trading_day
+                          AND history.scope = 'tapetide' AND history.segment = 'equity'
+                      )
+                  )
+                  AND (
+                    SELECT COUNT(DISTINCT history.participant)
+                    FROM fii_dii_history_rows AS history
+                    WHERE history.trading_day = archive.trading_day
+                      AND history.scope = 'tapetide' AND history.segment = 'equity'
+                      AND history.participant IN ('FII', 'DII')
+                  ) < 2
+                ORDER BY archive.trading_day ASC
                 """,
                 (start.isoformat(), end.isoformat()),
             ).fetchall()
-        return [
-            FiiDiiRow(
-                trading_day=date.fromisoformat(str(record[0])), participant=str(record[1]), scope=str(record[2]),
-                segment=str(record[3]), buy_value=float(record[4]), sell_value=float(record[5]),
-                net_value=float(record[6]), source=str(record[7]),
+        return [date.fromisoformat(str(row[0])) for row in records]
+
+    def mark_fii_dii_history_day_checked(self, trading_day: date, result: str) -> None:
+        """Remember a successful Tapetide check, including dates with no provider row."""
+        if result not in {"saved", "empty"}:
+            raise ValueError("result must be 'saved' or 'empty'.")
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO fii_dii_history_sync_days (trading_day, result, checked_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(trading_day) DO UPDATE SET
+                    result = excluded.result,
+                    checked_at = excluded.checked_at
+                """,
+                (trading_day.isoformat(), result, datetime.now(UTC).isoformat()),
             )
-            for record in records
-        ]
 
     def fii_dii_history_coverage(self) -> tuple[date | None, date | None, int]:
         with self._connect() as connection:
