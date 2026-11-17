@@ -1152,7 +1152,7 @@ def create_api_router(
     def clear_testing_history() -> dict[str, object]:
         """Delete saved tests and analysis artifacts without deleting market data."""
         deleted_runs = research.clear_backtests()
-        deleted_artifacts = artifacts.clear_kinds(("custom_backtest", "hypothesis", "robustness", "youtube_strategy", "replay_session", STOCK_RESEARCH_ARTIFACT_KIND)) if artifacts is not None else 0
+        deleted_artifacts = artifacts.clear_kinds(("custom_backtest", "hypothesis", "robustness", "youtube_strategy", "replay_session", STOCK_RESEARCH_ARTIFACT_KIND, "trading_agents_review")) if artifacts is not None else 0
         return {
             "deleted_runs": deleted_runs,
             "deleted_artifacts": deleted_artifacts,
@@ -1206,6 +1206,8 @@ def create_api_router(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved testing artifact was not found.")
         if not artifacts.delete(kind, artifact_key):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved testing artifact was not found.")
+        if kind == STOCK_RESEARCH_ARTIFACT_KIND:
+            artifacts.delete_by_json_value("trading_agents_review", "$.source_run_id", artifact_key)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     # ── Market Replay Engine Routes ──────────────────────────────

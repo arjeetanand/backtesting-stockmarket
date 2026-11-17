@@ -18,6 +18,7 @@ import {
 import TopBar from "@/components/layout/TopBar";
 import { SymbolCombobox } from "@/components/data/SymbolCombobox";
 import { FinancialChart } from "@/components/charts/FinancialChart";
+import { TradingAgentsReview } from "@/components/insights/TradingAgentsReview";
 import type { IndicatorSeries, NormalizedCandle } from "@/lib/chart-data";
 import { calculatePaperPositionSize, summarizeRecentDrawdown } from "@/lib/drawdown-guide";
 import {
@@ -341,6 +342,8 @@ export default function StockResearchPage() {
           <div><span className="bt-eyebrow">{result.run_status === "completed" ? "LATEST DAILY-BAR REVIEW" : "DATA STATUS"}</span><h2>{result.company_name || result.symbol} <small>{result.symbol}</small></h2><p>{result.message}</p></div>
           <span className={`stock-research-pill ${result.run_status}`}><span />{result.run_status.replaceAll("_", " ")}</span>
         </section>
+
+        {result.run_status === "completed" && <TradingAgentsReview key={result.run_id} runId={result.run_id} />}
 
         {result.run_status === "insufficient_data" && <section className="stock-research-empty bt-panel" role="status">
           <Database size={20} aria-hidden="true" /><div><strong>No usable local history for {result.symbol}</strong><p>{result.message} Import the official NSE daily archive, then run the analysis again.</p><a className="stock-research-data-link" href="/data">Open NSE data</a></div>

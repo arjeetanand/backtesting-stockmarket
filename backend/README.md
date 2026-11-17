@@ -207,3 +207,13 @@ uv run pytest -q tests/unit/test_data_inventory_api.py tests/unit/test_nse_impor
 ```
 
 Tests use temporary SQLite databases and fake providers. They do not download market data.
+
+## TradingAgents review
+
+`POST /api/v1/stock-research/trading-agents` accepts `{"run_id":"saved-stock-analysis-id"}`.
+It reads the saved completed NSE analysis, then invokes the optional three-agent
+review. Response: `symbol`, `data_as_of`, `model`, `bull_case`, `bear_case`, `review`.
+404 means missing run, 422 incomplete analysis, 409 another review is running,
+503 missing backend key/dependency, 502 sanitized model-provider failure. Success
+is cached per run/model/version; failures are not cached. Install the pinned extra
+and configure server-only OPENAI_API_KEY as documented in the root README.

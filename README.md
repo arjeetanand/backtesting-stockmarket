@@ -188,3 +188,32 @@ npm --prefix frontend run build
 - Options calculations are educational and do not model the complete derivatives lifecycle.
 - YouTube extraction is a reviewable draft and never executes automatically.
 - The application is designed for local single-user research, not production multi-user deployment.
+
+## Optional TradingAgents review (OpenAI)
+
+In **Stock research**, analyze a stock, then click **Review with AI**. This runs
+TradingAgents v0.7.1's bullish researcher, bearish researcher, and research manager
+against the saved NSE technical summary and historical-test metrics. It sends that
+summary to OpenAI only when clicked; API usage is billed separately. This uses the
+OpenAI API, not the Codex application or a ChatGPT subscription.
+
+```bash
+uv sync --extra dev --extra tradingagents
+# Set OPENAI_API_KEY in the repository-root .env (never NEXT_PUBLIC_*).
+# Optional: TRADINGAGENTS_MODEL=gpt-6-luna (requires access in your API account).
+./run.sh
+```
+
+Open `http://localhost:4003/stock-research` (API `8001`; UI test slots `5003`,
+`6003`). The existing launcher keeps these stable ports and restarts only its own
+instance. Missing dependencies/key or provider failures appear as explicit errors.
+
+The review uses the real upstream three-agent debate, not its full trading graph.
+News, sentiment, fundamentals, broker execution and external price feeds are not
+connected. No personal position inputs, charts or trade ledger are sent. AI output
+can be wrong and does not change the deterministic backtest or its validation gate.
+The saved data date remains visible; an old analysis is not current market evidence.
+Completed reviews are cached in SQLite per saved analysis, model and integration
+version. Reopening a review of that same run reuses it. A new stock analysis creates
+a new run and may incur new API charges. Individual calls time out after 30 seconds;
+the manager can fall back from structured to plain text (up to four model calls).

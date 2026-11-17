@@ -104,6 +104,14 @@ class SqliteArtifactStore:
             )
         return cursor.rowcount > 0
 
+    def delete_by_json_value(self, kind: str, path: str, value: str) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM research_artifacts WHERE kind = ? AND json_extract(payload, ?) = ?",
+                (kind, path, value),
+            )
+        return cursor.rowcount
+
     def clear_kinds(self, kinds: tuple[str, ...]) -> int:
         if not kinds:
             return 0

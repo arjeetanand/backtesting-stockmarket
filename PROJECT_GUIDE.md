@@ -167,3 +167,12 @@ tests/                                     # automated tests
 ```
 
 For engineering details, see [handover.md](handover.md). For setup, see [README.md](README.md). For backend/frontend details, see [backend/README.md](backend/README.md) and [frontend/README.md](frontend/README.md).
+
+## AI debate review
+
+After a completed Stock research analysis, **Review with AI** optionally sends its
+saved public NSE technical summary and historical metrics to OpenAI. TradingAgents'
+bull, bear and research-manager agents return a draft review; expand the cases for
+detail. The saved data date and model are shown. Configuration/errors are explicit;
+the deterministic research remains usable without this optional integration.
+See README for setup, billing, caching and limits.

@@ -169,3 +169,12 @@ When changing a rendered page, verify loading, empty, error, success, desktop, a
 - Financial charts expose loading, error, unavailable timeframe, empty, and ready
   states with explicit next-step copy. Unsupported intraday timeframes remain
   unavailable for the official daily NSE path.
+
+## Optional AI review
+
+Stock research shows **Review with AI** after a completed analysis. The separate
+TradingAgentsReview component handles empty, loading, provider-error and success
+states; a keyed instance aborts stale client requests when the saved run changes.
+The backend owns provider configuration. Never put OPENAI_API_KEY in frontend
+environment files. Aborting a browser request does not cancel an in-flight provider
+call; retrying while it runs returns a conflict, and completed results are cached.
