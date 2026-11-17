@@ -749,6 +749,7 @@ Next owner/action:
   latest cached bar is also 2026-11-16. The local cache remains in this checkout's
   ignored data directory and was not staged. **Review with AI** was not clicked,
   so no paid OpenAI request was made.
-- Follow-up source changes are in branch `codex/tradingagents-codex-20261117`,
-  targeting PR #26 against `main`; commit hash is recorded below after push.
+- Implementation commit: `f9af72c` (`Refresh NSE data before AI research
+  reviews`) on branch `codex/tradingagents-codex-20261117`, targeting PR #26
+  against `main`.
 - Checklist: `docs/TRADING_AGENTS_CHECKLIST.md`.
