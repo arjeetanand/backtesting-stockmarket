@@ -92,3 +92,38 @@ class DailySyncService:
             "latest_trading_day": new_summary.latest.isoformat() if new_summary.latest else None,
             "message": message,
         }
+
+
+def market_sync_context(result: dict[str, Any]) -> dict[str, Any]:
+    status = result.get("status")
+    return {
+        "status": status if status in {"complete", "partial", "failed"} else "partial",
+        "message": str(result.get("message", "NSE daily freshness check finished.")),
+        "target_trading_day": _sync_day(result.get("target_trading_day")),
+        "latest_trading_day": _sync_day(result.get("latest_trading_day")),
+        "synced_days": int(result.get("synced_days", 0)),
+        "skipped_days": int(result.get("skipped_days", 0)),
+    }
+
+
+def _sync_day(value: object) -> str | None:
+    return str(value)[:10] if value is not None else None
+
+
+def sync_latest_for_analysis(cache: SqliteMarketCache) -> dict[str, Any]:
+    """Check for missing official NSE sessions and retain a safe cached-data fallback."""
+    try:
+        return market_sync_context(DailySyncService(cache).sync_latest())
+    except Exception:
+        try:
+            latest = cache.summary().latest
+        except Exception:
+            latest = None
+        return {
+            "status": "failed",
+            "message": "Could not check the latest official NSE daily archive. This review uses saved local bars; verify its data date.",
+            "target_trading_day": None,
+            "latest_trading_day": _sync_day(latest.isoformat()) if latest else None,
+            "synced_days": 0,
+            "skipped_days": 0,
+        }

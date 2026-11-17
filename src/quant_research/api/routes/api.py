@@ -1418,7 +1418,7 @@ def create_api_router(
 
     @router.post("/stock-research/run", response_model=StockResearchResponse, tags=["research"])
     def run_stock_research(payload: StockResearchRequest) -> StockResearchResponse:
-        """Explain one symbol using local daily bars and record its fixed-rule test."""
+        """Refresh official NSE daily coverage, then explain one symbol from saved bars."""
         if market_cache is None or artifacts is None:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Local NSE cache and research log are required.")
         company_name = None
@@ -1431,10 +1431,14 @@ def create_api_router(
         except Exception:
             # The catalogue label is optional; keep the run log even if this lookup fails.
             pass
+        from quant_research.services.daily_sync import sync_latest_for_analysis
+
+        market_sync = sync_latest_for_analysis(market_cache)
         try:
             result = StockResearchService(market_cache, artifacts).run(
                 payload.symbol,
                 company_name,
+                market_sync=market_sync,
             )
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
@@ -1444,11 +1448,14 @@ def create_api_router(
 
     @router.post("/stock-research/morning-scan", response_model=StockResearchMorningScanResponse, tags=["research"])
     def scan_stock_research_morning() -> StockResearchMorningScanResponse:
-        """Backtest the fixed stock-research rule across the local NIFTY 50 symbols."""
+        """Refresh official NSE coverage once, then scan the local NIFTY 50 symbols."""
         if market_cache is None or artifacts is None:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Local NSE cache and research log are required.")
+        from quant_research.services.daily_sync import sync_latest_for_analysis
+
+        market_sync = sync_latest_for_analysis(market_cache)
         try:
-            result = StockResearchService(market_cache, artifacts).scan_morning()
+            result = StockResearchService(market_cache, artifacts).scan_morning(market_sync=market_sync)
         except Exception as exc:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="The morning scan failed; individual analysis attempts are recorded when available.") from exc
         return StockResearchMorningScanResponse.model_validate(result)

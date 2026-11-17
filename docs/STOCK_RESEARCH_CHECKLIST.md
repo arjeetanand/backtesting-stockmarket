@@ -27,6 +27,12 @@
 - [x] Run the frontend suite (24 tests), ESLint, webpack production build, and `git diff --check` successfully.
 - [ ] Browser-rendered behavior remains unchecked: the branch preview server could not bind reserved port 6003 (`listen EPERM`); the existing 5003 and 4003 services were left untouched.
 
+## Review freshness follow-up
+
+- [x] Single-stock analysis, NIFTY 50 scan, portfolio analysis, and TradingAgents review check/sync missing official NSE sessions before calculation; saved single-stock runs include the sync status and actual data date.
+- [x] Verify API contracts, cached-data fallback, saved sync metadata, frontend messages, and request timeouts.
+- [x] Browser-check the single-stock freshness result against the local 2026-11-17 cache. Scan and portfolio status are API-tested; no synthetic portfolio was saved to the user's database.
+
 ## Evidence and delivery
 
 - Main local cache was queried read-only; the isolated test database contains only sampled OHLCV and 29 test run artifacts.

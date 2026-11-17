@@ -2,6 +2,16 @@
 
 Last reviewed: 2026-11-17
 
+## 2026-11-17 review freshness change
+
+- Single-stock analysis, the NIFTY 50 scan, and portfolio valuation check/sync missing official NSE sessions before using local bars. The basket scan syncs once for all symbols. TradingAgents review carries its existing sync result into the saved stock run. If refresh fails, cached analysis remains available and the result shows the failure and actual bar date.
+- Live browser check on `/stock-research` ran YESBANK against data saved through 2026-11-17 and displayed a complete NSE freshness check. The rule found no long setup and the historical gate was not evaluable (16 held-out trades; 37.5% wins); no forward prediction was recorded because there was no eligible setup.
+- Verification passed: full backend pytest, Ruff, focused mypy (7 files), frontend ESLint, TypeScript, Vitest (24 tests), and webpack production build. Two optional TradingAgents tests were skipped because that package is absent from the root environment. The working app runs at `http://127.0.0.1:4003` with API `http://127.0.0.1:8001`.
+- Read-only SQLite summary confirms 5,342 symbols, 9,574,300 bars, and a latest daily timestamp of 2026-11-17. No newer session was available for the current date. The API freshness check sees the cache is current and reports complete without downloading duplicate archives.
+- No nonempty `OPENAI_API_KEY` was found in the task shell environment or root `.env`; no paid OpenAI news brief or TradingAgents review was run. Local technical research remains available without it.
+- PR #26 is visibly closed on GitHub. The code is consolidated in the only Backtrack worktree, `/Users/arjeetanand/projects/stock/backtrack`, on branch `codex/backtrack-unification-20261117`; these latest changes and the consolidation branch have not been pushed or merged into remote `main`.
+- The 8.4 GiB SQLite database may contain private portfolio holdings and remains local; only public NSE archive bundles/manifests are in the linked Drive folder. A separate encrypted, versioned offsite backup of SQLite still needs a Drive sync/mount and restore procedure.
+
 ## 2026-11-17 Backtrack consolidation and end-to-end workflow
 
 - GitHub [PR #26](https://github.com/arjeetanand/backtesting-stockmarket/pull/26) is closed with its commits unmerged. Its source branch remains available. The code is integrated into the local task branch `codex/backtrack-unification-20261117`; merge commit `d1c7090` includes the TradingAgents branch, and commit `22351bd` carries the previously staged long-range FII/DII work.

@@ -8,6 +8,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from quant_research.api.schemas import MarketDataSyncResponse
 from quant_research.repositories.artifacts import SqliteArtifactStore
 from quant_research.repositories.market_cache import SqliteMarketCache
 from quant_research.services.portfolio_import import (
@@ -128,6 +129,7 @@ class PortfolioAnalysisResponse(BaseModel):
     totals: dict[str, str | int]
     review_priorities: list[str]
     positions: list[PortfolioAnalysisPosition]
+    market_sync: MarketDataSyncResponse | None = None
 
 
 def create_portfolio_router(
@@ -180,8 +182,11 @@ def create_portfolio_router(
         snapshot = artifacts.get(PORTFOLIO_SNAPSHOT_KIND, snapshot_id)
         if snapshot is None:
             raise HTTPException(status_code=404, detail="Portfolio snapshot not found.")
+        from quant_research.services.daily_sync import sync_latest_for_analysis
+
+        market_sync = sync_latest_for_analysis(cache)
         try:
-            analysis = analyze_portfolio_snapshot(cache, snapshot)
+            analysis = analyze_portfolio_snapshot(cache, snapshot, market_sync=market_sync)
         except PortfolioImportError as exc:
             raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
         return PortfolioAnalysisResponse.model_validate(analysis)

@@ -73,7 +73,7 @@ The date selector supports:
 
 The importer checks the SQLite database and `data/nse_archives/<year>/` before downloading. A single NSE trading-day archive contains the daily file for all supported stocks, so a successful day is loaded in bulk. There is no starter universe, custom-symbol import mode, or per-stock download button.
 
-Use **Sync All Market Data** in the top bar to fetch the newest completed daily archive, check NSE's latest official FII/DII report, and fill missing Tapetide history sessions. Before 18:00 IST the daily-bar sync stops at the previous calendar day; after that it can request today's archive on trading days. If NSE has not published an archive yet, a later sync retries dates in the missing-day range and reports the last date actually saved. Stock research shows its own `data_as_of` date; it never presents a live quote.
+Use **Sync All Market Data** in the top bar to fetch the newest completed daily archive, check NSE's latest official FII/DII report, and fill missing Tapetide history sessions. Before 18:00 IST the daily-bar sync stops at the previous calendar day; after that it can request today's archive on trading days. If NSE has not published an archive yet, a later sync retries dates in the missing-day range and reports the last date actually saved. Single-stock reviews, the NIFTY 50 scan, and portfolio analysis also check and sync missing NSE sessions before calculating; they show the sync outcome beside the actual `data_as_of` date. If the refresh fails, the review remains available from saved bars and labels the failed freshness check. No screen presents a live quote.
 
 ### Search local data
 

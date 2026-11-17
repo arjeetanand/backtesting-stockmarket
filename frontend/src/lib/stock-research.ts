@@ -19,6 +19,15 @@ export type StockResearchMetrics = {
   bars: number;
 };
 
+export type MarketDataSync = {
+  status: "complete" | "partial" | "failed";
+  message: string;
+  target_trading_day: string | null;
+  latest_trading_day: string | null;
+  synced_days: number;
+  skipped_days: number;
+};
+
 export type StockResearchResult = {
   run_id: string;
   symbol: string;
@@ -116,6 +125,7 @@ export type StockResearchResult = {
     finished_at: string;
     failure_reason: string | null;
   };
+  market_sync?: MarketDataSync | null;
 };
 
 export type StockResearchHistory = {
@@ -196,6 +206,7 @@ export type StockResearchMorningScan = {
   stale_setups: number;
   fresh_signals: number;
   qualifying_setups: number;
+  market_sync?: MarketDataSync | null;
   candidates: Array<{
     run_id: string;
     symbol: string;
@@ -224,11 +235,11 @@ export function runStockResearch(symbol: string): Promise<StockResearchResult> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ symbol }),
-  });
+  }, 120_000);
 }
 
 export function scanMorningStockResearch(): Promise<StockResearchMorningScan> {
-  return request<StockResearchMorningScan>("/stock-research/morning-scan", { method: "POST" }, 120_000);
+  return request<StockResearchMorningScan>("/stock-research/morning-scan", { method: "POST" }, 300_000);
 }
 
 export function getStockResearchHistory(): Promise<StockResearchHistory> {

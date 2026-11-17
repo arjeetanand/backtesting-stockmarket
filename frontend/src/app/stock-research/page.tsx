@@ -263,12 +263,12 @@ export default function StockResearchPage() {
         <div className="stock-research-section-heading">
           <div><span className="bt-eyebrow">MORNING SHORTLIST</span><h2 id="stock-research-morning-title">Find stocks that passed both checks</h2><p>Scan the local NIFTY 50 daily archive. A candidate must have a fresh daily trigger and pass the historical screen. This is not a live alert or a recommendation.</p></div>
           <button className="bt-primary stock-research-scan-button" type="button" onClick={() => void runMorningScan()} disabled={scanLoading || running}>
-            {scanLoading ? <><LoaderCircle size={15} className="spin" aria-hidden="true" /> Checking saved history…</> : <><Activity size={15} aria-hidden="true" /> Scan NIFTY 50</>}
+            {scanLoading ? <><LoaderCircle size={15} className="spin" aria-hidden="true" /> Refreshing NSE, then scanning…</> : <><Activity size={15} aria-hidden="true" /> Scan NIFTY 50</>}
           </button>
         </div>
 
         {scanError && <div className="bt-alert-error stock-research-scan-error" role="alert"><AlertTriangle size={15} aria-hidden="true" /><span>{scanError} This scan uses only the local daily archive; check NSE data and try again.</span></div>}
-        {scanLoading && <div className="stock-research-scan-loading" role="status"><LoaderCircle size={17} className="spin" aria-hidden="true" /><span>Checking the NIFTY 50 against saved daily bars. This may take a minute.</span></div>}
+        {scanLoading && <div className="stock-research-scan-loading" role="status"><LoaderCircle size={17} className="spin" aria-hidden="true" /><span>Checking for the latest official NSE session, then scanning the NIFTY 50. This may take a few minutes.</span></div>}
         {!scanLoading && !scanError && !morningScan && <p className="stock-research-scan-prompt">No scan has been run in this view yet. You can also search for one company below.</p>}
 
         {morningScan && <div className="stock-research-scan-results" aria-live="polite">
@@ -276,6 +276,7 @@ export default function StockResearchPage() {
             <div><strong>{morningScan.qualifying_setups === 0 ? "No candidates are ready from the available data" : `${morningScan.qualifying_setups} ${morningScan.qualifying_setups === 1 ? "stock matched" : "stocks matched"} both checks`}</strong><p>NIFTY 50 constituents dated {date(morningScan.universe_as_of)} · local daily data through {date(morningScan.data_as_of)}. Only fresh rule triggers with a passed historical screen appear below.</p></div>
             <span className="stock-research-scan-source">{morningScan.data_source}</span>
           </div>
+          {morningScan.market_sync && <div className={morningScan.market_sync.status === "complete" ? "bt-alert-success" : "bt-alert-warning"} role="status">NSE freshness check · {morningScan.market_sync.status} · {morningScan.market_sync.message}{morningScan.market_sync.synced_days > 0 ? ` · ${morningScan.market_sync.synced_days} archive day(s) downloaded` : ""}</div>}
           <dl className="stock-research-scan-topline">
             <div><dt>Stocks checked</dt><dd>{morningScan.symbols_scanned}</dd></div>
             <div><dt>Fresh rule triggers</dt><dd>{morningScan.fresh_signals}</dd></div>
@@ -346,6 +347,7 @@ export default function StockResearchPage() {
           <div><span className="bt-eyebrow">{result.run_status === "completed" ? "LATEST DAILY-BAR REVIEW" : "DATA STATUS"}</span><h2>{result.company_name || result.symbol} <small>{result.symbol}</small></h2><p>{result.message}</p></div>
           <span className={`stock-research-pill ${result.run_status}`}><span />{result.run_status.replaceAll("_", " ")}</span>
         </section>
+        {result.market_sync && <div className={result.market_sync.status === "complete" ? "bt-alert-success" : "bt-alert-warning"} role="status">NSE freshness check · {result.market_sync.status} · {result.market_sync.message}{result.market_sync.synced_days > 0 ? ` · ${result.market_sync.synced_days} archive day(s) downloaded` : ""}</div>}
 
         {result.run_status === "insufficient_data" && <section className="stock-research-empty bt-panel" role="status">
           <Database size={20} aria-hidden="true" /><div><strong>No usable local history for {result.symbol}</strong><p>{result.message} Import the official NSE daily archive, then run the analysis again.</p><a className="stock-research-data-link" href="/data">Open NSE data</a></div>

@@ -205,6 +205,7 @@ def analyze_portfolio_snapshot(
     snapshot: dict[str, Any],
     *,
     today: datetime | None = None,
+    market_sync: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Value a saved snapshot using only bounded local daily bars and describe observed context."""
     holdings = snapshot.get("holdings")
@@ -350,7 +351,7 @@ def analyze_portfolio_snapshot(
             f"Exposure check: {largest['symbol']} is {largest['market_value_weight_pct']}% of priced market value; compare that concentration with your own risk limit."
         )
 
-    return {
+    result = {
         "snapshot_id": snapshot.get("snapshot_id", ""),
         "analyzed_at": datetime.now(UTC).isoformat(),
         "data_source": "local_cached_official_nse_daily_ohlcv",
@@ -366,6 +367,9 @@ def analyze_portfolio_snapshot(
         "review_priorities": review_priorities,
         "positions": positions,
     }
+    if market_sync is not None:
+        result["market_sync"] = market_sync
+    return result
 
 
 def _mean(values: list[float]) -> float | None:

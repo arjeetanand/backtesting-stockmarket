@@ -349,7 +349,7 @@ class StockResearchService:
             "level_note": setup["level_note"], "historical_gate_status": "not_evaluated",
         }
 
-    def scan_morning(self) -> dict[str, Any]:
+    def scan_morning(self, market_sync: dict[str, Any] | None = None) -> dict[str, Any]:
         """Backtest the fixed rule across the local NIFTY 50 list and keep only fresh, qualified signals."""
         from quant_research.services.market_scanner import NIFTY50_AS_OF, NIFTY50_SYMBOLS
 
@@ -381,7 +381,11 @@ class StockResearchService:
         for symbol in symbols:
             instrument = instruments.get(symbol)
             try:
-                result = self.run(symbol, instrument.company_name if instrument else None, include_chart=False)
+                company_name = instrument.company_name if instrument else None
+                if market_sync is None:
+                    result = self.run(symbol, company_name, include_chart=False)
+                else:
+                    result = self.run(symbol, company_name, include_chart=False, market_sync=market_sync)
             except Exception as exc:
                 counts["analysis_errors"] += 1
                 counts["not_evaluable"] += 1
@@ -441,7 +445,7 @@ class StockResearchService:
             reverse=True,
         )
         finished_at = datetime.now(UTC)
-        return {
+        result = {
             "scan_id": scan_id,
             "status": "completed",
             "started_at": started_at.isoformat(),
@@ -454,8 +458,18 @@ class StockResearchService:
             "qualifying_setups": len(candidates),
             "candidates": candidates,
         }
+        if market_sync is not None:
+            result["market_sync"] = market_sync
+        return result
 
-    def run(self, symbol: str, company_name: str | None = None, *, include_chart: bool = True) -> dict[str, Any]:
+    def run(
+        self,
+        symbol: str,
+        company_name: str | None = None,
+        *,
+        include_chart: bool = True,
+        market_sync: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         run_id = uuid4().hex
         started_at = datetime.now(UTC).isoformat()
         normalized = symbol.strip().upper().removesuffix(".NS")
@@ -463,8 +477,7 @@ class StockResearchService:
             bars = self._cache.get(normalized, timeframe="1day")
             if not bars:
                 result = self._empty_result(run_id, normalized, company_name, started_at, "No daily NSE candles are saved for this symbol. Import its history in NSE data first.")
-                self._artifacts.save(ARTIFACT_KIND, run_id, result)
-                return result
+                return self._save_run_result(result, market_sync)
 
             frame = pd.DataFrame(
                 [
@@ -500,8 +513,7 @@ class StockResearchService:
                     f"Only {len(frame)} daily bars are saved; at least {MIN_HISTORY_BARS} are needed for the 200-day trend and breakout rule.",
                 )
                 result.update({"data_as_of": last_date.isoformat(), "history_start": first_date.isoformat(), "bar_count": len(frame), "history_years": history_years, "data_hash": data_hash})
-                self._artifacts.save(ARTIFACT_KIND, run_id, result)
-                return result
+                return self._save_run_result(result, market_sync)
 
             split_index = 200 + floor((len(frame) - 200) * 0.70)
             split_index = min(max(split_index, 200), len(frame) - 1)
@@ -549,7 +561,7 @@ class StockResearchService:
                     "failure_reason": None,
                 },
             }
-            self._artifacts.save(ARTIFACT_KIND, run_id, result)
+            self._save_run_result(result, market_sync)
             try:
                 PredictionTrackingService(self._cache, self._artifacts).record(result, now=now)
             except Exception:
@@ -560,8 +572,14 @@ class StockResearchService:
             result = self._empty_result(run_id, normalized, company_name, started_at, "The analysis run failed; see the saved local run log.")
             result["run_status"] = "failed"
             result["run_log"].update({"status": "failed", "finished_at": datetime.now(UTC).isoformat(), "failure_reason": f"{type(exc).__name__}: {str(exc)[:240]}"})
-            self._artifacts.save(ARTIFACT_KIND, run_id, result)
+            self._save_run_result(result, market_sync)
             raise
+
+    def _save_run_result(self, result: dict[str, Any], market_sync: dict[str, Any] | None) -> dict[str, Any]:
+        if market_sync is not None:
+            result["market_sync"] = market_sync
+        self._artifacts.save(ARTIFACT_KIND, str(result["run_id"]), result)
+        return result
 
     def list_runs(self, limit: int) -> dict[str, Any]:
         recent = self._artifacts.list_with_metadata(ARTIFACT_KIND, limit=limit)

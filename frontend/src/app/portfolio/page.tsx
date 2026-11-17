@@ -252,12 +252,13 @@ export default function PortfolioPage() {
           </p>
         </div>
         {analysisError && <div className="bt-alert-error" role="alert">{analysisError}</div>}
-        {analysisLoading ? <div className="bt-loading-state" role="status"><Loader2 size={16} className="spin" />Analyzing saved holdings against cached daily bars…</div> : !analysis ?
+        {analysisLoading ? <div className="bt-loading-state" role="status"><Loader2 size={16} className="spin" />Refreshing NSE data, then analyzing saved holdings…</div> : !analysis ?
           <div style={{ padding: "8px 0", color: "var(--bt-muted)", fontSize: 13 }}>Save a snapshot or choose Analyze from saved history to see its local daily valuation.</div> : <>
             <div className="bt-row-wrap" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
               <span style={{ color: "var(--bt-muted)", fontSize: 12 }}>Data as of {analysis.data_as_of ?? "unavailable"} · {analysis.price_basis}</span>
               <span style={{ color: "var(--bt-muted)", fontSize: 12 }}>{analysis.totals.priced_positions} of {analysis.totals.total_positions} positions priced</span>
             </div>
+            {analysis.market_sync && <div className={analysis.market_sync.status === "complete" ? "bt-alert-success" : "bt-alert-warning"} role="status">NSE freshness check · {analysis.market_sync.status} · {analysis.market_sync.message}{analysis.market_sync.synced_days > 0 ? ` · ${analysis.market_sync.synced_days} archive day(s) downloaded` : ""}</div>}
             {analysis.totals.priced_positions < analysis.totals.total_positions && <div className="bt-alert-error" role="status">Some symbols have no cached daily close. Portfolio market value and unrealized P&amp;L below cover only the priced positions.</div>}
             {analysis.positions.some((position) => position.freshness === "stale") && <div className="bt-alert-error" role="status">One or more cached prices are over five calendar days old. Refresh NSE daily data before relying on those valuations.</div>}
             {analysis.review_priorities.length > 0 && <div className="bt-panel" style={{ padding: 14 }}><strong>What to review first</strong><ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>{analysis.review_priorities.map((priority) => <li key={priority}>{priority}</li>)}</ul></div>}

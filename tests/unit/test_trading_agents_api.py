@@ -112,6 +112,7 @@ def test_every_review_syncs_and_saves_fresh_analysis_and_attempt(tmp_path: Path,
     assert first.source_run_id != initial["run_id"]
     assert second.source_run_id != first.source_run_id
     assert first.analysis.run_id == first.source_run_id
+    assert first.analysis.market_sync is not None and first.analysis.market_sync.status == "partial"
     assert first.data_as_of == "2025-09-18"
     assert first.data_hash != initial["data_hash"]
     assert review_calls[0]["data_as_of"] == first.data_as_of

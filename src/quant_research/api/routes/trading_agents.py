@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from quant_research.api.schemas import StockResearchResponse
 from quant_research.repositories.artifacts import SqliteArtifactStore
 from quant_research.repositories.market_cache import SqliteMarketCache
-from quant_research.services.daily_sync import DailySyncService
+from quant_research.services.daily_sync import DailySyncService, market_sync_context
 from quant_research.services.stock_research import ARTIFACT_KIND, StockResearchService
 from quant_research.services.trading_agents import (
     REVIEW_ATTEMPT_ARTIFACT_KIND,
@@ -185,6 +185,7 @@ def create_trading_agents_router(
                 analysis = StockResearchService(market_cache, artifacts).run(
                     symbol,
                     str(previous.get("company_name") or "") or None,
+                    market_sync=market_sync_context(sync_result),
                 )
             except Exception:
                 fail(502, "analysis_failed", "The analysis could not be rebuilt from the refreshed NSE cache.")

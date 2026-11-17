@@ -195,7 +195,13 @@ def test_confirmed_snapshot_saves_only_normalized_holdings(tmp_path: Path) -> No
     assert "source_row" not in str(persisted)
 
 
-def test_local_preview_confirm_and_analysis_api_flow(tmp_path: Path) -> None:
+def test_local_preview_confirm_and_analysis_api_flow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    market_sync = {
+        "status": "partial", "message": "Latest saved NSE daily data is 2026-11-16.",
+        "target_trading_day": "2026-11-17", "latest_trading_day": "2026-11-16",
+        "synced_days": 0, "skipped_days": 1,
+    }
+    monkeypatch.setattr("quant_research.services.daily_sync.sync_latest_for_analysis", lambda _cache: market_sync)
     artifacts = SqliteArtifactStore(tmp_path / "artifacts.sqlite")
     cache = SqliteMarketCache(tmp_path / "market.sqlite")
     cache.put([OHLCVBar(
@@ -238,6 +244,7 @@ def test_local_preview_confirm_and_analysis_api_flow(tmp_path: Path) -> None:
 
     assert analysis["positions"][0]["market_value"] == "400.00"
     assert analysis["positions"][0]["unrealized_pnl"] == "100.00"
+    assert analysis["market_sync"]["status"] == "partial"
     assert len(artifacts.list(portfolio.PORTFOLIO_SNAPSHOT_KIND)) == 1
     persisted = artifacts.get(portfolio.PORTFOLIO_SNAPSHOT_KIND, saved["snapshot_id"])
     assert persisted is not None and "filename" not in persisted

@@ -762,6 +762,15 @@ class StockResearchRunLogResponse(BaseModel):
     failure_reason: str | None
 
 
+class MarketDataSyncResponse(BaseModel):
+    status: Literal["complete", "partial", "failed"]
+    message: str
+    target_trading_day: date | None
+    latest_trading_day: date | None
+    synced_days: int
+    skipped_days: int
+
+
 class StockResearchResponse(BaseModel):
     run_id: str
     symbol: str
@@ -786,6 +795,7 @@ class StockResearchResponse(BaseModel):
     chart: list[StockResearchChartPointResponse]
     cost_assumptions: dict[str, object] | None
     run_log: StockResearchRunLogResponse
+    market_sync: MarketDataSyncResponse | None = None
 
 
 class StockResearchMorningCandidateResponse(BaseModel):
@@ -821,6 +831,7 @@ class StockResearchMorningScanResponse(BaseModel):
     fresh_signals: int
     qualifying_setups: int
     candidates: list[StockResearchMorningCandidateResponse]
+    market_sync: MarketDataSyncResponse | None = None
 
 
 class StockResearchRunSummaryResponse(BaseModel):

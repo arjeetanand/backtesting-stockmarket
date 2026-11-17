@@ -1,4 +1,5 @@
 import { fetchWithTimeout } from "@/lib/api";
+import type { MarketDataSync } from "@/lib/stock-research";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 const MAX_UPLOAD_BYTES = 10_000_000;
@@ -87,6 +88,7 @@ export type PortfolioAnalysis = {
   };
   review_priorities: string[];
   positions: PortfolioAnalysisPosition[];
+  market_sync: MarketDataSync | null;
 };
 
 type ApiError = { detail?: string };
@@ -142,6 +144,6 @@ export async function getPortfolioSnapshots(): Promise<PortfolioSnapshot[]> {
 }
 
 export async function getPortfolioAnalysis(snapshotId: string): Promise<PortfolioAnalysis> {
-  const response = await fetchWithTimeout(`${API_BASE_URL}/portfolio/snapshots/${encodeURIComponent(snapshotId)}/analysis`);
+  const response = await fetchWithTimeout(`${API_BASE_URL}/portfolio/snapshots/${encodeURIComponent(snapshotId)}/analysis`, {}, 120_000);
   return readResponse<PortfolioAnalysis>(response, "Could not analyze this portfolio with local daily data.");
 }

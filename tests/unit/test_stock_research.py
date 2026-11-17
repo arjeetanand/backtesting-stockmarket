@@ -188,7 +188,15 @@ def test_every_insufficient_data_attempt_is_saved_and_counted(tmp_path: Path) ->
     artifacts = SqliteArtifactStore(tmp_path / "market.sqlite3")
     service = StockResearchService(cache, artifacts)
 
-    result = service.run("MISSING")
+    market_sync = {
+        "status": "partial",
+        "message": "Latest saved NSE daily data is 2026-11-16.",
+        "target_trading_day": "2026-11-17",
+        "latest_trading_day": "2026-11-16",
+        "synced_days": 0,
+        "skipped_days": 1,
+    }
+    result = service.run("MISSING", market_sync=market_sync)
     service.run("MISSING")
     history = service.list_runs(25)
 
@@ -198,7 +206,7 @@ def test_every_insufficient_data_attempt_is_saved_and_counted(tmp_path: Path) ->
     assert history["insufficient_data_runs"] == 2
     assert history["not_evaluable_runs"] == 2
     assert result["run_id"] in {run["run_id"] for run in history["runs"]}
-    assert artifacts.get(ARTIFACT_KIND, result["run_id"]) is not None
+    assert artifacts.get(ARTIFACT_KIND, result["run_id"])["market_sync"] == market_sync
 
 
 def test_history_counts_completed_gate_outcomes_and_failed_attempts(tmp_path: Path) -> None:
@@ -357,7 +365,19 @@ def test_morning_scan_returns_every_qualifying_candidate(
     assert {candidate["symbol"] for candidate in result["candidates"]} == symbols
 
 
-def test_morning_scan_api_validates_the_summary_contract(tmp_path: Path) -> None:
+def test_morning_scan_api_validates_the_summary_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    market_sync = {
+        "status": "complete", "message": "Latest saved NSE daily data is 2026-11-17.",
+        "target_trading_day": "2026-11-17", "latest_trading_day": "2026-11-17",
+        "synced_days": 0, "skipped_days": 0,
+    }
+    sync_calls: list[SqliteMarketCache] = []
+
+    def sync_once(cache: SqliteMarketCache) -> dict[str, object]:
+        sync_calls.append(cache)
+        return market_sync
+
+    monkeypatch.setattr("quant_research.services.daily_sync.sync_latest_for_analysis", sync_once)
     cache_path = tmp_path / "market.sqlite3"
     router = create_api_router(
         ResearchService(None, InMemoryBacktestRepository()),
@@ -377,6 +397,8 @@ def test_morning_scan_api_validates_the_summary_contract(tmp_path: Path) -> None
     assert result.missing_data == result.symbols_scanned
     assert result.stale_setups == 0
     assert result.candidates == []
+    assert result.market_sync is not None and result.market_sync.status == "complete"
+    assert len(sync_calls) == 1
 
 
 def test_available_daily_history_completes_but_short_history_cannot_pass_gate(tmp_path: Path) -> None:
@@ -526,7 +548,17 @@ def test_invalid_history_is_logged_as_failed_before_error_is_returned(tmp_path: 
     assert history["runs"][0]["failure_reason"].startswith("ValueError:")
 
 
-def test_api_records_missing_symbol_even_when_optional_catalogue_lookup_fails(tmp_path: Path) -> None:
+def test_api_records_missing_symbol_even_when_optional_catalogue_lookup_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "quant_research.services.daily_sync.sync_latest_for_analysis",
+        lambda _cache: {
+            "status": "failed", "message": "Could not check the latest official NSE daily archive.",
+            "target_trading_day": None, "latest_trading_day": None, "synced_days": 0, "skipped_days": 0,
+        },
+    )
     cache_path = tmp_path / "market.sqlite3"
     cache = _CatalogueFailureCache(cache_path)
     artifacts = SqliteArtifactStore(cache_path)
