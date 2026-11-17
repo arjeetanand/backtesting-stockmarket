@@ -10,6 +10,7 @@ Last reviewed: 2026-11-17
 - Read-only SQLite summary confirms 5,342 symbols, 9,574,300 bars, and a latest daily timestamp of 2026-11-17. No newer session was available for the current date. The API freshness check sees the cache is current and reports complete without downloading duplicate archives.
 - No nonempty `OPENAI_API_KEY` was found in the task shell environment or root `.env`; no paid OpenAI news brief or TradingAgents review was run. Local technical research remains available without it.
 - PR #26 is visibly closed on GitHub. The code is consolidated in the only Backtrack worktree, `/Users/arjeetanand/projects/stock/backtrack`, on branch `codex/backtrack-unification-20261117`; these latest changes and the consolidation branch have not been pushed or merged into remote `main`.
+- The freshness integration is committed locally as `0670924` (`feat: refresh NSE before research reviews`).
 - The 8.4 GiB SQLite database may contain private portfolio holdings and remains local; only public NSE archive bundles/manifests are in the linked Drive folder. A separate encrypted, versioned offsite backup of SQLite still needs a Drive sync/mount and restore procedure.
 
 ## 2026-11-17 Backtrack consolidation and end-to-end workflow
