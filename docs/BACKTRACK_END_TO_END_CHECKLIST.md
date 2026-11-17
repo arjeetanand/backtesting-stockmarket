@@ -10,7 +10,7 @@ Updated: 2026-11-17 after market close
 - [x] Removed the approved redundant worktrees. `/Users/arjeetanand/projects/stock/backtrack` is the only Backtrack worktree.
 - [x] Copied and verified the ten missing CM-UDiFF archives through 2026-11-16; Nov 10 was unavailable at source.
 - [x] Synced the 2026-11-17 official NSE archive after close. The root cache now has 5,342 symbols, 9,574,300 daily bars, and a latest session of 2026-11-17.
-- [x] Sync All Market Data saved the official NSE FII/DII report through 2026-11-17 (2 rows new or changed). A final manual recheck on 2026-11-17 found the official report current with 0 new or changed rows. A current read-only audit confirmed 5 official NSE FII/DII dates through 2026-11-17. Tapetide history ends at 2026-10-30 with 28 known NSE sessions missing; its latest live retry could not reach the provider.
+- [x] The latest in-app Sync All Market Data run on 2026-11-17 confirmed the saved NSE daily date and official NSE FII/DII date are both 2026-11-17; the official source had 0 new or changed rows. Tapetide returned a response that failed the documented `data` array / `meta.has_more` schema checks, so no Tapetide rows were saved. The cache still has 3,156 Tapetide dates through 2026-10-30 and 28 known NSE sessions missing. A direct provider retry from the shell could not reach Tapetide.
 - [x] The user's Drive folder contains three archive bundles: `Backtrack_NSE_Archives_2026-11-17.tar.gz`, `Backtrack_NSE_Archives_Update_2026-11-17.tar.gz`, and `Backtrack_NSE_Archives_PostClose_2026-11-17.tar.gz`, each with a checksum sidecar. The post-close package SHA-256 is `f1b0d2b8d79921092679090de45567648f11192f61de564bc6144be7b1360441`. The 9 GB SQLite database may contain portfolio data and remains local; it was not uploaded.
 
 ## End-to-end research workflow
@@ -22,7 +22,7 @@ Updated: 2026-11-17 after market close
 - [x] Forward tracking separately records whether the setup's entry reference was met on the signal close or touched in a later session, and shows a bounded price-path summary. Daily OHLCV cannot explain the cause of a move or reveal intraday event ordering.
 - [x] Re-ran YESBANK after the 2026-11-17 sync. Latest close is ₹17.85; the rule found no long setup, and the historical gate is not evaluable (16 held-out trades, 37.5% wins). No forward prediction was recorded because no eligible setup existed.
 - [x] `/portfolio` previews XLSX, PDF, and image holdings locally, allows edits before confirmation, saves only normalized confirmed positions, and values them using cached NSE daily closes. Missing/stale prices and insufficient indicator history stay visible.
-- [x] Portfolio analysis applies the shared fixed long-only rule to each holding, shows its reasons and conditional entry/stop/1R/2R levels, and labels the historical validation gate as not evaluated. It does not rank holdings or calculate an optimal allocation.
+- [x] Portfolio analysis applies the shared fixed long-only rule to each holding, shows reasons and conditional entry/stop/1R/2R levels, and labels the historical validation gate as not evaluated. It prioritizes missing/stale data and rule statuses, and shows each priced holding's share of market value; it does not optimize an allocation or promise profit.
 - [x] A user-triggered global-market brief uses OpenAI web search, stores dated citations locally, and keeps portfolio files, positions, and cached prices out of the request.
 - [x] Stock research and portfolio are linked in the Markets navigation; the existing backtesting and research routes remain available.
 
@@ -31,12 +31,13 @@ Updated: 2026-11-17 after market close
 - [x] Full backend pytest suite passed; two optional TradingAgents package tests were skipped because `tradingagents` is not installed in the root `.venv`.
 - [x] Ruff and targeted mypy passed for the changed service/API modules. Repository-wide mypy still reports 13 existing typing/stub issues in other modules.
 - [x] Frontend ESLint, Vitest (24 tests), TypeScript, and webpack production build passed. Default Turbopack build could not bind its internal port in the restricted environment.
-- [x] Read-only database freshness recheck at 2026-11-17 19:23 IST confirmed 5,342 symbols, 9,574,300 daily bars, and latest NSE close date 2026-11-17; no later NSE session was available on this date.
+- [x] Read-only database freshness recheck at 2026-11-17 19:23 IST confirmed 5,342 symbols, 9,574,300 daily bars, and latest NSE close date 2026-11-17; no later NSE session was available on this date. The SQLite integrity check returned `ok` during this review.
 - [x] Synthetic XLSX, PDF, and image holdings were shown in the browser as editable previews; PDF and image each recognized 2 rows with local Poppler/Tesseract. No preview was saved to the user's database.
-- [ ] This session's browser and HTTP checks received connection refused. The safe launcher could not leave the app running because the sandbox denied process inspection and loopback binding (`EPERM`); it did not stop an unverified listener, and no Backtrack service process was visible afterward.
+- [x] The safe launcher started the app locally at `http://127.0.0.1:4003` with API at `http://127.0.0.1:8001`; the health route returned `status: ok` and `local_nse_cache`.
+- [x] A synthetic XLSX import preview through the local API returned one editable RELIANCE holding (2 shares at ₹1,234.50). It was preview-only; no file or position was saved.
 - [ ] Run a real paid OpenAI review or global brief after the owner privately configures `OPENAI_API_KEY`; no non-empty key was found and this task made no paid request.
-- [ ] Retry the Tapetide history sync when this environment can reach the provider; the latest attempt failed with `Could not reach Tapetide`, and saved history ends at 2026-10-30 with 28 known sessions missing.
+- [ ] Retry Tapetide history when its response matches the documented schema or provider access is restored. The latest app sync rejected the response shape; a direct retry could not reach the provider. Saved history ends at 2026-10-30 with 28 known sessions missing.
 
 NSE history is official end-of-day data, not live prices. Backtrack does not connect to a broker, place trades, guarantee returns, adjust for every corporate action, or evaluate a recommendation as a filled trade. The built-in broad scan is NIFTY 50; other NSE symbols can be searched individually. Portfolio parsing is heuristic and every detected row must be reviewed.
 
-The task branch is `codex/backtrack-unification-20261117`, with integration commit `d381612`, OCR/Tapetide fix `6f5ca37`, launcher fix `25422e7`, and portfolio/tracking follow-up `9bac392`. PR #26 is closed and this task branch has not been pushed or merged into remote `main`.
+The task branch is `codex/backtrack-unification-20261117`, with integration commit `d381612`, OCR/Tapetide fix `6f5ca37`, launcher fix `25422e7`, and portfolio/tracking follow-up `9bac392`. PR #26 is recorded as closed and this task branch has not been pushed or merged into remote `main`; a live GitHub check was unavailable because `api.github.com` could not be reached.

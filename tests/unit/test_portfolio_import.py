@@ -264,9 +264,11 @@ def test_analysis_uses_local_daily_cache_and_reports_insufficient_symbols(tmp_pa
 
     assert result["data_source"] == "local_cached_official_nse_daily_ohlcv"
     assert result["totals"]["priced_positions"] == 1
+    assert "Refresh NSE daily data" in result["review_priorities"][0]
     positions = {item["symbol"]: item for item in result["positions"]}
     assert positions["RELIANCE"]["latest_close"] == "200.00"
     assert positions["RELIANCE"]["market_value"] == "400.00"
+    assert positions["RELIANCE"]["market_value_weight_pct"] == "100.00"
     assert positions["RELIANCE"]["unrealized_pnl"] == "100.00"
     assert positions["RELIANCE"]["indicators"]["sma20"] is not None
     assert positions["RELIANCE"]["indicators"]["sma50"] is not None
@@ -281,3 +283,23 @@ def test_analysis_uses_local_daily_cache_and_reports_insufficient_symbols(tmp_pa
     assert positions["MISSING"]["freshness"] == "missing"
     assert positions["MISSING"]["latest_close"] is None
     assert positions["MISSING"]["rule_assessment"]["status"] == "insufficient_history"
+
+
+def test_portfolio_review_priorities_summarize_rule_status_and_largest_exposure(tmp_path: Path) -> None:
+    cache = SqliteMarketCache(tmp_path / "market.sqlite")
+    start = date(2024, 12, 16)
+    cache.put(_bars("RELIANCE", start, 500, last_close=200), "1day", "synthetic-test")
+    cache.put(_bars("TCS", start, 500, last_close=100), "1day", "synthetic-test")
+    result = portfolio.analyze_portfolio_snapshot(cache, {
+        "snapshot_id": "snapshot-2",
+        "holdings": [
+            {"symbol": "RELIANCE", "quantity": "2", "average_price": "150"},
+            {"symbol": "TCS", "quantity": "1", "average_price": "110"},
+        ],
+    }, today=datetime(2026, 11, 17, 12, tzinfo=ZoneInfo("Asia/Kolkata")))
+
+    positions = {item["symbol"]: item for item in result["positions"]}
+    assert positions["RELIANCE"]["market_value_weight_pct"] == "80.00"
+    assert positions["TCS"]["market_value_weight_pct"] == "20.00"
+    assert any("RELIANCE is 80.00%" in item for item in result["review_priorities"])
+    assert any("watch-only setups" in item for item in result["review_priorities"])

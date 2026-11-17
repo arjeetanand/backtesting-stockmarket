@@ -314,6 +314,42 @@ def analyze_portfolio_snapshot(
             "observations": observations,
         })
 
+    for position in positions:
+        market_value = position["market_value"]
+        position["market_value_weight_pct"] = (
+            _percent(Decimal(market_value) / total_market_value * Decimal(100))
+            if market_value is not None and total_market_value > 0
+            else None
+        )
+
+    review_priorities: list[str] = []
+    missing_symbols = [item["symbol"] for item in positions if item["freshness"] == "missing"]
+    stale_symbols = [item["symbol"] for item in positions if item["freshness"] == "stale"]
+    if missing_symbols or stale_symbols:
+        details = []
+        if missing_symbols:
+            details.append(f"no cached close: {_symbol_summary(missing_symbols)}")
+        if stale_symbols:
+            details.append(f"stale close: {_symbol_summary(stale_symbols)}")
+        review_priorities.append(f"Refresh NSE daily data before relying on the valuation ({'; '.join(details)}).")
+
+    for status, label, message in (
+        ("insufficient_history", "Need more data", "Import more NSE history before using these indicators or levels"),
+        ("no_long_setup", "Rule blockers", "Review each holding's listed reasons; these positions do not currently meet the fixed long rule"),
+        ("watch", "Wait for confirmation", "These are watch-only setups; check each conditional entry trigger and reason"),
+        ("triggered", "Triggered setups", "Review these symbols in Stock Research; this portfolio view does not evaluate their historical validation gate"),
+    ):
+        matched = [item["symbol"] for item in positions if item["rule_assessment"]["status"] == status]
+        if matched:
+            review_priorities.append(f"{label}: {_symbol_summary(matched)}. {message}.")
+
+    priced = [item for item in positions if item["market_value"] is not None]
+    if len(priced) > 1:
+        largest = max(priced, key=lambda item: Decimal(item["market_value"]))
+        review_priorities.append(
+            f"Exposure check: {largest['symbol']} is {largest['market_value_weight_pct']}% of priced market value; compare that concentration with your own risk limit."
+        )
+
     return {
         "snapshot_id": snapshot.get("snapshot_id", ""),
         "analyzed_at": datetime.now(UTC).isoformat(),
@@ -327,6 +363,7 @@ def analyze_portfolio_snapshot(
             "priced_market_value": _money(total_market_value),
             "unrealized_pnl_on_priced_positions": _money(total_market_value - sum((Decimal(item["cost_basis"]) for item in positions if item["market_value"] is not None), Decimal(0))),
         },
+        "review_priorities": review_priorities,
         "positions": positions,
     }
 
@@ -350,6 +387,12 @@ def _relative_observation(label: str, value: float, reference_label: str, refere
     relation = "above" if value > reference else "below" if value < reference else "at"
     difference_pct = (value / reference - 1) * 100 if reference > 0 else 0
     return f"{label} is {relation} the {reference_label} by {difference_pct:+.1f}%."
+
+
+def _symbol_summary(symbols: list[str]) -> str:
+    visible = ", ".join(symbols[:5])
+    remaining = len(symbols) - 5
+    return f"{visible} (+{remaining} more)" if remaining > 0 else visible
 
 
 def normalize_symbol(value: str) -> str:

@@ -108,6 +108,7 @@ class PortfolioAnalysisPosition(BaseModel):
     cost_basis: str
     latest_close: str | None
     market_value: str | None
+    market_value_weight_pct: str | None
     unrealized_pnl: str | None
     unrealized_pnl_pct: str | None
     data_as_of: str | None
@@ -125,6 +126,7 @@ class PortfolioAnalysisResponse(BaseModel):
     price_basis: str
     data_as_of: str | None
     totals: dict[str, str | int]
+    review_priorities: list[str]
     positions: list[PortfolioAnalysisPosition]
 
 

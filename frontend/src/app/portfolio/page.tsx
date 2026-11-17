@@ -248,7 +248,7 @@ export default function PortfolioPage() {
         <div>
           <h2 style={{ fontSize: 16, fontWeight: 700 }}>Local portfolio analysis</h2>
           <p style={{ marginTop: 5, color: "var(--bt-muted)", fontSize: 13 }}>
-            Daily NSE closes plus the same fixed long-only rule used in stock research. Levels are conditional, and this view does not rank holdings or suggest allocations.
+            Daily NSE closes plus the same fixed long-only rule used in stock research. These are review priorities and exposure checks, not personalized allocation advice or profit forecasts.
           </p>
         </div>
         {analysisError && <div className="bt-alert-error" role="alert">{analysisError}</div>}
@@ -260,6 +260,7 @@ export default function PortfolioPage() {
             </div>
             {analysis.totals.priced_positions < analysis.totals.total_positions && <div className="bt-alert-error" role="status">Some symbols have no cached daily close. Portfolio market value and unrealized P&amp;L below cover only the priced positions.</div>}
             {analysis.positions.some((position) => position.freshness === "stale") && <div className="bt-alert-error" role="status">One or more cached prices are over five calendar days old. Refresh NSE daily data before relying on those valuations.</div>}
+            {analysis.review_priorities.length > 0 && <div className="bt-panel" style={{ padding: 14 }}><strong>What to review first</strong><ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>{analysis.review_priorities.map((priority) => <li key={priority}>{priority}</li>)}</ul></div>}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(175px, 1fr))", gap: 10 }}>
               <div className="bt-panel" style={{ padding: 14 }}><small>Full cost basis</small><strong style={{ display: "block", marginTop: 5 }}>{currency(analysis.totals.total_cost_basis)}</strong></div>
               <div className="bt-panel" style={{ padding: 14 }}><small>Market value of priced positions</small><strong style={{ display: "block", marginTop: 5 }}>{currency(analysis.totals.priced_market_value)}</strong></div>
@@ -272,7 +273,7 @@ export default function PortfolioPage() {
                 <td className="right">{position.quantity}</td>
                 <td className="right">{currency(position.average_price)} / {currency(position.cost_basis)}</td>
                 <td className="right">{position.latest_close ? currency(position.latest_close) : "—"}</td>
-                <td className="right">{position.market_value ? <>{currency(position.market_value)}<br /><span className="bt-val-muted">P&amp;L {currency(position.unrealized_pnl ?? "")} ({position.unrealized_pnl_pct ?? "—"}%)</span></> : "—"}</td>
+                <td className="right">{position.market_value ? <>{currency(position.market_value)}<br /><span className="bt-val-muted">P&amp;L {currency(position.unrealized_pnl ?? "")} ({position.unrealized_pnl_pct ?? "—"}%) · {position.market_value_weight_pct ?? "—"}% of priced value</span></> : "—"}</td>
                 <td><div>20d {position.indicators.sma20 ? currency(position.indicators.sma20) : "—"} · 50d {position.indicators.sma50 ? currency(position.indicators.sma50) : "—"} · 200d {position.indicators.sma200 ? currency(position.indicators.sma200) : "—"}</div>
                   <div className="bt-val-muted">20 completed months {position.indicators.sma20_completed_months ? currency(position.indicators.sma20_completed_months) : "—"} · Relative volume {position.indicators.relative_volume_20d ? `${position.indicators.relative_volume_20d}×` : "—"}</div>
                   <ul style={{ margin: "6px 0 0", paddingLeft: 16 }}>{position.observations.map((observation, index) => <li key={`${position.symbol}-${index}`}>{observation}</li>)}</ul>

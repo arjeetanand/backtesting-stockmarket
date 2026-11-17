@@ -40,6 +40,7 @@ export type PortfolioAnalysisPosition = {
   cost_basis: string;
   latest_close: string | null;
   market_value: string | null;
+  market_value_weight_pct: string | null;
   unrealized_pnl: string | null;
   unrealized_pnl_pct: string | null;
   data_as_of: string | null;
@@ -84,6 +85,7 @@ export type PortfolioAnalysis = {
     priced_market_value: string;
     unrealized_pnl_on_priced_positions: string;
   };
+  review_priorities: string[];
   positions: PortfolioAnalysisPosition[];
 };
 

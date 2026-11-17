@@ -18,7 +18,7 @@ Backtrack is a local, research-only Indian-market backtesting application. It us
 | Home | Start the unified research flow | Follow the linked NSE data → research → saved result steps, then open optional tools; recent tests come from the local API |
 | New research | Turn an idea into historical evidence | Compare daily relative volume and next-session outcomes, review a draft rule, confirm the assumptions, ensure local NSE history, then explicitly run the simulation |
 | Stock research | Scan NIFTY 50 setups or understand one stock's recent fall | Run the morning scan, or start with YESBANK, choose IRFC/search the local NSE catalogue, inspect 20-session price and volume facts, enter optional holding details and a stop you chose, then review conditional re-entry levels and size a hypothetical entry from your own loss and allocation limits |
-| My portfolio | Import holdings and review local exposure | Preview an XLSX, PDF, or image statement, correct the detected symbol/quantity/average cost, confirm a local snapshot, then review daily-close value, unrealized P&L, moving averages, relative volume, and each symbol's data date |
+| My portfolio | Import holdings and review local exposure | Preview an XLSX, PDF, or image statement, correct the detected symbol/quantity/average cost, confirm a local snapshot, then review daily-close value, exposure share, rule priorities, indicators, and each symbol's data date |
 | Build rules | Create a rule strategy | Configure indicators, entries, exits, risk, fees, and slippage |
 | Use a YouTube strategy | Bring in an online idea | Extract a reviewable draft from a URL, captions, or pasted transcript; human review is required |
 | NSE data | Download and search history | Bulk NSE archive import with quick/custom date windows and local catalogue search; a completed import links to research |
@@ -130,7 +130,7 @@ Every completed, insufficient-data, or failed attempt is saved in the local SQLi
 
 ### Portfolio imports
 
-Open **My portfolio** from the Markets navigation. Choose an XLSX, PDF, or image file, review the parsed rows, correct quantities or average costs, and explicitly save the snapshot. The source file is not retained or sent to AI. Confirmed normalized holdings stay in the local SQLite artifact store. PDF text parsing uses Poppler; image and scanned-PDF OCR uses Tesseract. When either tool is missing or a statement layout is not recognized, use manual entry or fix the preview before saving. Portfolio analysis uses only local daily NSE bars and marks missing or stale prices; it does not generate a trade recommendation.
+Open **My portfolio** from the Markets navigation. Choose an XLSX, PDF, or image file, review the parsed rows, correct quantities or average costs, and explicitly save the snapshot. The source file is not retained or sent to AI. Confirmed normalized holdings stay in the local SQLite artifact store. PDF text parsing uses Poppler; image and scanned-PDF OCR uses Tesseract. When either tool is missing or a statement layout is not recognized, use manual entry or fix the preview before saving. Portfolio analysis uses local daily NSE bars and shows missing/stale prices, rule-based review priorities, conditional levels, and each priced holding's share of portfolio value. It does not optimize allocations or guarantee profit.
 
 ### Global market context
 
