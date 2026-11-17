@@ -712,7 +712,9 @@ Next owner/action:
   sent only on click; API billing applies. Calls use 30s timeout/no SDK retries;
   structured-manager fallback can mean four calls. The duplicate-request lock is
   process-local, consistent with this single-user/single-worker local launcher.
-- Runtime: the saved runner state identifies this task checkout on ports 4003/8001;
-  shell HTTP probes did not connect, and no service was stopped or restarted.
+- Runtime: the Codex browser rendered `/stock-research` with the saved YESBANK
+  analysis and missing-API-key message. No billed OpenAI request was made. Saved
+  runner state identifies this checkout on ports 4003/8001; shell HTTP probes did
+  not connect, and no service was stopped or restarted.
 - Next action: run the combined checks, review PR #26, then configure your backend
   API key privately and click Review with AI to verify account/model access.
