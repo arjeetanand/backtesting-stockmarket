@@ -93,6 +93,9 @@ def test_no_lookahead_and_same_bar_touch_is_ambiguous(setup: Any) -> None:
     assert outcome["observed_sessions"] == 1
     assert outcome["touch_state"] == "ambiguous_touch"
     assert outcome["touch_date"] == "2026-01-05"
+    assert outcome["entry_trigger_state"] == "reached_after_signal"
+    assert outcome["entry_trigger_date"] == "2026-01-05"
+    assert "intraday order is unknown" in outcome["path_summary"]
     assert outcome["forward_return_pct"] == pytest.approx(2.0)
     assert outcome["max_favorable_move_pct"] == pytest.approx(30.0)
     assert outcome["max_adverse_move_pct"] == pytest.approx(-10.0)
@@ -120,6 +123,32 @@ def test_no_retrospective_snapshot_when_later_bars_already_exist(setup: Any) -> 
     cache.put([_bar(datetime(2026, 1, 5, tzinfo=UTC))], "1day", "nse-test")
     assert service.record(analysis, datetime(2026, 1, 6, tzinfo=UTC)) is None
     assert artifacts.list(SNAPSHOT_KIND) == []
+
+
+def test_tracking_reports_entry_not_reached_and_signal_trigger(setup: Any) -> None:
+    service, cache, _, analysis = setup
+    snapshot = _record(service, analysis)
+    days = []
+    day = datetime(2026, 1, 5, tzinfo=UTC)
+    while len(days) < 20:
+        if day.weekday() < 5:
+            days.append(day)
+        day += timedelta(days=1)
+    cache.put([_bar(session, close=100, high=104, low=97) for session in days], "1day", "nse-test")
+    result = service.evaluate(snapshot["prediction_id"], datetime(2026, 3, 1, tzinfo=UTC))
+    assert result["entry_trigger_state"] == "not_reached_in_window"
+    assert result["entry_trigger_date"] is None
+    assert "not reached in 20 observed session" in result["path_summary"]
+
+    triggered_analysis = deepcopy(analysis)
+    triggered_analysis["symbol"] = "TEST2"
+    triggered_analysis["data_hash"] = "hash_2"
+    triggered_analysis["setup"]["status"] = "triggered"
+    triggered = service.record(triggered_analysis, datetime(2026, 1, 5, 2, tzinfo=UTC))
+    assert triggered is not None
+    observed = service.evaluate(triggered["prediction_id"], datetime(2026, 1, 5, 2, tzinfo=UTC))
+    assert observed["entry_trigger_state"] == "triggered_at_signal"
+    assert observed["entry_trigger_date"] == "2026-01-02"
 
 
 def test_twenty_session_horizon_and_evaluation_are_idempotent(setup: Any) -> None:

@@ -25,6 +25,7 @@ from zoneinfo import ZoneInfo
 
 from quant_research.repositories.artifacts import SqliteArtifactStore
 from quant_research.repositories.market_cache import SqliteMarketCache
+from quant_research.services.stock_research import StockResearchService
 
 MAX_FILE_BYTES = 10_000_000
 MAX_XLSX_ENTRIES = 500
@@ -237,6 +238,8 @@ def analyze_portfolio_snapshot(
             age_days = None
             freshness = "missing"
 
+        rule = StockResearchService.assess_current_bars(ordered, today)
+
         close = Decimal(str(closes[-1])) if closes else None
         market_value = quantity * close if close is not None else None
         unrealized_pnl = market_value - cost_basis if market_value is not None else None
@@ -300,6 +303,13 @@ def analyze_portfolio_snapshot(
                 "relative_volume_20d": _percent(Decimal(str(relative_volume))) if relative_volume is not None else None,
                 "daily_bars_used": len(ordered),
                 "completed_months_used": len(completed_month_values),
+            },
+            "rule_assessment": {
+                **rule,
+                **{
+                    key: _money(rule[key]) if rule[key] is not None else None
+                    for key in ("entry_trigger", "stop_loss", "target_1r", "target_2r", "risk_per_share")
+                },
             },
             "observations": observations,
         })

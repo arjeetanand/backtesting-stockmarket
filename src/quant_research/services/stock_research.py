@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
+from quant_research.domain.data.models import OHLCVBar
 from quant_research.repositories.artifacts import SqliteArtifactStore
 from quant_research.repositories.market_cache import SqliteMarketCache
 from quant_research.services.prediction_tracking import PredictionTrackingService
@@ -297,6 +298,56 @@ class StockResearchService:
     def __init__(self, cache: SqliteMarketCache, artifacts: SqliteArtifactStore) -> None:
         self._cache = cache
         self._artifacts = artifacts
+
+    @staticmethod
+    def assess_current_bars(bars: list[OHLCVBar], now: datetime | None = None) -> dict[str, Any]:
+        """Apply the shared entry rule to cached bars without saving a research run."""
+        current = now or datetime.now(UTC)
+        if current.tzinfo is None:
+            raise ValueError("Assessment time must include a timezone.")
+        ordered = sorted(bars, key=lambda bar: bar.timestamp)
+        if not ordered:
+            return {
+                "status": "insufficient_history", "data_as_of": None, "history_bars": 0, "data_age_days": None,
+                "entry_trigger": None, "stop_loss": None, "target_1r": None, "target_2r": None,
+                "risk_per_share": None, "reasons": ["No cached NSE daily bars are available for this symbol."],
+                "level_note": "No conditional levels are available without daily price history.",
+                "historical_gate_status": "not_evaluated",
+            }
+        frame = pd.DataFrame([
+            {
+                "timestamp": bar.timestamp,
+                "open": bar.open,
+                "high": bar.high,
+                "low": bar.low,
+                "close": bar.close,
+                "volume": bar.volume,
+            }
+            for bar in ordered
+        ]).sort_values("timestamp").drop_duplicates("timestamp", keep="last").reset_index(drop=True)
+        last_date = pd.Timestamp(frame.iloc[-1]["timestamp"]).date()
+        age_days = max((current.astimezone(INDIA_TZ).date() - last_date).days, 0)
+        if len(frame) < MIN_HISTORY_BARS:
+            return {
+                "status": "insufficient_history", "data_as_of": last_date.isoformat(),
+                "history_bars": len(frame), "data_age_days": age_days,
+                "entry_trigger": None, "stop_loss": None, "target_1r": None, "target_2r": None,
+                "risk_per_share": None,
+                "reasons": [f"Only {len(frame)} daily bars are saved; at least {MIN_HISTORY_BARS} are needed for the 200-day trend and breakout rule."],
+                "level_note": "No conditional levels are available until the 200-day trend has enough saved sessions.",
+                "historical_gate_status": "not_evaluated",
+            }
+        frame = _add_indicators(frame)
+        technical, _, evidence = StockResearchService._technical_summary(frame, include_chart=False)
+        setup = StockResearchService._trade_plan(frame, technical, evidence, age_days, current)
+        return {
+            "status": setup["status"], "data_as_of": last_date.isoformat(),
+            "history_bars": len(frame), "data_age_days": age_days,
+            "entry_trigger": setup["entry_trigger"], "stop_loss": setup["stop_loss"],
+            "target_1r": setup["target_1r"], "target_2r": setup["target_2r"],
+            "risk_per_share": setup["risk_per_share"], "reasons": setup["reasons"],
+            "level_note": setup["level_note"], "historical_gate_status": "not_evaluated",
+        }
 
     def scan_morning(self) -> dict[str, Any]:
         """Backtest the fixed rule across the local NIFTY 50 list and keep only fresh, qualified signals."""
@@ -617,6 +668,7 @@ class StockResearchService:
         if sma20_monthly is not None:
             reasons.append(f"Close is {(close / sma20_monthly - 1.0) * 100.0:+.1f}% versus the 20-month average of completed monthly closes.")
         if sma50 is not None and sma200 is not None:
+            reasons.append(f"Close is {(close / sma50 - 1.0) * 100.0:+.1f}% versus SMA50; the fixed long rule requires close above SMA50.")
             reasons.append("SMA50 is above SMA200, a long-trend alignment used by this fixed rule." if sma50 > sma200 else "SMA50 is not above SMA200, so the long-trend filter is not satisfied.")
         if rsi is not None:
             rsi_state = "above the commonly referenced 70 level" if rsi >= 70 else "below the commonly referenced 30 level" if rsi <= 30 else "between 30 and 70"

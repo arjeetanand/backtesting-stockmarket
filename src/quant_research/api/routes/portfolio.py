@@ -86,6 +86,21 @@ class PortfolioSnapshotListResponse(BaseModel):
     snapshots: list[PortfolioSnapshotResponse]
 
 
+class PortfolioRuleAssessment(BaseModel):
+    status: Literal["insufficient_history", "stale_data", "triggered", "watch", "no_long_setup"]
+    data_as_of: str | None
+    history_bars: int
+    data_age_days: int | None
+    entry_trigger: str | None
+    stop_loss: str | None
+    target_1r: str | None
+    target_2r: str | None
+    risk_per_share: str | None
+    reasons: list[str]
+    level_note: str
+    historical_gate_status: Literal["not_evaluated"]
+
+
 class PortfolioAnalysisPosition(BaseModel):
     symbol: str
     quantity: str
@@ -100,6 +115,7 @@ class PortfolioAnalysisPosition(BaseModel):
     freshness: Literal["fresh", "stale", "missing"]
     indicators: dict[str, str | int | None]
     observations: list[str]
+    rule_assessment: PortfolioRuleAssessment
 
 
 class PortfolioAnalysisResponse(BaseModel):

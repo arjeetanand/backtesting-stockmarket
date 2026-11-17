@@ -106,6 +106,8 @@ class PredictionTrackingService:
             "status": "completed" if len(bars) == snapshot["horizon_sessions"] else "pending",
             "observed_sessions": len(bars),
             "evaluated_through": bars[-1].timestamp.date().isoformat() if bars else None,
+            "entry_trigger_state": "triggered_at_signal" if snapshot["setup_status"] == "triggered" else "not_reached_yet",
+            "entry_trigger_date": snapshot["data_as_of"] if snapshot["setup_status"] == "triggered" else None,
             "forward_return_pct": None,
             "max_favorable_move_pct": None,
             "max_adverse_move_pct": None,
@@ -119,6 +121,13 @@ class PredictionTrackingService:
                 "max_favorable_move_pct": max(0.0, (max(bar.high for bar in bars) / reference - 1) * 100),
                 "max_adverse_move_pct": min(0.0, (min(bar.low for bar in bars) / reference - 1) * 100),
             })
+            if snapshot["setup_status"] == "watch":
+                trigger_bar = next((bar for bar in bars if bar.high >= snapshot["entry_trigger"]), None)
+                if trigger_bar is not None:
+                    outcome["entry_trigger_state"] = "reached_after_signal"
+                    outcome["entry_trigger_date"] = trigger_bar.timestamp.date().isoformat()
+                elif outcome["status"] == "completed":
+                    outcome["entry_trigger_state"] = "not_reached_in_window"
             for bar in bars:
                 target = bar.high >= snapshot["target_2r"]
                 stop = bar.low <= snapshot["stop_loss"]
@@ -126,6 +135,18 @@ class PredictionTrackingService:
                     outcome["touch_state"] = "ambiguous_touch" if target and stop else "target_hit" if target else "stop_hit"
                     outcome["touch_date"] = bar.timestamp.date().isoformat()
                     break
+        if not bars:
+            outcome["path_summary"] = "No completed post-signal sessions have been observed yet."
+        else:
+            entry = (
+                f"Entry reference crossed on the signal close ({snapshot['data_as_of']})."
+                if outcome["entry_trigger_state"] == "triggered_at_signal"
+                else f"Daily high first reached the entry reference on {outcome['entry_trigger_date']}; intraday order is unknown."
+                if outcome["entry_trigger_state"] == "reached_after_signal"
+                else f"Entry reference was not reached in {len(bars)} observed session(s)."
+            )
+            level = f" {outcome['touch_state'].replace('_', ' ')} on {outcome['touch_date']}." if outcome["touch_date"] else " No stop or 2R target touch was observed."
+            outcome["path_summary"] = f"{entry}{level} Daily prices cannot establish the cause or order of intraday moves; this is not a filled trade."
         if self._artifacts.get(OUTCOME_KIND, prediction_id) != outcome:
             self._artifacts.save(OUTCOME_KIND, prediction_id, outcome)
         return {**snapshot, **outcome}

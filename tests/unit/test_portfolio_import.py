@@ -273,5 +273,11 @@ def test_analysis_uses_local_daily_cache_and_reports_insufficient_symbols(tmp_pa
     assert positions["RELIANCE"]["indicators"]["sma200"] is not None
     assert positions["RELIANCE"]["indicators"]["sma20_completed_months"] is not None
     assert positions["RELIANCE"]["indicators"]["relative_volume_20d"] is not None
+    rule = positions["RELIANCE"]["rule_assessment"]
+    assert rule["status"] == "watch"
+    assert rule["entry_trigger"] is not None and rule["stop_loss"] is not None
+    assert rule["historical_gate_status"] == "not_evaluated"
+    assert any("requires close above SMA50" in reason for reason in rule["reasons"])
     assert positions["MISSING"]["freshness"] == "missing"
     assert positions["MISSING"]["latest_close"] is None
+    assert positions["MISSING"]["rule_assessment"]["status"] == "insufficient_history"

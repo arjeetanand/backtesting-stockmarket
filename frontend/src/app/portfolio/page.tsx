@@ -248,7 +248,7 @@ export default function PortfolioPage() {
         <div>
           <h2 style={{ fontSize: 16, fontWeight: 700 }}>Local portfolio analysis</h2>
           <p style={{ marginTop: 5, color: "var(--bt-muted)", fontSize: 13 }}>
-            Daily end-of-day NSE closes and indicators from the local cache. No intraday prices or AI-generated recommendations.
+            Daily NSE closes plus the same fixed long-only rule used in stock research. Levels are conditional, and this view does not rank holdings or suggest allocations.
           </p>
         </div>
         {analysisError && <div className="bt-alert-error" role="alert">{analysisError}</div>}
@@ -276,6 +276,11 @@ export default function PortfolioPage() {
                 <td><div>20d {position.indicators.sma20 ? currency(position.indicators.sma20) : "—"} · 50d {position.indicators.sma50 ? currency(position.indicators.sma50) : "—"} · 200d {position.indicators.sma200 ? currency(position.indicators.sma200) : "—"}</div>
                   <div className="bt-val-muted">20 completed months {position.indicators.sma20_completed_months ? currency(position.indicators.sma20_completed_months) : "—"} · Relative volume {position.indicators.relative_volume_20d ? `${position.indicators.relative_volume_20d}×` : "—"}</div>
                   <ul style={{ margin: "6px 0 0", paddingLeft: 16 }}>{position.observations.map((observation, index) => <li key={`${position.symbol}-${index}`}>{observation}</li>)}</ul>
+                  <div style={{ marginTop: 10 }}><strong>Conditional rule review: {position.rule_assessment.status.replaceAll("_", " ")}</strong>
+                    <div>Entry {position.rule_assessment.entry_trigger ? currency(position.rule_assessment.entry_trigger) : "—"} · stop {position.rule_assessment.stop_loss ? currency(position.rule_assessment.stop_loss) : "—"} · 1R {position.rule_assessment.target_1r ? currency(position.rule_assessment.target_1r) : "—"} · 2R {position.rule_assessment.target_2r ? currency(position.rule_assessment.target_2r) : "—"}</div>
+                    <small>{position.rule_assessment.level_note} Historical validation gate: not evaluated for this portfolio review.</small>
+                    <ul style={{ margin: "6px 0 0", paddingLeft: 16 }}>{position.rule_assessment.reasons.map((reason, index) => <li key={`${position.symbol}-rule-${index}`}>{reason}</li>)}</ul>
+                  </div>
                 </td>
                 <td>{position.freshness === "missing" ? "Missing" : position.freshness === "stale" ? `Stale · ${position.data_age_days} days` : "Daily EOD"}</td>
               </tr>)}</tbody>

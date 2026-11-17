@@ -54,6 +54,20 @@ export type PortfolioAnalysisPosition = {
     daily_bars_used: number;
     completed_months_used: number;
   };
+  rule_assessment: {
+    status: "insufficient_history" | "stale_data" | "triggered" | "watch" | "no_long_setup";
+    data_as_of: string | null;
+    history_bars: number;
+    data_age_days: number | null;
+    entry_trigger: string | null;
+    stop_loss: string | null;
+    target_1r: string | null;
+    target_2r: string | null;
+    risk_per_share: string | null;
+    reasons: string[];
+    level_note: string;
+    historical_gate_status: "not_evaluated";
+  };
   observations: string[];
 };
 

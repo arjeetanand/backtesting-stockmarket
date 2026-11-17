@@ -13,6 +13,8 @@ export type TrackedPrediction = {
   setup_status: "watch" | "triggered";
   signal_close: number;
   entry_trigger: number;
+  entry_trigger_state: "triggered_at_signal" | "reached_after_signal" | "not_reached_yet" | "not_reached_in_window";
+  entry_trigger_date: string | null;
   stop_loss: number;
   target_2r: number;
   reasons: string[];
@@ -26,6 +28,7 @@ export type TrackedPrediction = {
   max_adverse_move_pct: number | null;
   touch_state: "no_touch" | "target_hit" | "stop_hit" | "ambiguous_touch";
   touch_date: string | null;
+  path_summary: string;
 };
 
 export async function getTrackedPredictions(): Promise<TrackedPrediction[]> {
