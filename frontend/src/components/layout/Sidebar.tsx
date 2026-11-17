@@ -23,6 +23,7 @@ import {
   ChevronDown,
   Clock3,
   TrendingUp,
+  Briefcase,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -36,6 +37,7 @@ const mainNav = [
 
 const marketNav = [
   { href: "/stock-research", label: "Stock research", icon: TrendingUp },
+  { href: "/portfolio", label: "My portfolio", icon: Briefcase },
   { href: "/market-scanner", label: "Market scanner", icon: Search },
   { href: "/insights", label: "Market insights", icon: Activity },
   { href: "/watchlist", label: "Daily watchlist", icon: BookmarkCheck },

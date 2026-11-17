@@ -14,6 +14,7 @@ import pandas as pd
 
 from quant_research.repositories.artifacts import SqliteArtifactStore
 from quant_research.repositories.market_cache import SqliteMarketCache
+from quant_research.services.prediction_tracking import PredictionTrackingService
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,13 @@ def _price_return(close: pd.Series, sessions: int) -> float | None:
     previous = float(close.iloc[-sessions - 1])
     current = float(close.iloc[-1])
     return (current / previous - 1.0) * 100.0 if previous > 0 else None
+
+
+def _sma20_completed_months(frame: pd.DataFrame) -> float | None:
+    month_keys = pd.to_datetime(frame["timestamp"]).dt.strftime("%Y-%m")
+    monthly_closes = frame.groupby(month_keys, sort=True)["close"].last()
+    completed = monthly_closes.loc[monthly_closes.index < month_keys.iloc[-1]].tail(20)
+    return float(completed.mean()) if len(completed) == 20 else None
 
 
 def _add_indicators(frame: pd.DataFrame) -> pd.DataFrame:
@@ -491,6 +499,10 @@ class StockResearchService:
                 },
             }
             self._artifacts.save(ARTIFACT_KIND, run_id, result)
+            try:
+                PredictionTrackingService(self._cache, self._artifacts).record(result, now=now)
+            except Exception:
+                logger.exception("Could not record the prospective setup snapshot for run %s", run_id)
             return result
         except Exception as exc:
             logger.exception("Single-stock analysis run %s failed for %s", run_id, normalized)
@@ -566,6 +578,7 @@ class StockResearchService:
         sma20 = _value(current, "sma20")
         sma50 = _value(current, "sma50")
         sma200 = _value(current, "sma200")
+        sma20_monthly = _sma20_completed_months(frame)
         rsi = _value(current, "rsi14")
         macd = _value(current, "macd")
         macd_signal = _value(current, "macd_signal")
@@ -581,6 +594,7 @@ class StockResearchService:
             "sma20": sma20,
             "sma50": sma50,
             "sma200": sma200,
+            "sma20_monthly": sma20_monthly,
             "rsi14": rsi,
             "macd": macd,
             "macd_signal": macd_signal,
@@ -600,6 +614,8 @@ class StockResearchService:
         reasons: list[str] = []
         if sma20 is not None:
             reasons.append(f"Close is {(close / sma20 - 1.0) * 100.0:+.1f}% versus the 20-session SMA.")
+        if sma20_monthly is not None:
+            reasons.append(f"Close is {(close / sma20_monthly - 1.0) * 100.0:+.1f}% versus the 20-month average of completed monthly closes.")
         if sma50 is not None and sma200 is not None:
             reasons.append("SMA50 is above SMA200, a long-trend alignment used by this fixed rule." if sma50 > sma200 else "SMA50 is not above SMA200, so the long-trend filter is not satisfied.")
         if rsi is not None:

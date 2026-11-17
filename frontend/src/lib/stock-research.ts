@@ -36,6 +36,7 @@ export type StockResearchResult = {
     sma20: number | null;
     sma50: number | null;
     sma200: number | null;
+    sma20_monthly: number | null;
     rsi14: number | null;
     macd: number | null;
     macd_signal: number | null;

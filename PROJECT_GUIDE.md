@@ -18,6 +18,7 @@ Backtrack is a local, research-only Indian-market backtesting application. It us
 | Home | Start the unified research flow | Follow the linked NSE data → research → saved result steps, then open optional tools; recent tests come from the local API |
 | New research | Turn an idea into historical evidence | Compare daily relative volume and next-session outcomes, review a draft rule, confirm the assumptions, ensure local NSE history, then explicitly run the simulation |
 | Stock research | Scan NIFTY 50 setups or understand one stock's recent fall | Run the morning scan, or start with YESBANK, choose IRFC/search the local NSE catalogue, inspect 20-session price and volume facts, enter optional holding details and a stop you chose, then review conditional re-entry levels and size a hypothetical entry from your own loss and allocation limits |
+| My portfolio | Import holdings and review local exposure | Preview an XLSX, PDF, or image statement, correct the detected symbol/quantity/average cost, confirm a local snapshot, then review daily-close value, unrealized P&L, moving averages, relative volume, and each symbol's data date |
 | Build rules | Create a rule strategy | Configure indicators, entries, exits, risk, fees, and slippage |
 | Use a YouTube strategy | Bring in an online idea | Extract a reviewable draft from a URL, captions, or pasted transcript; human review is required |
 | NSE data | Download and search history | Bulk NSE archive import with quick/custom date windows and local catalogue search; a completed import links to research |
@@ -119,11 +120,21 @@ Open **Stock research** and either run **Scan NIFTY 50** or search a local NSE s
 
 For one symbol, the page shows the saved date window, candle count, 52-week range, prior 20-session high/low, SMA20/50/200, RSI14, MACD(12/26/9), ATR14, volume versus the previous 20-session average, and historical price returns. Each value has a plain-language explanation. Signal occurrences count bars that satisfy the rule; closed simulated trades are counted separately. Future company growth is not available from local OHLCV. The page links to NSE corporate financial results for the symbol, but does not infer future growth from price history.
 
+The technical panel also shows a 20-completed-month closing-price average, excluding the current partial month. After an eligible completed `watch` or `triggered` long setup, Backtrack saves a frozen research snapshot and tracks its price movement over the next 20 observed daily bars. Saved outcomes show the data date, return, favorable/adverse movement, and whether daily bars touched the reference stop or target; a candle touching both is marked ambiguous. These are rule observations, not actual fills, guaranteed forecasts, or automatic AI training data.
+
 The conditional long-only scenario requires a daily close above the prior 20-session high, close above SMA50, SMA50 above SMA200, and volume above the prior 20-session average. It uses the next session open in the historical simulation, starts with ₹1,00,000 and buys whole shares using available equity, applies a 2×ATR14 stop, 1R/2R targets, a close below SMA50 or 20-session time exit, and stop-first handling when a daily candle touches both stop and target. Displayed levels are reference prices; a next-session gap changes the actual simulated entry and risk. No order is placed.
 
 After the 200-session indicator warm-up, the rule is split chronologically into a 70% training window and 30% out-of-sample holdout. The fixed settings are not optimized. The result reports raw rule signals, closed trades, wins/losses, win rate, average net return per trade, cash-based profit factor, compounded return, drawdown, and dates for each window. The screen is only marked as passed with at least five years of data, 30 out-of-sample trades, at least 70% wins, positive net expectancy and compounded return, and profit factor above one; otherwise it is marked failed or not evaluable. A high percentage from a small number of trades is not accepted as evidence. Historical bars are not adjusted for splits or bonus issues, which can distort long-range indicators and tests.
 
 Every completed, insufficient-data, or failed attempt is saved in the local SQLite research-artifact store with start/finish timestamps, data hash/date, status, failure reason, and test results when available. The ledger distinguishes failed attempts, failed validation gates, passing runs, and runs that do not have enough evidence. It is local to this single-user installation.
+
+### Portfolio imports
+
+Open **My portfolio** from the Markets navigation. Choose an XLSX, PDF, or image file, review the parsed rows, correct quantities or average costs, and explicitly save the snapshot. The source file is not retained or sent to AI. Confirmed normalized holdings stay in the local SQLite artifact store. PDF text parsing uses Poppler; image and scanned-PDF OCR uses Tesseract. When either tool is missing or a statement layout is not recognized, use manual entry or fix the preview before saving. Portfolio analysis uses only local daily NSE bars and marks missing or stale prices; it does not generate a trade recommendation.
+
+### Global market context
+
+In **Stock research**, choose a topic and explicitly request a global-market brief. Backtrack sends that topic and optional NSE symbol to the OpenAI API web-search tool, then stores the completed dated brief and HTTPS source links locally. This optional feature requires a backend `OPENAI_API_KEY`; API and web-search usage may be billed separately. It is never called automatically during stock analysis and does not receive portfolio files, holdings, or local price history. A missing key or unsuccessful search produces an explicit error.
 
 ## Indicators and strategies
 

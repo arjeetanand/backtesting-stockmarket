@@ -11,6 +11,7 @@ from quant_research.repositories.artifacts import SqliteArtifactStore
 from quant_research.repositories.backtests import InMemoryBacktestRepository
 from quant_research.repositories.market_cache import Instrument, SqliteMarketCache
 from quant_research.services.hypotheses import HypothesisService
+from quant_research.services.prediction_tracking import SNAPSHOT_KIND
 from quant_research.services.research import ResearchService
 from quant_research.services.stock_research import (
     ARTIFACT_KIND,
@@ -18,6 +19,7 @@ from quant_research.services.stock_research import (
     _add_indicators,
     _entry_window_is_open,
     _simulate_period,
+    _sma20_completed_months,
 )
 
 
@@ -51,6 +53,16 @@ def test_prior_breakout_levels_exclude_the_signal_day() -> None:
     assert pd.isna(enriched.loc[13, "atr14"])
     assert enriched.loc[14, "atr14"] == 2.0
     assert enriched.loc[14, "rsi14"] == 50.0
+
+
+def test_monthly_average_uses_twenty_full_months_and_excludes_current_partial() -> None:
+    frame = pd.DataFrame({
+        "timestamp": pd.date_range("2024-01-01", periods=22, freq="MS"),
+        "close": range(1, 23),
+    })
+
+    assert _sma20_completed_months(frame) == pytest.approx(11.5)
+    assert _sma20_completed_months(frame.iloc[-20:].reset_index(drop=True)) is None
 
 
 def test_morning_scan_universe_uses_official_nse_symbol_codes() -> None:
@@ -397,6 +409,49 @@ def test_available_daily_history_completes_but_short_history_cannot_pass_gate(tm
     assert result["validation_gate"]["status"] == "not_evaluable"
     assert "at least 5 years" in " ".join(result["validation_gate"]["reasons"])
     assert result["run_log"]["status"] == "completed"
+
+
+def test_completed_eligible_analysis_is_saved_for_forward_tracking(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    cache_path = tmp_path / "market.sqlite3"
+    cache = SqliteMarketCache(cache_path)
+    artifacts = SqliteArtifactStore(cache_path)
+    service = StockResearchService(cache, artifacts)
+    today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    start = today - timedelta(days=260)
+    cache.put(
+        [
+            OHLCVBar(
+                timestamp=start + timedelta(days=index),
+                symbol="TEST",
+                open=100.0 + index * 0.2,
+                high=101.0 + index * 0.2,
+                low=99.0 + index * 0.2,
+                close=100.0 + index * 0.2,
+                volume=1_000.0 + index,
+            )
+            for index in range(260)
+        ],
+        "1day",
+        "official-nse-test",
+    )
+    monkeypatch.setattr(
+        service,
+        "_trade_plan",
+        lambda frame, technical, evidence, age_days, now: {
+            "status": "watch", "direction": "long_only", "entry_trigger": 160.0,
+            "stop_loss": 150.0, "target_2r": 180.0, "reasons": ["Trend aligned."],
+            "exit_rules": ["Review the stop."],
+        },
+    )
+
+    result = service.run("TEST")
+
+    snapshots = artifacts.list(SNAPSHOT_KIND)
+    assert result["run_status"] == "completed"
+    assert len(snapshots) == 1
+    assert snapshots[0]["source_run_id"] == result["run_id"]
+    assert snapshots[0]["data_as_of"] == result["data_as_of"]
+    assert snapshots[0]["entry_trigger"] == 160.0
 
 
 def test_win_rate_alone_never_passes_a_small_out_of_sample_sample() -> None:

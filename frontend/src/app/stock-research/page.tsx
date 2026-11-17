@@ -19,6 +19,8 @@ import TopBar from "@/components/layout/TopBar";
 import { SymbolCombobox } from "@/components/data/SymbolCombobox";
 import { FinancialChart } from "@/components/charts/FinancialChart";
 import { TradingAgentsReview } from "@/components/insights/TradingAgentsReview";
+import GlobalMarketBrief from "@/components/insights/GlobalMarketBrief";
+import { PredictionHistory } from "@/components/insights/PredictionHistory";
 import type { IndicatorSeries, NormalizedCandle } from "@/lib/chart-data";
 import { calculatePaperPositionSize, summarizeRecentDrawdown } from "@/lib/drawdown-guide";
 import {
@@ -243,6 +245,7 @@ export default function StockResearchPage() {
   const count = (value: number | undefined) => value ?? (historyLoading ? "…" : historyError ? "—" : 0);
   const normalizedSymbol = normalizeSymbol(symbol);
   const canRun = normalizedSymbol.length > 0 && symbol.trim().length <= 50;
+  const marketContextSymbol = result?.symbol ?? (/^[A-Z0-9][A-Z0-9&._-]{0,39}$/.test(normalizedSymbol) ? normalizedSymbol : undefined);
 
   return <div className="backtrack-page stock-research-page">
     <TopBar title="Stock research" />
@@ -335,6 +338,7 @@ export default function StockResearchPage() {
       </section>
 
       <div className="stock-research-boundary"><Info size={15} aria-hidden="true" /><span><strong>Daily historical research only.</strong> No live quote or order is produced. Entry levels are conditional on the stated rule and next-session pricing.</span></div>
+      <GlobalMarketBrief symbol={marketContextSymbol} />
       {error && <div className="bt-alert-error" role="alert"><AlertTriangle size={16} aria-hidden="true" /><span>{error} If the local API received the request, its attempt is recorded when SQLite logging is available.</span></div>}
 
       {result && <>
@@ -342,16 +346,6 @@ export default function StockResearchPage() {
           <div><span className="bt-eyebrow">{result.run_status === "completed" ? "LATEST DAILY-BAR REVIEW" : "DATA STATUS"}</span><h2>{result.company_name || result.symbol} <small>{result.symbol}</small></h2><p>{result.message}</p></div>
           <span className={`stock-research-pill ${result.run_status}`}><span />{result.run_status.replaceAll("_", " ")}</span>
         </section>
-
-        {result.run_status === "completed" && <TradingAgentsReview
-          key={result.run_id}
-          runId={result.run_id}
-          symbol={result.symbol}
-          onAnalysisUpdated={(analysis) => {
-            setResult(analysis);
-            void refreshHistory();
-          }}
-        />}
 
         {result.run_status === "insufficient_data" && <section className="stock-research-empty bt-panel" role="status">
           <Database size={20} aria-hidden="true" /><div><strong>No usable local history for {result.symbol}</strong><p>{result.message} Import the official NSE daily archive, then run the analysis again.</p><a className="stock-research-data-link" href="/data">Open NSE data</a></div>
@@ -364,16 +358,18 @@ export default function StockResearchPage() {
               <h2>{SETUP_COPY[setup.status].title}</h2>
               <p>{SETUP_COPY[setup.status].body}</p>
               <p className="stock-research-as-of"><strong>Daily data through {date(result.data_as_of)}</strong><span>{result.chart.length.toLocaleString("en-IN")} saved sessions · {result.data_source}</span></p>
+              <h3>Why this rule has this status</h3>
+              <ul className="stock-research-reasons">{setup.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
             </div>
             <aside className={`stock-research-gate ${result.validation_gate.status}`} aria-label="Historical screen result">
               <div className="stock-research-gate-icon" aria-hidden="true">{result.validation_gate.status === "passed" ? <CheckCircle2 size={19} /> : result.validation_gate.status === "failed" ? <AlertTriangle size={19} /> : <Info size={19} />}</div>
-              <div className="stock-research-gate-copy"><span className="bt-eyebrow">HISTORICAL SCREEN ONLY</span><strong>{GATE_COPY[result.validation_gate.status]}</strong><p>The {result.validation_gate.minimum_win_rate_pct}% win-rate cutoff is a rule for past data. Passing is not a forecast, promise, or recommendation.</p></div>
+              <div className="stock-research-gate-copy"><span className="bt-eyebrow">HISTORICAL SCREEN ONLY</span><strong>{GATE_COPY[result.validation_gate.status]}</strong><p>The {result.validation_gate.minimum_win_rate_pct}% win-rate cutoff is a rule for past data. Passing is not a forecast, promise, or recommendation.</p><h3>{result.validation_gate.status === "passed" ? "Why it passed" : "What blocks qualification"}</h3><ul className="stock-research-reasons">{result.validation_gate.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul></div>
             </aside>
           </section>
 
           {recentFacts && <section className="stock-drawdown-guide bt-panel" aria-labelledby="stock-drawdown-guide-title">
             <div className="stock-research-section-heading">
-              <div><span className="bt-eyebrow">PLAIN-LANGUAGE PLAN</span><h2 id="stock-drawdown-guide-title">What to check after a sharp fall</h2><p>All figures below use saved daily bars through {date(result.data_as_of)}. Daily prices show what happened, but this app has no news feed to confirm why.</p></div>
+              <div><span className="bt-eyebrow">PLAIN-LANGUAGE PLAN</span><h2 id="stock-drawdown-guide-title">What to check after a sharp fall</h2><p>All figures below use saved daily bars through {date(result.data_as_of)}. Use the optional cited news brief above for context; it cannot establish why the stock moved.</p></div>
               <span className="stock-research-source"><ShieldCheck size={14} aria-hidden="true" /> {result.data_source}</span>
             </div>
 
@@ -424,9 +420,9 @@ export default function StockResearchPage() {
           </section>}
 
           <section className="stock-research-plan bt-panel">
-            <div className="stock-research-section-heading"><div><span className="bt-eyebrow">CONDITIONAL PRICE LEVELS</span><h2>Possible re-entry, if this rule triggers</h2><p>Check the rule status first. These are reference prices from saved daily candles, not a current quote, order, or known fill.</p></div><span className={`stock-research-pill ${setup.status}`}><span />{setup.status.replaceAll("_", " ")}</span></div>
+            <div className="stock-research-section-heading"><div><span className="bt-eyebrow">CONDITIONAL PRICE LEVELS</span><h2>Possible entry or re-entry, if this rule triggers</h2><p>Check the rule status first. These are reference prices from saved daily candles, not a current quote, order, or known fill. Backtrack does not calculate an ideal or fair-value price; company valuation data is unavailable here.</p></div><span className={`stock-research-pill ${setup.status}`}><span />{setup.status.replaceAll("_", " ")}</span></div>
             <div className="stock-research-levels">
-              <div><span>Entry trigger</span><strong>{money(setup.entry_trigger)}</strong><small>Prior 20-session high; the rule also checks daily close and volume</small></div>
+              <div><span>Conditional entry trigger</span><strong>{money(setup.entry_trigger)}</strong><small>Prior 20-session high; the rule also checks daily close and volume</small></div>
               <div className="risk-level"><span>Stop level</span><strong>{money(setup.stop_loss)}</strong><small>{money(setup.risk_per_share)} price risk per share below the trigger</small></div>
               <div><span>Target · 1 risk unit</span><strong>{money(setup.target_1r)}</strong><small>One stop-distance above the trigger</small></div>
               <div className="target-level"><span>Target · 2 risk units</span><strong>{money(setup.target_2r)}</strong><small>Two stop-distances above the trigger</small></div>
@@ -434,6 +430,16 @@ export default function StockResearchPage() {
             <p className="stock-research-level-note"><Info size={14} aria-hidden="true" /><span>{setup.level_note} “Risk unit” means the price distance from the entry trigger to the stop.</span></p>
             <div className="stock-research-exit-rules"><strong>Exact exit rule</strong><ul>{setup.exit_rules.map((rule) => <li key={rule}>{rule}</li>)}</ul></div>
           </section>
+
+          {result.run_status === "completed" && <TradingAgentsReview
+            key={result.run_id}
+            runId={result.run_id}
+            symbol={result.symbol}
+            onAnalysisUpdated={(analysis) => {
+              setResult(analysis);
+              void refreshHistory();
+            }}
+          />}
 
           <details className="stock-research-disclosure bt-panel">
             <summary><span><strong>Explore the daily price chart and indicators</strong><small>Price range, moving averages, momentum, volume, and the reasons behind this readout</small></span></summary>
@@ -452,6 +458,7 @@ export default function StockResearchPage() {
                 </dl>
                 <div className="stock-research-indicators">
                   <div><span>Simple moving averages</span><strong>20-day {money(technical.sma20)} · 50-day {money(technical.sma50)} · 200-day {money(technical.sma200)}</strong><small>Price versus its averages shows recent and longer trend context.</small></div>
+                  <div><span>Monthly trend average</span><strong>20 completed-month average {money(technical.sma20_monthly)}</strong><small>Uses the last 20 full monthly closing prices and excludes the current partial month.</small></div>
                   <div><span>RSI · 14</span><strong>{number(technical.rsi14, 1)}</strong><small>Momentum gauge; high or low readings alone do not time a reversal.</small></div>
                   <div><span>MACD · 12 / 26 / 9</span><strong>{number(technical.macd)} · signal {number(technical.macd_signal)}</strong><small>Histogram {number(technical.macd_histogram)}; above zero means MACD is above its signal.</small></div>
                   <div><span>ATR · 14</span><strong>{money(technical.atr14)} · {number(technical.atr14_pct)}%</strong><small>Recent volatility used to set stop distance; it does not predict direction.</small></div>
@@ -487,7 +494,6 @@ export default function StockResearchPage() {
               <section className="stock-research-screen-criteria">
                 <h3>What the historical screen checks</h3>
                 <p>It requires at least {result.validation_gate.minimum_history_years} years of data, {result.validation_gate.minimum_oos_trades} or more held-out trades, at least {result.validation_gate.minimum_win_rate_pct}% wins, positive average net return and total return after modeled costs, and a profit factor above 1 when there were losses. These are screening rules for past data only—not a forecast, promise, or recommendation.</p>
-                {result.validation_gate.reasons.length ? <ul className="stock-research-reasons">{result.validation_gate.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul> : <p className="stock-research-muted">This sample met each stated historical screen condition.</p>}
               </section>
             </div>
           </details>
@@ -505,6 +511,8 @@ export default function StockResearchPage() {
           </details>
         </>}
       </>}
+
+      <PredictionHistory />
 
       <section className="stock-research-ledger bt-panel">
         <div className="stock-research-section-heading"><div><span className="bt-eyebrow">LOCAL RUN LEDGER</span><h2>Every attempt is counted</h2><p>Completed analyses, failed or insufficient-data attempts, and the number that passed or failed the historical gate.</p></div><button className="bt-secondary" type="button" onClick={() => { setHistoryLoading(true); setHistoryError(null); void refreshHistory(); }} disabled={historyLoading}><RefreshCw size={13} className={historyLoading ? "spin" : ""} aria-hidden="true" /> Refresh log</button></div>

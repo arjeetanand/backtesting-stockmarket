@@ -2,7 +2,7 @@
 
 Backtrack is a free, local, research-only Indian-market backtesting workspace. It imports official NSE daily archives, stores them locally, lets traders test rule-based strategies, replay candles, and inspect performance, risk, and reliability.
 
-It does not place real orders, connect to a broker, provide live quotes, or require Dhan credentials, a paid API, or a subscription.
+It does not place real orders, connect to a broker, or provide live quotes. Local imports, indicators, portfolio valuation, and backtests need no paid API or subscription. Optional OpenAI reviews and web-searched market briefs require an API key and may be billed separately.
 
 ## What the application does
 
@@ -15,6 +15,9 @@ It does not place real orders, connect to a broker, provide live quotes, or requ
 - On `/research`, follows one stock → local data → chart → strategy → backtest → results workflow with OHLCV, volume, indicators, signals, trades, equity, drawdown, and metrics; its volume study groups next-session outcomes by prior-20-session relative volume and same-day move.
 - On `/comparison`, compares historical results and expands each strategy into its dated trade fills and recorded profit/loss.
 - On `/stock-research`, scans the built-in NIFTY 50 basket and shows only triggers whose next-session entry window is open and whose fixed-rule held-out test passes the evidence gate; search one stock for its indicators, conditional levels, candles, trade history, and local run log.
+- Reviews a stock with dated 20/50/200-session and 20-completed-month averages, rule reasons, conditional entry/stop/target levels, and historical-screen blockers. Eligible completed setups are tracked against up to 20 later NSE sessions; this is price-path tracking, not filled trades or AI training.
+- On `/portfolio`, previews XLSX, PDF, or image holdings for review, then saves only confirmed quantities and average costs. It values them from cached daily closes and shows per-position P&L, moving averages, relative volume, and each symbol's data date.
+- On `/stock-research`, can create an optional, user-requested global-market news brief with web citations and a dated local history; only the selected topic and optional symbol are sent to the OpenAI API.
 - Replays historical candles with simulated orders only.
 - Runs a seeded daily-bar scenario sample and compares it with a fixed-rule historical sample.
 - Builds a manual morning watchlist from the latest completed NSE daily candles, with conditional trigger, stop, and 2R target levels.
@@ -81,6 +84,7 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 - [docs/MARKET_SCANNER_CLARITY_CHECKLIST.md](docs/MARKET_SCANNER_CLARITY_CHECKLIST.md) — scanner wording, search scope, and verification record.
 - [docs/CTA_SELECT_CHECKLIST.md](docs/CTA_SELECT_CHECKLIST.md) — CTA state, custom choice menus, and UI verification record.
 - [docs/BRANCH_MERGE_CHECKLIST.md](docs/BRANCH_MERGE_CHECKLIST.md) — branch audit, integration scope, and remaining remote checks.
+- [docs/BACKTRACK_END_TO_END_CHECKLIST.md](docs/BACKTRACK_END_TO_END_CHECKLIST.md) — consolidation record, integrated workflow checks, data freshness, and remaining limits.
 - [handover.md](handover.md) — engineering ownership, persistence contract, architecture, and handoff notes.
 - [TESTING.md](TESTING.md) — automated tests, UI smoke checks, data checks, and release checklist.
 - [docs/STRUCTURE_ZONE_SCAN_CHECKLIST.md](docs/STRUCTURE_ZONE_SCAN_CHECKLIST.md) — scope and delivery checklist for the local daily structure-zone scan.
@@ -95,6 +99,7 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 | `/data` | Bulk NSE history download and local stock search |
 | `/research` | Describe an idea, review a proposal, prepare data, and run a backtest |
 | `/stock-research` | Run a gated NIFTY 50 scan or review one stock's recent moves, volume, drawdown, holding risk, and conditional re-entry levels |
+| `/portfolio` | Preview and confirm a local holdings import, then review cost basis, daily-close valuation, and cached indicators |
 | `/strategy` | Build indicator and rule-based strategies |
 | `/strategy-import` | Extract reviewable rules from a YouTube URL or transcript |
 | `/backtests` | Reopen saved historical tests |
@@ -116,6 +121,16 @@ The full 2000-to-today download can take a long time. It runs as a background AP
 On **Market Scanner**, choose a stock group and rule before scanning. The search box filters a completed historical result list by ticker, company, or sector; choose **All imported stocks** before scanning for the widest locally available group. To search the local NSE catalogue and check whether a symbol has saved history, use **NSE data**. Neither search provides live exchange prices.
 
 See [PROJECT_GUIDE.md](PROJECT_GUIDE.md) for the complete user guide.
+
+## Portfolio and global context
+
+At `/portfolio`, select an XLSX, PDF, or image statement. Backtrack parses it locally into an editable preview; check symbols, quantities, and average costs before saving. The original upload is discarded after preview. Only confirmed holdings are stored in the local SQLite database. PDF parsing uses Poppler command-line tools; image and scanned-PDF OCR uses local Tesseract. If these are unavailable, use XLSX or enter holdings manually.
+
+Portfolio values use the latest saved NSE end-of-day close, not a live price. Missing and stale bars remain visible as such. Technical averages and relative volume describe historical data and do not predict returns. Backtrack does not infer a best-profit strategy or place trades.
+
+On `/stock-research`, the optional global-market brief runs only when requested. It uses OpenAI web search for dated, cited context; the API key stays in the backend `.env`, and only the selected public topic plus optional NSE symbol is sent. OpenAI API and web-search usage can be billed separately. Saved briefs are local; no automatic news fetch occurs during an analysis. See [OpenAI's web-search guide](https://platform.openai.com/docs/guides/tools-web-search) and [API pricing](https://platform.openai.com/pricing/).
+
+To enable global briefs, set `OPENAI_API_KEY` in the repository-root `.env` and restart Backtrack. `GLOBAL_MARKET_MODEL` optionally selects the API model; it defaults to `gpt-6-luna`. Never put the key in a `NEXT_PUBLIC_*` variable or frontend config.
 
 ## One stock research workspace
 

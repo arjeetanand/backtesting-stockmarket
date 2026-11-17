@@ -671,6 +671,7 @@ class StockResearchTechnicalResponse(BaseModel):
     sma20: float | None
     sma50: float | None
     sma200: float | None
+    sma20_monthly: float | None
     rsi14: float | None
     macd: float | None
     macd_signal: float | None

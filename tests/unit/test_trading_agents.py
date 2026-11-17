@@ -16,7 +16,14 @@ def analysis() -> dict[str, Any]:
         "run_status": "completed", "symbol": "RELIANCE", "data_as_of": "2026-10-28",
         "history_start": "2020-01-01", "bar_count": 1500, "history_years": 6.8,
         "data_age_days": 20, "technical": {"close": 100.0, "rsi14": 60.0},
-        "setup": {"status": "stale_data"}, "validation_gate": {"status": "failed"},
+        "setup": {
+            "status": "stale_data", "direction": "long_only", "entry_trigger": 101.0,
+            "stop_loss": 95.0, "target_1r": 107.0, "target_2r": 113.0,
+            "risk_per_share": 6.0, "reasons": ["Refresh the stale candle before using these levels."],
+            "exit_rules": ["Exit at the stop first if both daily extremes touch."],
+            "level_note": "Illustrative levels; a next-open gap changes actual risk.",
+        },
+        "validation_gate": {"status": "failed", "reasons": ["Only 12 out-of-sample trades; at least 30 required."]},
         "out_of_sample_metrics": {"trades": 12, "win_rate_pct": 50.0},
     }
 
@@ -29,6 +36,8 @@ def test_debate_calls_real_factory_contract_and_filters_payload(
     analysis.update({"chart": ["private-chart"], "trades": ["private-trade"], "account": "private-account"})
     analysis["technical"]["private"] = "private-value"
     analysis["out_of_sample_metrics"]["account"] = "private-metric"
+    analysis["setup"]["account"] = "private-setup"
+    analysis["validation_gate"]["account"] = "private-gate"
     agents = ModuleType("tradingagents.agents")
     clients = ModuleType("tradingagents.llm_clients")
     calls: list[str] = []
@@ -55,6 +64,13 @@ def test_debate_calls_real_factory_contract_and_filters_payload(
                 assert evidence["data_age_days"] == 20
                 assert evidence["setup_status"] == "stale_data"
                 assert evidence["validation_status"] == "failed"
+                assert evidence["validation_reasons"] == ["Only 12 out-of-sample trades; at least 30 required."]
+                assert evidence["setup"]["entry_trigger"] == 101.0
+                assert evidence["setup"]["stop_loss"] == 95.0
+                assert evidence["setup"]["target_2r"] == 113.0
+                assert evidence["setup"]["reasons"] == analysis["setup"]["reasons"]
+                assert evidence["setup"]["exit_rules"] == analysis["setup"]["exit_rules"]
+                assert evidence["setup"]["level_note"] == analysis["setup"]["level_note"]
                 assert "stale data" in state["instrument_context"]
                 assert state["news_report"] == state["sentiment_report"] == state["fundamentals_report"] == ""
                 debate = dict(state["investment_debate_state"])
@@ -163,6 +179,32 @@ def test_installed_upstream_agents_with_fake_transport(
     assert "stale" in result["review"]
     assert all("RELIANCE" in prompt for prompt in prompts)
     assert "2026-10-28" in prompts[0]
+
+
+def test_setup_evidence_is_finite_bounded_and_allowlisted(
+    monkeypatch: pytest.MonkeyPatch, analysis: dict[str, Any],
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
+    analysis["setup"].update({
+        "entry_trigger": float("inf"), "stop_loss": float("nan"), "signal_close": True,
+        "reasons": ["x" * 1000] * 20, "exit_rules": ["y" * 1000] * 20,
+        "level_note": "z" * 1000, "account": "private-setup",
+    })
+    analysis["validation_gate"]["reasons"] = ["g" * 1000] * 20
+
+    def review(evidence: dict[str, Any], *_args: Any) -> dict[str, str]:
+        setup = evidence["setup"]
+        assert not {"entry_trigger", "stop_loss", "signal_close", "account"} & setup.keys()
+        assert setup["target_1r"] == 107.0
+        for texts in (setup["reasons"], setup["exit_rules"], evidence["validation_reasons"]):
+            assert len(texts) == 8
+            assert all(len(text) == 400 for text in texts)
+        assert len(setup["level_note"]) == 400
+        assert "private-" not in json.dumps(evidence, allow_nan=False)
+        return {"bull_case": "Bull", "bear_case": "Bear", "review": "Review"}
+
+    monkeypatch.setattr(trading_agents, "_run_debate", review)
+    trading_agents.review_stock_analysis(analysis)
 
 
 def test_installed_openai_client_accepts_bounded_configuration(monkeypatch: pytest.MonkeyPatch) -> None:

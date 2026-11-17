@@ -26,7 +26,7 @@ def model_name() -> str:
 
 
 _TECHNICAL_FIELDS = (
-    "close", "sma20", "sma50", "sma200", "rsi14", "macd", "macd_signal",
+    "close", "sma20", "sma50", "sma200", "sma20_monthly", "rsi14", "macd", "macd_signal",
     "macd_histogram", "atr14", "atr14_pct", "prior20_high", "prior20_low",
     "high_52w", "low_52w", "volume_ratio_20", "return_1m_pct", "return_3m_pct",
     "return_1y_pct", "return_3y_pct",
@@ -34,6 +34,9 @@ _TECHNICAL_FIELDS = (
 _METRIC_FIELDS = (
     "trades", "wins", "losses", "win_rate_pct", "profit_factor", "expectancy_pct",
     "total_return_pct", "max_drawdown_pct", "bars", "signal_occurrences",
+)
+_SETUP_FIELDS = (
+    "signal_close", "entry_trigger", "stop_loss", "target_1r", "target_2r", "risk_per_share",
 )
 
 
@@ -43,6 +46,12 @@ def _numbers(source: dict[str, Any], fields: tuple[str, ...]) -> dict[str, Any]:
         if (value := source.get(key)) is None
         or (type(value) in (int, float) and math.isfinite(value))
     }
+
+
+def _reasons(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [text[:400] for text in value[:8] if isinstance(text, str)]
 
 
 def _run_debate(evidence: dict[str, Any], model: str, api_key: str) -> dict[str, str]:
@@ -121,7 +130,17 @@ def review_stock_analysis(analysis: dict[str, Any]) -> dict[str, Any]:
             evidence[field][period] = metrics.get(period)
     gate = analysis.get("validation_gate") or {}
     evidence["validation_status"] = gate.get("status", "not_evaluable")
-    evidence["setup_status"] = (analysis.get("setup") or {}).get("status")
+    evidence["validation_reasons"] = _reasons(gate.get("reasons"))
+    setup = analysis.get("setup") or {}
+    evidence["setup_status"] = setup.get("status")
+    evidence["setup"] = {
+        **_numbers(setup, _SETUP_FIELDS),
+        "reasons": _reasons(setup.get("reasons")),
+        "exit_rules": _reasons(setup.get("exit_rules")),
+    }
+    for field in ("direction", "level_note"):
+        if isinstance(setup.get(field), str):
+            evidence["setup"][field] = setup[field][:400]
     try:
         result = _run_debate(evidence, model, api_key)
         if any(not isinstance(result.get(key), str) or not result[key].strip()
