@@ -36,4 +36,4 @@ Updated: 2026-11-17 after market close
 
 NSE history is official end-of-day data, not live prices. Backtrack does not connect to a broker, place trades, guarantee returns, adjust for every corporate action, or evaluate a recommendation as a filled trade. The built-in broad scan is NIFTY 50; other NSE symbols can be searched individually. Portfolio parsing is heuristic and every detected row must be reviewed.
 
-The task branch is `codex/backtrack-unification-20261117`, with integration commit `d381612` and verified OCR/Tapetide fix `6f5ca37`. PR #26 is closed and this task branch has not been pushed or merged into remote `main`.
+The task branch is `codex/backtrack-unification-20261117`, with integration commit `d381612`, OCR/Tapetide fix `6f5ca37`, and launcher fix `25422e7`. PR #26 is closed and this task branch has not been pushed or merged into remote `main`.
