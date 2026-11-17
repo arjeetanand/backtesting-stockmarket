@@ -25,7 +25,7 @@ import {
   buildInsightPaperPlan,
   saveInsightPaperPlan,
   summarizeInsightVolume,
-  syncTodayNseData,
+  syncTodayMarketData,
   type InsightCoverageStatus,
   type InsightMember,
   type InsightPeriod,
@@ -349,8 +349,8 @@ export default function InsightsDashboard() {
     setSyncMessage(null);
     setSyncError(null);
     try {
-      const result = await syncTodayNseData();
-      setSyncMessage(`${result.message ?? "Official NSE sync finished."}${result.latest_trading_day ? ` Latest saved session: ${formatDate(result.latest_trading_day)}.` : ""}`);
+      const result = await syncTodayMarketData();
+      setSyncMessage(`${result.message ?? "Market data sync finished."}${result.latest_trading_day ? ` Latest saved session: ${formatDate(result.latest_trading_day)}.` : ""}`);
       setLoading(true);
       await load();
     } catch (requestError) {
@@ -384,8 +384,8 @@ export default function InsightsDashboard() {
             <p>See how the selected index moved using locally imported official NSE daily bars.</p>
           </div>
           <div className="insights-heading-actions">
-            <button type="button" className="bt-secondary-btn insights-sync-button" onClick={() => void syncAndReload()} disabled={syncing} title="Import missing official NSE daily archives through today's date">
-              <RefreshCw size={14} className={syncing ? "spin" : ""} /> {syncing ? "Syncing NSE data…" : "Sync today's NSE data"}
+            <button type="button" className="bt-secondary-btn insights-sync-button" onClick={() => void syncAndReload()} disabled={syncing} title="Sync NSE daily bars, the latest official NSE FII/DII report, and missing Tapetide history">
+              <RefreshCw size={14} className={syncing ? "spin" : ""} /> {syncing ? "Syncing market data…" : "Sync all market data"}
             </button>
             <div className="insights-source-badge"><Database size={14} /> Official NSE daily bars</div>
           </div>

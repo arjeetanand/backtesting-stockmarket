@@ -56,6 +56,8 @@ class NseBhavcopyImporter:
         start: date,
         end: date,
         progress: Callable[[str, int, int], None] | None = None,
+        *,
+        retry_unavailable: bool = False,
     ) -> NseImportResult:
         selected = {symbol.strip().upper().removesuffix(".NS") for symbol in symbols if symbol.strip()}
         downloaded_days = skipped_days = stored_bars = already_available_days = reused_archive_days = archive_rows = 0
@@ -71,7 +73,7 @@ class NseBhavcopyImporter:
                         progress("Checking local cache", processed_weekdays, total_weekdays)
                     cursor += timedelta(days=1)
                     continue
-                if self._cache.is_nse_day_unavailable(cursor):
+                if not retry_unavailable and self._cache.is_nse_day_unavailable(cursor):
                     skipped_days += 1
                     if progress:
                         progress("Checking local cache", processed_weekdays, total_weekdays)

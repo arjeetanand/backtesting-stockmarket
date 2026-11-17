@@ -10,7 +10,18 @@
 - [x] Add regression coverage for pagination, 2014 clamping, incomplete rows, source separation, repeated-cursor failure, missing token, background-job status, and SQLite write failures.
 - [x] Ruff, full pytest, frontend lint, 20 Vitest tests, webpack production build, changed-module mypy, and `git diff --check` pass.
 
-Remaining verification limits: no Tapetide token is configured for a live provider request, and the sandbox denied the isolated browser preview's 6003/8002 loopback binds with `EPERM`.
+Remaining verification limits at the range-refresh delivery: no Tapetide token was configured then, and the sandbox denied the isolated browser preview's 6003/8002 loopback binds with `EPERM`. A token value is now present in the local configuration, but its validity has not been checked against the provider.
+
+## One-click all-source market sync · 2026-10-29
+
+- [x] Change the global and Market Insights action to sync NSE daily archives, the latest official NSE FII/DII snapshot, and missing Tapetide history sessions.
+- [x] Keep each source independent and return a separate status/message so an NSE or Tapetide failure does not suppress other completed sources.
+- [x] Query only known available NSE sessions lacking a complete saved Tapetide FII/DII pair; persist successful empty checks so they are not requested on every click.
+- [x] Avoid duplicate local NSE FII/DII snapshots when the latest report is unchanged while still recording corrected values.
+- [x] Add regression checks for missing-date-only fetches, successful empty checks, NSE snapshot idempotency/corrections, and source failure isolation.
+- [x] Focused FII/DII and daily-sync tests plus the full backend test suite pass; Ruff, frontend ESLint, all 24 Vitest tests, webpack production build, and `git diff --check` pass.
+- [ ] Full mypy still reports 13 existing errors in `market_cache.py`, `pattern_finder.py`, `breakout_scanner.py`, and `ml_research.py`; no new errors remain in the changed route/importer files.
+- [ ] Live NSE/Tapetide and browser checks remain unchecked; ports previously requested stopped were preserved and no external provider request was made.
 
 - [x] Read previously saved Tapetide rows from the local SQLite cache on page load.
 - [x] Keep Tapetide history separate from official NSE latest-session rows.

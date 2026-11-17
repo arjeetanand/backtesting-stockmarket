@@ -64,10 +64,27 @@ export type InsightVolumeSummary = {
   relativeVolume: number | null;
 };
 
-export type TodaySyncResult = {
-  latest_trading_day?: string;
+export type MarketSyncSourceResult = {
+  status: "complete" | "partial" | "failed" | "skipped";
+  message: string;
+  checked_days?: number;
+  stored_rows?: number;
+  synced_days?: number;
+  skipped_days?: number;
+  latest_trading_day?: string | null;
+  through?: string;
+};
+
+export type MarketSyncResult = {
+  status?: "complete" | "partial";
+  latest_trading_day?: string | null;
   message?: string;
   synced_days?: number;
+  sources?: {
+    nse_daily?: MarketSyncSourceResult;
+    nse_fii_dii?: MarketSyncSourceResult;
+    tapetide_history?: MarketSyncSourceResult;
+  };
 };
 
 type UnknownRecord = Record<string, unknown>;
@@ -239,8 +256,8 @@ export async function getInsightStockHistory(symbol: string, dataAsOf: string): 
   return jsonRequest<MarketDataResponse>(`${API_BASE_URL}/market-data?${params.toString()}`);
 }
 
-export async function syncTodayNseData(): Promise<TodaySyncResult> {
-  return jsonRequest<TodaySyncResult>(`${API_BASE_URL}/data/sync-today`, { method: "POST" }, 300_000);
+export async function syncTodayMarketData(): Promise<MarketSyncResult> {
+  return jsonRequest<MarketSyncResult>(`${API_BASE_URL}/data/sync-today`, { method: "POST" }, 300_000);
 }
 
 export function summarizeInsightVolume(bars: MarketDataBar[]): InsightVolumeSummary {
