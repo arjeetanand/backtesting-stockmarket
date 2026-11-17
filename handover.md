@@ -757,3 +757,29 @@ Next owner/action:
   reviews`) on branch `codex/tradingagents-codex-20261117`, targeting PR #26
   against `main`.
 - Checklist: `docs/TRADING_AGENTS_CHECKLIST.md`.
+
+## 2026-11-17 Backtrack worktree consolidation
+
+- Removed four clean linked worktrees after user approval:
+  `backtrack-yesbank-current-data-20261029` (35 MB),
+  `backtrack-fii-dii-worktree` (142 MB),
+  `backtrack-global-market-sync-20261029` (293 MB), and
+  `backtrack-merge-unmerged-20261029` (261 MB). Their commit tips are reachable
+  from the TradingAgents branch `44a447b`; local branch refs remain in the shared
+  Git repository and each worktree can be recreated.
+- Cleanup removed about 731 MB of checkout/build caches. The two ignored SQLite
+  files were schema-only with no rows; generated Next/Python caches can be rebuilt.
+  The FII/DII worktree's `frontend/node_modules` was only a symlink to the kept
+  root checkout's dependencies.
+- Preserved `/Users/arjeetanand/projects/stock/backtrack`: it owns the shared Git
+  metadata, `.env`, 9,002,102,784-byte market cache, and NSE archives. Its local
+  FII/DII work remains untouched (17 staged files, 7 unstaged modifications, no
+  untracked files). Do not bulk-apply that older change set without reviewing its
+  overlap with the long-range implementation already in PR #26.
+- Kept this active worktree on `codex/tradingagents-codex-20261117`; the application
+  remains available on ports 4003/8001 and PR #26 remains open against `main`.
+  One stale, already-prunable worktree registration for `/private/tmp/backtrack-order-flow`
+  was outside the requested folders and left untouched.
+- Next: after PR #26 is merged and the original FII/DII edits are deliberately
+  resolved, consolidate the active checkout into the root folder if one folder is
+  still desired.
