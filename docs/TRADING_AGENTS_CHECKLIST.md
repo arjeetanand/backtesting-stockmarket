@@ -11,6 +11,7 @@
 - [x] Production build; browser empty/error/cached-success/expanded-cases checks.
 - [x] Narrow layout reviewed; requested 390px override reported actual 542px, so exact phone/device check remains unverified.
 - [ ] Live OpenAI review: no backend API key configured; no billed request made.
-- [x] Implementation committed locally as e0a37bd; final handoff updated.
+- [x] Implementation committed as e0a37bd; consolidated branch dcd8e6a pushed and PR #26 opened to main.
+- [ ] Run the full project checks on the combined branch; only the PR's GitGuardian check has passed so far.
 
 Existing full-source mypy baseline: 13 errors in four unrelated files.

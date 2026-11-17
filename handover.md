@@ -672,8 +672,18 @@ Next owner/action:
 ## 2026-11-17 optional TradingAgents/OpenAI review
 
 - Task checkout: `/Users/arjeetanand/projects/stock/backtrack-tradingagents-codex-20261117`.
-  Branch `codex/tradingagents-codex-20261117`, based on local main `16d8ada`;
-  implementation commit `e0a37bd`. Local only: not pushed or merged.
+  Branch `codex/tradingagents-codex-20261117`; TradingAgents implementation
+  commits `e0a37bd` and `a96cecb`; consolidated head `dcd8e6a`.
+- Published to `origin` and opened PR [#26](https://github.com/arjeetanand/backtesting-stockmarket/pull/26)
+  against `main`. GitHub reports it mergeable; GitGuardian passed. The PR is
+  open and has not been merged.
+- Consolidation includes the CTA/select, drawdown/Market Insights, YESBANK daily
+  sync, and global market-sync commits. Long-range FII/DII implementation was
+  already present on `main` through PR #25; the local committed branch is now
+  included in history while the newer global-sync changes remain in the tree.
+  Removed only the three approved clean feature worktrees; their branch refs
+  remain. The original FII/DII checkout and its staged/unstaged edits were
+  preserved.
 - Inventory: optional pinned TradingAgents v0.7.1 dependency/lockfile; real bull,
   bear and research-manager service; saved-analysis API; optional Stock research
   panel; review caching and cleanup; 18 focused service/API/cleanup tests; guides
@@ -686,6 +696,9 @@ Next owner/action:
   24 frontend tests pass; Ruff, frontend lint and production build pass. New
   service/route focused Mypy passes; full Mypy retains 13 existing errors in four
   unrelated files. Pandas 3.1.1 emits 81 existing inplace-deprecation warnings.
+- Consolidation verification: `git diff --check origin/main...HEAD` passed. The
+  combined app checks were not rerun after the market-sync merges; PR #26 currently
+  reports one completed check, GitGuardian, as passed.
 - Installed upstream factories and OpenAI client were exercised offline using a
   fake LLM. Browser checked completed real-NSE analysis, missing-key feedback,
   cached-success rendering and expandable cases. Temporary success fixtures were
@@ -699,5 +712,7 @@ Next owner/action:
   sent only on click; API billing applies. Calls use 30s timeout/no SDK retries;
   structured-manager fallback can mean four calls. The duplicate-request lock is
   process-local, consistent with this single-user/single-worker local launcher.
-- Next action: configure your backend API key privately, restart ./run.sh, analyze
-  the desired stock and click Review with AI to verify account/model access.
+- Runtime: the saved runner state identifies this task checkout on ports 4003/8001;
+  shell HTTP probes did not connect, and no service was stopped or restarted.
+- Next action: run the combined checks, review PR #26, then configure your backend
+  API key privately and click Review with AI to verify account/model access.
