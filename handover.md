@@ -644,3 +644,36 @@ Next owner/action:
 - GitHub fetch succeeded, but `gh pr list` could not reach `api.github.com`; current PR and CI status could not be confirmed. No remote push was performed.
 - Existing UI ports `4003`, `5003`, and `6003` remain stopped as requested; browser review was not performed.
 - Checklist: `docs/BRANCH_MERGE_CHECKLIST.md`.
+
+## 2026-11-17 optional TradingAgents/OpenAI review
+
+- Task checkout: `/Users/arjeetanand/projects/stock/backtrack-tradingagents-codex-20261117`.
+  Branch `codex/tradingagents-codex-20261117`, based on local main `16d8ada`;
+  implementation commit `e0a37bd`. Local only: not pushed or merged.
+- Inventory: optional pinned TradingAgents v0.7.1 dependency/lockfile; real bull,
+  bear and research-manager service; saved-analysis API; optional Stock research
+  panel; review caching and cleanup; 18 focused service/API/cleanup tests; guides
+  and docs/TRADING_AGENTS_CHECKLIST.md. Existing executable run.sh retained.
+- Setup: `uv sync --extra dev --extra tradingagents`; configure OPENAI_API_KEY in
+  root .env, optional TRADINGAGENTS_MODEL (default gpt-6-luna), then `./run.sh`.
+  UI http://127.0.0.1:4003/stock-research; API http://127.0.0.1:8001/docs;
+  UI test slots 5003/6003. Key is absent; no live/billed OpenAI request was made.
+- Verification: 208 backend tests pass in isolated optional-dependency .venv;
+  24 frontend tests pass; Ruff, frontend lint and production build pass. New
+  service/route focused Mypy passes; full Mypy retains 13 existing errors in four
+  unrelated files. Pandas 3.1.1 emits 81 existing inplace-deprecation warnings.
+- Installed upstream factories and OpenAI client were exercised offline using a
+  fake LLM. Browser checked completed real-NSE analysis, missing-key feedback,
+  cached-success rendering and expandable cases. Temporary success fixtures were
+  visibly labelled and removed afterward. Requested 390px viewport override
+  reported actual 542px; narrow layout was reviewed, exact phone/device unverified.
+- Runtime data: copied only 5,255 existing real YESBANK daily bars into this task's
+  ignored SQLite database for UI verification. Source database was opened read-only;
+  it and all existing checkouts/environments remain unchanged. No full data copy.
+- Boundaries: three-agent debate over saved NSE metrics, not the full upstream
+  graph. No news/fundamentals/external price tools or broker execution. Summary
+  sent only on click; API billing applies. Calls use 30s timeout/no SDK retries;
+  structured-manager fallback can mean four calls. The duplicate-request lock is
+  process-local, consistent with this single-user/single-worker local launcher.
+- Next action: configure your backend API key privately, restart ./run.sh, analyze
+  the desired stock and click Review with AI to verify account/model access.
